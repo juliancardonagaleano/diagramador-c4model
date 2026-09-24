@@ -25,7 +25,7 @@ export interface LayoutResult {
   boundaries: PositionedElement[];
 }
 
-const DEFAULTS = { direction: 'DOWN' as LayoutDirection, spacing: 60, layerSpacing: 90 };
+const DEFAULTS = { direction: 'DOWN' as LayoutDirection, spacing: 70, layerSpacing: 110 };
 
 let elkInstance: InstanceType<typeof ELK> | null = null;
 function elk(): InstanceType<typeof ELK> {

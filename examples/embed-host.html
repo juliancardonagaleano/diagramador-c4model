@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Demo: diagramador C4 embebido</title>
+    <style>
+      :root { font-family: Inter, -apple-system, Segoe UI, Roboto, sans-serif; color: #222; }
+      body { margin: 0; display: grid; grid-template-rows: auto 1fr; height: 100vh; background: #f3f4f6; }
+      header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+      header h1 { font-size: 15px; margin: 0 12px 0 0; }
+      button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; }
+      button:hover { background: #f9fafb; }
+      main { display: grid; grid-template-columns: 1fr 360px; min-height: 0; }
+      #editor { min-height: 0; background: #fff; }
+      aside { display: flex; flex-direction: column; border-left: 1px solid #e5e7eb; background: #fff; min-height: 0; }
+      aside h2 { font-size: 13px; margin: 0; padding: 8px 12px; border-bottom: 1px solid #e5e7eb; color: #374151; }
+      #log { flex: 1; overflow: auto; margin: 0; padding: 8px 12px; font: 11px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
+      .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #e0f2fe; color: #075985; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Mi aplicación anfitriona</h1>
+      <span class="badge" id="state">conectando…</span>
+      <button id="btn-export">Exportar .drawio</button>
+      <button id="btn-json">Exportar JSON</button>
+      <button id="btn-layout">Autolayout →</button>
+      <button id="btn-merge">Fusionar elemento</button>
+      <button id="btn-save">Guardar</button>
+      <button id="btn-reload">Cargar ejemplo</button>
+    </header>
+    <main>
+      <div id="editor"></div>
+      <aside>
+        <h2>Eventos recibidos por postMessage</h2>
+        <pre id="log"></pre>
+      </aside>
+    </main>
+    <script type="module">
+      // En producción: import { createC4Embed } from 'diagramador-c4model/embed'
+      // o <script src="dist/embed/c4-embed.global.js"> y window.C4Embed.createC4Embed(...)
+      import { createC4Embed } from '../src/embed/c4-embed.ts';
+
+      const log = document.getElementById('log');
+      const state = document.getElementById('state');
+      const print = (label, payload) => {
+        const line = document.createElement('div');
+        line.textContent = `${new Date().toLocaleTimeString()}  ${label}${payload !== undefined ? '  ' + JSON.stringify(payload).slice(0, 160) : ''}`;
+        log.prepend(line);
+      };
+
+      // Documento inicial sin coordenadas: el diagramador aplica autolayout al cargar.
+      const initial = {
+        version: '1.0',
+        workspace: { name: 'Tienda en línea' },
+        model: {
+          elements: [
+            { id: 'cliente', type: 'person', name: 'Cliente', description: 'Compra productos.' },
+            { id: 'tienda', type: 'softwareSystem', name: 'Tienda en línea', description: 'Vende productos por internet.' },
+            { id: 'web', type: 'container', name: 'Web', technology: 'React', parentId: 'tienda', shape: 'browser', description: 'Interfaz de compra.' },
+            { id: 'api', type: 'container', name: 'API', technology: 'Node.js', parentId: 'tienda', description: 'Lógica de negocio.' },
+            { id: 'db', type: 'container', name: 'Base de datos', technology: 'PostgreSQL', parentId: 'tienda', shape: 'database', description: 'Catálogo y pedidos.' },
+            { id: 'pagos', type: 'softwareSystem', name: 'Pasarela de pagos', external: true, description: 'Procesa cobros.' },
+          ],
+          relationships: [
+            { id: 'r1', sourceId: 'cliente', targetId: 'web', description: 'Usa', technology: 'HTTPS' },
+            { id: 'r2', sourceId: 'web', targetId: 'api', description: 'Llama', technology: 'JSON/HTTPS' },
+            { id: 'r3', sourceId: 'api', targetId: 'db', description: 'Lee y escribe', technology: 'SQL' },
+            { id: 'r4', sourceId: 'api', targetId: 'pagos', description: 'Cobra con', technology: 'HTTPS' },
+          ],
+        },
+        views: [
+          { id: 'ctx', type: 'systemContext', scopeId: 'tienda', title: 'Contexto', elements: [{ id: 'cliente' }, { id: 'tienda' }, { id: 'pagos' }] },
+          { id: 'cont', type: 'container', scopeId: 'tienda', title: 'Contenedores', elements: [{ id: 'cliente' }, { id: 'web' }, { id: 'api' }, { id: 'db' }, { id: 'pagos' }] },
+        ],
+      };
+
+      const embed = createC4Embed({
+        container: '#editor',
+        url: new URL('../', location.href).href, // la app del diagramador (misma carga en dev y en dist/app)
+        document: initial,
+        autosave: true,
+        title: 'Tienda en línea',
+        onInit: () => { state.textContent = 'init'; print('init'); },
+        onLoad: ({ document }) => { state.textContent = 'cargado'; print('load', { elementos: document.model.elements.length, vistas: document.views.length }); },
+        onChange: (document) => print('autosave', { elementos: document.model.elements.length }),
+        onSave: ({ document, drawio, exit }) => print('save', { exit, drawioBytes: drawio?.length ?? 0, elementos: document.model.elements.length }),
+        onExit: ({ modified }) => { state.textContent = 'salió'; print('exit', { modified }); },
+        onError: (e) => print('error', e),
+      });
+      window.embed = embed; // útil para depurar desde la consola
+
+      document.getElementById('btn-export').onclick = async () => {
+        const xml = await embed.export('drawio');
+        print('export drawio', { bytes: xml.length, paginas: (xml.match(/<diagram /g) || []).length });
+        const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([xml], { type: 'application/xml' })), download: 'tienda.drawio' });
+        a.click();
+      };
+      document.getElementById('btn-json').onclick = async () => {
+        const json = await embed.export('json');
+        print('export json', { bytes: json.length });
+      };
+      document.getElementById('btn-layout').onclick = () => embed.autoLayout({ direction: 'RIGHT' });
+      document.getElementById('btn-merge').onclick = () =>
+        embed.merge({
+          version: '1.0',
+          workspace: { name: 'Tienda en línea' },
+          model: {
+            elements: [{ id: 'cola', type: 'container', name: 'Cola de pedidos', technology: 'RabbitMQ', parentId: 'tienda', shape: 'queue', description: 'Desacopla el procesamiento.' }],
+            relationships: [{ id: 'r5', sourceId: 'api', targetId: 'cola', description: 'Publica pedidos', technology: 'AMQP' }],
+          },
+          views: [{ id: 'cont', type: 'container', scopeId: 'tienda', elements: [{ id: 'cliente' }, { id: 'web' }, { id: 'api' }, { id: 'db' }, { id: 'pagos' }, { id: 'cola' }] }],
+        });
+      document.getElementById('btn-save').onclick = () => embed.save(false);
+      document.getElementById('btn-reload').onclick = () => embed.load(initial, { autosave: true, title: 'Tienda en línea' });
+    </script>
+  </body>
+</html>

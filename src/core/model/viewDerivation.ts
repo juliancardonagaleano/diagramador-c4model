@@ -135,23 +135,33 @@ export function deriveView(doc: C4Document, viewId: string): DerivedView {
     return anc ? { id: anc, implied: true } : null;
   };
 
+  // Primero las relaciones directas; las implícitas solo si el par (origen, destino)
+  // no está ya cubierto por una directa ni por otra implícita.
   const edges: DerivedEdge[] = [];
-  const seen = new Set<string>();
+  const covered = new Set<string>();
+  const candidates: DerivedEdge[] = [];
   for (const rel of doc.model.relationships) {
     const src = resolveEndpoint(rel.sourceId);
     const tgt = resolveEndpoint(rel.targetId);
     if (!src || !tgt || src.id === tgt.id) continue;
     const implied = src.implied || tgt.implied;
-    const key = `${src.id}->${tgt.id}|${rel.description ?? ''}`;
-    if (implied && seen.has(key)) continue;
-    seen.add(key);
-    edges.push({
+    candidates.push({
       id: implied ? `${rel.id}@${src.id}->${tgt.id}` : rel.id,
       relationship: rel,
       sourceId: src.id,
       targetId: tgt.id,
       implied,
     });
+  }
+  for (const e of candidates.filter((c) => !c.implied)) {
+    edges.push(e);
+    covered.add(`${e.sourceId}->${e.targetId}`);
+  }
+  for (const e of candidates.filter((c) => c.implied)) {
+    const key = `${e.sourceId}->${e.targetId}`;
+    if (covered.has(key)) continue;
+    covered.add(key);
+    edges.push(e);
   }
 
   return { view, nodes, boundaries, edges };

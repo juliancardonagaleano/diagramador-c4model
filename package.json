@@ -38,7 +38,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "schema": "tsx scripts/generate-schema.ts",
-    "cli": "tsx src/cli/index.ts"
+    "cli": "tsx src/cli/index.ts",
+    "e2e": "node tests/e2e/run.mjs",
+    "verify": "npm run typecheck && npm test && npm run build && npm run e2e"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

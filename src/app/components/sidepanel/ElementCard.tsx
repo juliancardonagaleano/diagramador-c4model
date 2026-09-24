@@ -1,0 +1,134 @@
+import { Button, Input, Select, Switch, TextArea, Tooltip } from '@douyinfe/semi-ui';
+import { IconDelete, IconEyeClosed, IconEyeOpened, IconTreeTriangleDown, IconTreeTriangleRight } from '@douyinfe/semi-icons';
+import { useState } from 'react';
+import { C4_COLORS, C4_EXTERNAL_COLOR, ELEMENT_TYPE_LABELS, PARENT_TYPE, type C4Element, type ElementShape, type ElementType } from '../../../core/model/types';
+import { useDocumentStore } from '../../store/documentStore';
+
+const SHAPES: Array<{ value: ElementShape; label: string }> = [
+  { value: 'default', label: 'Rectángulo' },
+  { value: 'database', label: 'Base de datos' },
+  { value: 'queue', label: 'Cola' },
+  { value: 'browser', label: 'Navegador' },
+  { value: 'mobile', label: 'Móvil' },
+];
+
+export function ElementCard({ element, inActiveView, selected }: { element: C4Element; inActiveView: boolean; selected: boolean }) {
+  const doc = useDocumentStore((s) => s.doc);
+  const activeViewId = useDocumentStore((s) => s.activeViewId);
+  const readOnly = useDocumentStore((s) => s.readOnly);
+  const { updateElement, removeElement, addElementToView, removeElementFromView, select } = useDocumentStore.getState();
+  const [open, setOpen] = useState(selected);
+  const expanded = open || selected;
+  const color = element.color ?? (element.external ? C4_EXTERNAL_COLOR : C4_COLORS[element.type]);
+  const parentType = PARENT_TYPE[element.type];
+  const parents = parentType ? doc.model.elements.filter((e) => e.type === parentType) : [];
+  const activeView = doc.views.find((v) => v.id === activeViewId);
+  const isScope = activeView?.scopeId === element.id;
+
+  return (
+    <div className={`c4-card ${selected ? 'is-selected' : ''}`} data-element-id={element.id}>
+      <div
+        className="c4-card-header"
+        onClick={() => {
+          setOpen(!expanded);
+          select({ kind: 'element', id: element.id });
+        }}
+      >
+        {expanded ? <IconTreeTriangleDown size="small" /> : <IconTreeTriangleRight size="small" />}
+        <span className="h-3 w-3 rounded-sm flex-none" style={{ backgroundColor: color }} />
+        <span className="font-medium truncate flex-1">{element.name}</span>
+        <span className="text-xs text-color-3 font-mono flex-none">{ELEMENT_TYPE_LABELS[element.type]}</span>
+        {activeView && (
+          <Tooltip content={isScope ? 'Es el alcance de la vista' : inActiveView ? 'Quitar de la vista activa' : 'Añadir a la vista activa'}>
+            <Button
+              size="small"
+              theme="borderless"
+              type="tertiary"
+              disabled={readOnly || isScope}
+              icon={inActiveView || isScope ? <IconEyeOpened /> : <IconEyeClosed className="opacity-50" />}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (inActiveView) removeElementFromView(activeView.id, element.id);
+                else addElementToView(activeView.id, element.id);
+              }}
+            />
+          </Tooltip>
+        )}
+      </div>
+      {expanded && (
+        <div className="c4-card-body">
+          <div className="c4-field">
+            <label>Nombre</label>
+            <Input size="small" value={element.name} disabled={readOnly} validateStatus={element.name.trim() ? 'default' : 'error'} onChange={(v) => updateElement(element.id, { name: v })} />
+          </div>
+          <div className="c4-field">
+            <label>Tipo</label>
+            <Select
+              size="small"
+              className="w-full"
+              value={element.type}
+              disabled={readOnly}
+              optionList={(Object.keys(ELEMENT_TYPE_LABELS) as ElementType[]).map((t) => ({ value: t, label: ELEMENT_TYPE_LABELS[t] }))}
+              onChange={(v) => updateElement(element.id, { type: v as ElementType, parentId: PARENT_TYPE[v as ElementType] ? element.parentId : undefined })}
+            />
+          </div>
+          {parentType && (
+            <div className="c4-field">
+              <label>Pertenece a</label>
+              <Select
+                size="small"
+                className="w-full"
+                placeholder={`Elige ${ELEMENT_TYPE_LABELS[parentType].toLowerCase()}`}
+                value={element.parentId}
+                disabled={readOnly}
+                showClear
+                optionList={parents.map((p) => ({ value: p.id, label: p.name }))}
+                onChange={(v) => updateElement(element.id, { parentId: (v as string | undefined) ?? undefined })}
+              />
+            </div>
+          )}
+          {(element.type === 'container' || element.type === 'component') && (
+            <div className="c4-field">
+              <label>Tecnología</label>
+              <Input size="small" value={element.technology ?? ''} placeholder="p. ej. Node.js, PostgreSQL" disabled={readOnly} onChange={(v) => updateElement(element.id, { technology: v })} />
+            </div>
+          )}
+          {element.type !== 'person' && (
+            <div className="c4-field">
+              <label>Forma</label>
+              <Select size="small" className="w-full" value={element.shape ?? 'default'} disabled={readOnly} optionList={SHAPES} onChange={(v) => updateElement(element.id, { shape: v === 'default' ? undefined : (v as ElementShape) })} />
+            </div>
+          )}
+          <div className="c4-field">
+            <label>Externo</label>
+            <Switch size="small" checked={!!element.external} disabled={readOnly} onChange={(v) => updateElement(element.id, { external: v || undefined })} />
+            <label className="!w-auto ml-2">Color</label>
+            <input
+              type="color"
+              className="h-6 w-8 cursor-pointer rounded border border-color bg-transparent"
+              value={color}
+              disabled={readOnly}
+              onChange={(e) => updateElement(element.id, { color: e.target.value })}
+              title="Color de acento (vacío = color C4 por tipo)"
+            />
+            {element.color && (
+              <Button size="small" theme="borderless" type="tertiary" onClick={() => updateElement(element.id, { color: undefined })}>
+                reset
+              </Button>
+            )}
+          </div>
+          <div className="c4-field items-start">
+            <label className="pt-1">Descripción</label>
+            <TextArea autosize rows={2} value={element.description ?? ''} disabled={readOnly} onChange={(v) => updateElement(element.id, { description: v })} />
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-color-3 font-mono">id: {element.id}</span>
+            <Button size="small" type="danger" theme="light" icon={<IconDelete />} disabled={readOnly} onClick={() => removeElement(element.id)}>
+              Eliminar
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

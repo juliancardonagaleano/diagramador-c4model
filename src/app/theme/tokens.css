@@ -1,0 +1,32 @@
+:root {
+  --c4-primary: #175e7a;
+  --c4-primary-hover: #1b6f90;
+  --c4-relationship: #808080;
+  --c4-grid-dot: rgb(99, 152, 191);
+  --c4-canvas-bg: #ffffff;
+  --c4-node-bg: #f4f4f5;
+  --c4-node-text: #27272a;
+  --c4-node-border: #d4d4d8;
+  --c4-boundary-border: #8b8b8b;
+  --c4-boundary-bg: rgba(120, 120, 120, 0.04);
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+body {
+  --semi-color-primary: var(--c4-primary);
+  --semi-color-primary-hover: var(--c4-primary-hover);
+  --semi-color-primary-active: #134d64;
+}
+
+body[theme-mode='dark'] {
+  --c4-canvas-bg: #16161a;
+  --c4-node-bg: #27272a;
+  --c4-node-text: #e4e4e7;
+  --c4-node-border: #3f3f46;
+  --c4-boundary-border: #71717a;
+  --c4-boundary-bg: rgba(255, 255, 255, 0.03);
+  --semi-color-primary: #2c8ab0;
+  --semi-color-primary-hover: #3aa0c8;
+  --semi-color-primary-active: #237a9c;
+}

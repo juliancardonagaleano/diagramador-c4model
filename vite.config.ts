@@ -15,6 +15,12 @@ export default defineConfig({
   build: {
     outDir: 'dist/app',
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        'embed-host': fileURLToPath(new URL('./examples/embed-host.html', import.meta.url)),
+      },
+    },
   },
   server: {
     port: 5173,

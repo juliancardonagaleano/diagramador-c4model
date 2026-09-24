@@ -13,8 +13,11 @@ describe('deriveView', () => {
     expect(keys).toContain('banca->mainframe');
     // cliente -> web-app/spa/mobile-app se resuelven a cliente -> banca (implícita) y se deduplican.
     const clienteBanca = d.edges.filter((e) => e.sourceId === 'cliente' && e.targetId === 'banca');
-    expect(clienteBanca.length).toBeGreaterThanOrEqual(1);
-    expect(clienteBanca.some((e) => !e.implied)).toBe(true);
+    expect(clienteBanca).toHaveLength(1);
+    expect(clienteBanca[0].implied).toBe(false);
+    // Solo una arista por par, aunque haya varias relaciones implícitas.
+    const pairs = d.edges.map((e) => `${e.sourceId}->${e.targetId}`);
+    expect(new Set(pairs).size).toBe(pairs.length);
   });
 
   it('la vista de contenedores usa el sistema como boundary y no dibuja aristas hacia él', () => {
