@@ -1,0 +1,43 @@
+import { defineConfig } from 'tsup';
+
+export default defineConfig([
+  {
+    entry: { 'core/index': 'src/core/index.ts' },
+    format: ['esm'],
+    dts: true,
+    sourcemap: true,
+    clean: false,
+    splitting: false,
+    tsconfig: 'tsconfig.node.json',
+    outDir: 'dist',
+    target: 'es2022',
+    platform: 'neutral',
+    external: ['elkjs', 'zod', '@anthropic-ai/sdk', 'nanoid'],
+  },
+  {
+    entry: { 'cli/index': 'src/cli/index.ts' },
+    format: ['esm'],
+    dts: false,
+    sourcemap: true,
+    splitting: false,
+    tsconfig: 'tsconfig.node.json',
+    outDir: 'dist',
+    target: 'node20',
+    platform: 'node',
+    banner: { js: '#!/usr/bin/env node' },
+    external: ['elkjs', 'zod', '@anthropic-ai/sdk', 'commander', 'nanoid'],
+  },
+  {
+    entry: { 'embed/c4-embed': 'src/embed/c4-embed.ts' },
+    format: ['esm', 'iife'],
+    globalName: 'C4Embed',
+    dts: true,
+    sourcemap: true,
+    splitting: false,
+    tsconfig: 'tsconfig.app.json',
+    outDir: 'dist',
+    target: 'es2020',
+    platform: 'browser',
+    minify: false,
+  },
+]);
