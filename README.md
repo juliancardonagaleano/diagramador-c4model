@@ -31,8 +31,11 @@ push a `master` (también se puede lanzar a mano desde la pestaña *Actions*):
 - Como Pages sirve bajo `/<repositorio>/`, el workflow fija `BASE_PATH` y `vite.config.ts` lo usa como `base`.
   En hostings que sirven en la raíz (Cloudflare Pages, Netlify, Vercel) basta con el comando `npm run build:app`
   y la carpeta `dist/app`, sin definir `BASE_PATH`.
-- La primera ejecución activa Pages con origen "GitHub Actions"; si el repositorio lo impide, actívalo en
-  *Settings → Pages → Source → GitHub Actions* y relanza el workflow.
+- El origen de Pages debe ser **GitHub Actions** (*Settings → Pages → Build and deployment → Source*). Si Pages
+  está en "Deploy from a branch", GitHub sirve el código fuente del repositorio (el `index.html` de la raíz carga
+  `/src/app/main.tsx`, que el navegador no ejecuta) y la página queda en blanco; además `actions/deploy-pages`
+  rechaza el despliegue. La primera ejecución del workflow intenta activar Pages con ese origen; si ya estaba
+  activado desde una rama, cámbialo a mano y relanza el workflow.
 
 ## Formato JSON
 
