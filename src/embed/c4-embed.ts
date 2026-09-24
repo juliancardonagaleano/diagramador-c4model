@@ -51,7 +51,8 @@ export interface C4Embed {
   merge(document: C4Document | string, autoLayout?: boolean): void;
   /** Exporta; para `drawio`, `notation` elige entre la librería C4 de draw.io ('c4', por defecto) y tarjetas ('card'). */
   export(format: ExportFormat, viewId?: string, notation?: 'c4' | 'card'): Promise<string>;
-  autoLayout(options?: { viewId?: string; direction?: LayoutDirection; force?: boolean }): void;
+  /** Ejecuta el autolayout; `direction: 'auto'` aplica la prioridad por nivel (C1 ↓, C2/C3 →). */
+  autoLayout(options?: { viewId?: string; direction?: LayoutDirection | 'auto'; distribution?: 'auto' | 'centered' | 'elk'; force?: boolean }): void;
   setView(viewId: string): void;
   status(message: string, modified?: boolean): void;
   dialog(title: string, message: string, button?: string): void;

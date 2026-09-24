@@ -60,6 +60,7 @@ Un documento contiene un **modelo** compartido (elementos y relaciones) y N **vi
 | `view.scopeId` | sistema (contexto/contenedores) o contenedor (componentes); se dibuja como **boundary** |
 | `view.layout.direction` | `DOWN`, `RIGHT`, `UP`, `LEFT` |
 | `view.layout.density` | `auto`, `compact`, `spacious` |
+| `view.layout.distribution` | `centered`, `elk` (la elegida por el último autolayout) o `auto` |
 | `view.edges[]` | rutas del autolayout: `{ id, points: [{x,y}…], label?: {x,y} }` (opcional; se recalculan si quedan obsoletas) |
 
 Reglas que se derivan automáticamente (no se almacenan):
@@ -92,6 +93,22 @@ El autolayout no acepta el primer resultado de ELK: **mide la calidad** del diag
 4. **Convenciones C4**: las personas sin relaciones entrantes van en la primera capa y los sistemas externos "sumidero" en la última, para que todas las vistas se lean igual.
 5. **Métrica y candidatos**: cada candidato se puntúa por cruces entre aristas, aristas que atraviesan nodos, etiquetas solapadas, área y proporción. Se prueban varias estrategias (`BRANDES_KOEPF`, `NETWORK_SIMPLEX`, `LINEAR_SEGMENTS`, espaciado ampliado y, si persisten cruces, `LAYER_SWEEP` exhaustivo) y se elige la mejor; se detiene en cuanto una sale limpia. La toolbar muestra el resultado ("✓ 0 cruces · 0 solapes") y el CLI lo imprime por vista. `--fast` hace una sola pasada.
 
+## Direcciones y distribución
+
+El autolayout admite las cuatro direcciones (arriba→abajo, izquierda→derecha, derecha→izquierda, abajo→arriba) y dos distribuciones:
+
+- **Centrada y uniforme**: capas equiespaciadas, nodos de cada capa con la misma separación y cada capa centrada sobre el eje común; los hijos de un boundary quedan contiguos y los elementos exteriores fuera de él. Las aristas se enrutan con un router propio que esquiva nodos y boundaries por corredores libres y coloca las etiquetas donde no pisen nada.
+- **ELK**: la colocación de ELK con sus rutas ortogonales.
+
+Por defecto (`direction: auto`, `distribution: auto`) la prioridad depende del nivel:
+
+| Nivel | 1.º | 2.º | 3.º |
+|---|---|---|---|
+| C1 (contexto) | ↓ centrado | ↓ ELK | → centrado / ELK |
+| C2 y C3 (contenedores, componentes) | → centrado | → ELK | ↓ centrado / ELK |
+
+Se elige el primer candidato limpio (0 cruces, 0 solapes); si ninguno lo es, el de mejor puntuación ("el que más se ajuste"). En la toolbar, el desplegable junto a Autolayout permite forzar dirección y distribución; el texto de calidad muestra la elección (`✓ 0 cruces · 0 solapes · → centrado`). En el CLI: `--direction auto|down|right|left|up` y `--distribution auto|centered|elk`. En el embebido: `autoLayout { direction, distribution }`.
+
 ## Conversión a `.drawio`
 
 Cada vista se convierte en una página de draw.io. Los elementos se envuelven en `<object placeholders="1" c4Name=… c4Type=… c4Description=… c4Technology=…>` con los estilos de la librería C4 (`shape=mxgraph.c4.person2`, `cylinder3` para bases de datos, boundary punteado, relaciones ortogonales). Los hijos de un boundary cuelgan de su celda con geometría relativa, tal como los crea draw.io. El archivo se escribe sin comprimir, así que draw.io / diagrams.net lo abre directamente y se puede versionar en git.
@@ -113,7 +130,7 @@ Los archivos [`examples/banca-c4.drawio`](examples/banca-c4.drawio) y [`examples
 
 ```
 c4diagram generate "<instrucción>" [--from base.json] [--out d.drawio] [--json d.json] [--model claude-opus-5] [--effort high] [--direction DOWN]
-c4diagram layout   [archivo.json | --stdin] [--out out.json] [--direction RIGHT] [--density auto|compact|spacious] [--fast] [--force] [--view id]
+c4diagram layout   [archivo.json | --stdin] [--out out.json] [--direction auto|down|right|left|up] [--distribution auto|centered|elk] [--density auto|compact|spacious] [--fast] [--force] [--view id]
 c4diagram convert  [archivo.json | --stdin] [--out out.drawio] [--notation c4|card] [--no-waypoints] [--locale es|en] [--view id...]
 c4diagram validate [archivo.json | --stdin] [--strict]
 c4diagram schema   [--generation]
@@ -185,7 +202,7 @@ Abre la app con `?embed=1&proto=json[&origin=https://mi-host][&theme=dark][&ui=m
 | `configure` | `theme?`, `ui?: 'full' \| 'min'`, `hideSidePanel?` |
 | `merge` | `document`, `autoLayout?` — fusiona elementos/relaciones/vistas y relanza el autolayout |
 | `export` | `format: 'json' \| 'drawio'` (`svg`/`png` responden `error` por ahora), `notation?: 'c4' \| 'card'`, `viewId?`, `requestId?` |
-| `autoLayout` | `viewId?`, `direction?`, `force?` |
+| `autoLayout` | `viewId?`, `direction?: 'auto' \| 'DOWN' \| 'RIGHT' \| 'LEFT' \| 'UP'`, `distribution?: 'auto' \| 'centered' \| 'elk'`, `force?` |
 | `setView` | `viewId` |
 | `status` | `message`, `modified?` — texto en la cabecera |
 | `dialog` | `title`, `message`, `button?` |

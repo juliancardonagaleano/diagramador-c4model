@@ -14,10 +14,12 @@ import {
   type OnSelectionChangeParams,
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { deriveView } from '../../../core/model/viewDerivation';
+import { deriveView, type DerivedView } from '../../../core/model/viewDerivation';
 import { findChildView } from '../../../core/model/factories';
-import { computeEdgeAnchors, type Rect } from '../../../core/layout/edgeAnchors';
+import type { Point, Rect } from '../../../core/layout/edgeAnchors';
+import { estimateLabelSize } from '../../../core/layout/labelMetrics';
 import { routeMatchesNodes } from '../../../core/layout/quality';
+import { routeEdges } from '../../../core/layout/router';
 import { PARENT_TYPE } from '../../../core/model/types';
 import { useDocumentStore } from '../../store/documentStore';
 import { BoundaryNode, type BoundaryNodeType } from './BoundaryNode';
@@ -112,21 +114,50 @@ export function Canvas() {
       .map((n) => ({ id: n.id, x: n.position.x, y: n.position.y, width: n.width ?? 240, height: n.height ?? 130 }));
     const rectById = new Map(rects.map((r) => [r.id, r]));
     const direction = derived.view.layout?.direction ?? 'DOWN';
-    const anchors = computeEdgeAnchors(rects, derived.edges, direction);
     const stored = new Map((derived.view.edges ?? []).map((r) => [r.id, r]));
-    return derived.edges.map((e) => {
-      const isSelected = selection.kind === 'relationship' && selection.id === e.relationship.id;
+    const valid = new Map<string, { points: Point[]; label?: Point }>();
+    const pending: DerivedView['edges'] = [];
+    for (const e of derived.edges) {
       const route = stored.get(e.id);
       const s = rectById.get(e.sourceId);
       const t = rectById.get(e.targetId);
-      const validRoute = route && s && t && routeMatchesNodes(route, s, t) ? { points: route.points, label: route.label } : undefined;
-      const a = anchors.get(e.id);
+      if (route && s && t && routeMatchesNodes(route, s, t)) valid.set(e.id, { points: route.points, label: route.label });
+      else pending.push(e);
+    }
+    // Aristas sin ruta válida (p. ej. tras mover un nodo): enrutado propio con esquiva de obstáculos.
+    if (pending.length > 0) {
+      const boundaryRects: Rect[] = nodes
+        .filter((n) => n.type === 'boundary')
+        .map((n) => ({ id: n.id, x: n.position.x, y: n.position.y, width: n.width ?? 0, height: n.height ?? 0 }));
+      const boundaryParent = new Map(derived.boundaries.map((b) => [b.id, b.boundaryId]));
+      const containment = new Map<string, Set<string>>();
+      for (const n of derived.nodes) {
+        const set = new Set<string>();
+        let current = n.boundaryId;
+        while (current && !set.has(current)) {
+          set.add(current);
+          current = boundaryParent.get(current);
+        }
+        containment.set(n.id, set);
+      }
+      const routed = routeEdges({
+        rects,
+        boundaries: boundaryRects,
+        containment,
+        edges: pending.map((e) => ({ id: e.id, sourceId: e.sourceId, targetId: e.targetId, label: estimateLabelSize(e.relationship.description, e.relationship.technology) })),
+        direction,
+        spacing: 70,
+      });
+      for (const r of routed) valid.set(r.id, { points: r.points, label: r.label });
+    }
+    return derived.edges.map((e) => {
+      const isSelected = selection.kind === 'relationship' && selection.id === e.relationship.id;
       return {
         id: e.id,
         type: 'relationship',
         source: e.sourceId,
         target: e.targetId,
-        data: { relationship: e.relationship, implied: e.implied, route: validRoute, sourceAnchor: a?.source, targetAnchor: a?.target },
+        data: { relationship: e.relationship, implied: e.implied, route: valid.get(e.id) },
         selected: isSelected,
         markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18, color: isSelected ? '#175e7a' : '#808080' },
       };

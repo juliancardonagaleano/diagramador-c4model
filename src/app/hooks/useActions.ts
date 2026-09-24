@@ -3,7 +3,7 @@ import { useCallback } from 'react';
 import { toDrawio, type DrawioNotation } from '../../core/export/drawio/toDrawio';
 import { autoLayoutDocument } from '../../core/layout/elkLayout';
 import { validateDocument, formatIssues } from '../../core/model/schema';
-import type { LayoutDirection } from '../../core/model/types';
+import type { LayoutDirectionOption, LayoutDistribution } from '../../core/model/types';
 import { useDocumentStore } from '../store/documentStore';
 import { downloadText, extractJson, pickTextFile, safeFilename } from '../utils/files';
 
@@ -67,11 +67,17 @@ export function useActions() {
   }, [importJsonText]);
 
   const autoLayout = useCallback(
-    async (direction?: LayoutDirection) => {
+    async (direction?: LayoutDirectionOption, distribution?: LayoutDistribution) => {
       const s = store.getState();
       if (direction) s.setUi({ direction });
+      if (distribution) s.setUi({ distribution });
       try {
-        await s.runAutoLayout(undefined, { direction: direction ?? s.ui.direction, density: s.ui.density, force: true });
+        await s.runAutoLayout(undefined, {
+          direction: direction ?? s.ui.direction,
+          distribution: distribution ?? s.ui.distribution,
+          density: s.ui.density,
+          force: true,
+        });
       } catch (error) {
         Toast.error(`Autolayout falló: ${(error as Error).message}`);
       }

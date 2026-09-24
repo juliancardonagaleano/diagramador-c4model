@@ -14,6 +14,7 @@ import {
 import { sampleDocument } from '../../core/model/sample';
 import { applyLayoutToView, layoutView, type LayoutOptions } from '../../core/layout/elkLayout';
 import type { LayoutQuality } from '../../core/layout/quality';
+import type { LayoutDirection } from '../../core/model/types';
 
 /** true si el id de ruta (relación o `rel@origen->destino`) toca alguno de los elementos movidos. */
 function touchesAny(routeId: string, moved: Map<string, unknown>): boolean {
@@ -34,7 +35,8 @@ import {
   type C4View,
   type ElementType,
   type LayoutDensity,
-  type LayoutDirection,
+  type LayoutDirectionOption,
+  type LayoutDistribution,
   type ViewType,
 } from '../../core/model/types';
 
@@ -56,11 +58,14 @@ export interface UiState {
   sidebarWidth: number;
   sidebarMode: 'structure' | 'json';
   panelTab: PanelTab;
-  direction: LayoutDirection;
+  /** Dirección del autolayout: concreta o 'auto' (C1 ↓, C2/C3 →). */
+  direction: LayoutDirectionOption;
   /** Notación del lienzo: 'c4' (cajas de color, convención C4) o 'card' (tarjetas estilo drawdb). */
   nodeStyle: 'c4' | 'card';
   /** Densidad del autolayout. */
   density: LayoutDensity;
+  /** Distribución del autolayout: centrada uniforme, ELK o automática. */
+  distribution: LayoutDistribution;
 }
 
 export interface DocumentState {
@@ -74,8 +79,8 @@ export interface DocumentState {
   readOnly: boolean;
   ui: UiState;
   layoutBusy: boolean;
-  /** Calidad del último autolayout ejecutado (cruces, solapes, estrategia). */
-  lastLayoutQuality: (LayoutQuality & { viewId: string }) | null;
+  /** Calidad del último autolayout ejecutado (cruces, solapes, estrategia, dirección y distribución elegidas). */
+  lastLayoutQuality: (LayoutQuality & { viewId: string; direction?: LayoutDirection; distribution?: 'centered' | 'elk' }) | null;
 }
 
 export interface DocumentActions {
@@ -131,9 +136,10 @@ const defaultUi: UiState = {
   sidebarWidth: 420,
   sidebarMode: 'structure',
   panelTab: 'elements',
-  direction: 'DOWN',
+  direction: 'auto',
   nodeStyle: 'c4',
   density: 'auto',
+  distribution: 'auto',
 };
 
 function firstViewId(doc: C4Document): string | null {
@@ -318,7 +324,7 @@ export const useDocumentStore = create<DocumentStore>()(
                 scopeId: validScope,
                 title: title ?? (scope ? `${labelForViewType(type)} - ${scope.name}` : labelForViewType(type)),
                 elements: suggested.map((id) => ({ id })),
-                layout: { direction: get().ui.direction },
+                layout: get().ui.direction === 'auto' ? undefined : { direction: get().ui.direction as LayoutDirection },
               },
               doc.views.map((v) => v.id),
             );
@@ -378,12 +384,15 @@ export const useDocumentStore = create<DocumentStore>()(
             try {
               const direction = options.direction ?? get().ui.direction;
               const density = options.density ?? get().ui.density;
-              const result = await layoutView(get().doc, id, { force: true, ...options, direction, density });
+              const distribution = options.distribution ?? get().ui.distribution;
+              const result = await layoutView(get().doc, id, { force: true, ...options, direction, density, distribution });
               updateDoc((doc) => ({
                 ...doc,
-                views: doc.views.map((v) => (v.id === id ? applyLayoutToView({ ...v, layout: { ...v.layout, direction, density } }, result) : v)),
+                views: doc.views.map((v) => (v.id === id ? applyLayoutToView({ ...v, layout: { ...v.layout, density } }, result) : v)),
               }));
-              set({ lastLayoutQuality: result.quality ? { viewId: id, ...result.quality } : null });
+              set({
+                lastLayoutQuality: result.quality ? { viewId: id, ...result.quality, direction: result.direction, distribution: result.distribution } : null,
+              });
             } finally {
               set({ layoutBusy: false });
             }

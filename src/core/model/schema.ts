@@ -48,11 +48,14 @@ export const viewElementSchema = z.object({
 
 export const layoutDensitySchema = z.enum(['auto', 'compact', 'spacious']);
 
+export const layoutDistributionSchema = z.enum(['auto', 'centered', 'elk']);
+
 export const layoutOptionsSchema = z.object({
   direction: layoutDirectionSchema.optional(),
   spacing: z.number().positive().optional(),
   layerSpacing: z.number().positive().optional(),
   density: layoutDensitySchema.optional(),
+  distribution: layoutDistributionSchema.optional(),
 });
 
 export const pointSchema = z.object({ x: z.number(), y: z.number() });

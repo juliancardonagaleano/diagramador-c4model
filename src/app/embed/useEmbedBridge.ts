@@ -141,8 +141,9 @@ export function useEmbedBridge(): { save: (exit: boolean) => Promise<void>; exit
           const id = action.viewId ?? s.activeViewId;
           if (!id) return;
           if (action.direction) s.setUi({ direction: action.direction });
-          await s.runAutoLayout(id, { direction: action.direction, force: action.force ?? true });
-          post({ event: 'autoLayout', viewId: id, direction: action.direction });
+          if (action.distribution) s.setUi({ distribution: action.distribution });
+          await s.runAutoLayout(id, { direction: action.direction, distribution: action.distribution, force: action.force ?? true });
+          post({ event: 'autoLayout', viewId: id, direction: store.getState().lastLayoutQuality?.direction });
           break;
         }
         case 'setView':

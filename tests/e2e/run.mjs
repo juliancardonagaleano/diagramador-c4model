@@ -65,6 +65,7 @@ try {
   check(new Set(positions).size === positions.length, 'autolayout deja posiciones distintas para todos los nodos');
   const qualityText = await page.getByTestId('layout-quality').textContent();
   check(/0 cruces/.test(qualityText ?? '') && /0 solapes/.test(qualityText ?? ''), `el autolayout informa 0 cruces y 0 solapes (${qualityText})`);
+  check(/↓/.test(qualityText ?? '') && /centrado/.test(qualityText ?? ''), `C1 se distribuye arriba→abajo y centrado por defecto (${qualityText})`);
   const overlaps = await page.evaluate(() => {
     const labels = [...document.querySelectorAll('.c4-edge-label')].map((l) => l.getBoundingClientRect());
     const shapes = [...document.querySelectorAll('.react-flow__node')].map((n) => n.getBoundingClientRect());
@@ -90,6 +91,29 @@ try {
   await page.locator('.react-flow__node', { hasText: 'Sistema de banca en línea' }).dblclick();
   await page.waitForTimeout(700);
   check((await page.locator('.c4-boundary').count()) === 1, 'doble clic en el sistema abre la vista de contenedores (boundary visible)');
+  // C2 por defecto: izquierda→derecha (el boundary es más ancho que alto).
+  await page.getByRole('button', { name: 'Autolayout', exact: true }).click();
+  await page.waitForTimeout(1200);
+  const boundaryBox = await page.locator('.c4-boundary').boundingBox();
+  check(!!boundaryBox && boundaryBox.width > boundaryBox.height, `C2 se distribuye izquierda→derecha por defecto (${Math.round(boundaryBox?.width ?? 0)}×${Math.round(boundaryBox?.height ?? 0)})`);
+  const q2 = await page.getByTestId('layout-quality').textContent();
+  check(/→/.test(q2 ?? '') && /0 cruces/.test(q2 ?? ''), `C2 informa dirección → y 0 cruces (${q2})`);
+  // Forzar derecha→izquierda desde el desplegable.
+  await page.getByRole('button', { name: 'Dirección y distribución del autolayout' }).click();
+  await page.getByText('Derecha → izquierda').click();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(1200);
+  const q3 = await page.getByTestId('layout-quality').textContent();
+  check(/←/.test(q3 ?? ''), `se puede forzar derecha→izquierda (${q3})`);
+  const clienteBox = await page.locator('.react-flow__node', { hasText: 'Cliente personal' }).boundingBox();
+  const dbBox = await page.locator('.react-flow__node', { hasText: 'Base de datos' }).boundingBox();
+  check(!!clienteBox && !!dbBox && clienteBox.x > dbBox.x, 'en derecha→izquierda la persona queda a la derecha del flujo');
+  await page.getByRole('button', { name: 'Dirección y distribución del autolayout' }).click();
+  await page.getByText('Automática (C1 ↓, C2/C3 →)').click();
+  await page.keyboard.press('Escape');
+  await page.mouse.click(5, 5);
+  await page.waitForTimeout(1200);
+  if (shotsDir) await page.screenshot({ path: `${shotsDir}/03-contenedores.png` });
   check((await page.locator('.c4-breadcrumb').getAttribute('data-level')) === 'C2', 'el breadcrumb muestra C2 tras bajar de nivel');
   check((await page.locator('.c4-shape.shape-database').count()) === 1, 'la base de datos se dibuja como cilindro');
   check((await page.locator('.c4-shape.shape-browser').count()) === 1, 'la app web se dibuja como navegador');

@@ -54,7 +54,8 @@ export const exportActionSchema = z.object({
 export const autoLayoutActionSchema = z.object({
   action: z.literal('autoLayout'),
   viewId: z.string().optional(),
-  direction: z.enum(['DOWN', 'RIGHT', 'UP', 'LEFT']).optional(),
+  direction: z.enum(['auto', 'DOWN', 'RIGHT', 'UP', 'LEFT']).optional(),
+  distribution: z.enum(['auto', 'centered', 'elk']).optional(),
   force: z.boolean().optional(),
 });
 

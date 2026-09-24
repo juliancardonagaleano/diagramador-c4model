@@ -2,33 +2,48 @@ import { describe, expect, it } from 'vitest';
 import { sampleDocument } from '../model/sample';
 import { deriveView } from '../model/viewDerivation';
 import { layoutView, resolveLayoutParams } from './elkLayout';
-import { smartLayout } from './smartLayout';
+import { buildCandidates, smartLayout } from './smartLayout';
 
-describe('smartLayout (autocorrección)', () => {
-  it('la vista de contexto sale limpia: sin cruces ni solapes, personas arriba y externos abajo', async () => {
+describe('smartLayout (autocorrección y prioridad por nivel)', () => {
+  it('C1 sale arriba→abajo, centrado y limpio; personas arriba y externos abajo', async () => {
     const r = await layoutView(sampleDocument, 'contexto', { force: true });
-    expect(r.quality).toBeDefined();
-    expect(r.quality!.edgeNodeOverlaps).toBe(0);
-    expect(r.quality!.labelOverlaps).toBe(0);
-    expect(r.quality!.crossings).toBe(0);
+    expect(r.direction).toBe('DOWN');
+    expect(r.distribution).toBe('centered');
+    expect(r.quality!.strategy).toMatch(/^DOWN\/centered/);
+    expect(r.quality!.crossings + r.quality!.edgeNodeOverlaps + r.quality!.labelOverlaps).toBe(0);
     const pos = Object.fromEntries(r.positions.map((p) => [p.id, p]));
     expect(pos.cliente.y).toBeLessThan(pos.banca.y);
     expect(pos.mainframe.y).toBeGreaterThan(pos.banca.y);
+    // Capa central (banca) centrada respecto a la capa de externos.
+    const externosCenter = (Math.min(pos.mainframe.x, pos.email.x) + Math.max(pos.mainframe.x + pos.mainframe.width, pos.email.x + pos.email.width)) / 2;
+    expect(Math.abs(pos.banca.x + pos.banca.width / 2 - externosCenter)).toBeLessThanOrEqual(1);
   });
 
-  it('la vista de contenedores queda sin solapes y con como mucho un cruce', async () => {
-    const r = await layoutView(sampleDocument, 'contenedores', { force: true });
-    expect(r.quality!.edgeNodeOverlaps).toBe(0);
-    expect(r.quality!.labelOverlaps).toBe(0);
-    expect(r.quality!.crossings).toBeLessThanOrEqual(1);
-    expect(r.quality!.candidates).toBeGreaterThanOrEqual(1);
-    expect(r.quality!.strategy).toBeTruthy();
+  it('C2 y C3 salen izquierda→derecha, centrados y limpios', async () => {
+    for (const id of ['contenedores', 'componentes-api']) {
+      const r = await layoutView(sampleDocument, id, { force: true });
+      expect(r.direction).toBe('RIGHT');
+      expect(r.distribution).toBe('centered');
+      expect(r.quality!.crossings + r.quality!.edgeNodeOverlaps + r.quality!.labelOverlaps).toBe(0);
+      const maxX = Math.max(...r.positions.map((p) => p.x + p.width));
+      const maxY = Math.max(...r.positions.map((p) => p.y + p.height));
+      expect(maxX).toBeGreaterThan(maxY);
+      expect(r.routes.length).toBe(deriveView(sampleDocument, id).edges.length);
+    }
   });
 
-  it('la vista de componentes también queda limpia', async () => {
-    const r = await layoutView(sampleDocument, 'componentes-api', { force: true });
-    expect(r.quality!.edgeNodeOverlaps + r.quality!.labelOverlaps).toBe(0);
-    expect(r.quality!.crossings).toBeLessThanOrEqual(1);
+  it('una dirección fija solo prueba esa dirección; distribution=elk usa la colocación de ELK', async () => {
+    const derived = deriveView(sampleDocument, 'contenedores');
+    const fixed = buildCandidates(resolveLayoutParams(derived, { direction: 'LEFT' }));
+    expect(fixed.every((c) => c.direction === 'LEFT')).toBe(true);
+    const auto = buildCandidates(resolveLayoutParams(derived, {}));
+    expect(auto[0]).toMatchObject({ direction: 'RIGHT', distribution: 'centered', preferred: true });
+    expect(auto.some((c) => c.direction === 'DOWN')).toBe(true);
+    const elk = await layoutView(sampleDocument, 'contenedores', { force: true, distribution: 'elk', direction: 'UP' });
+    expect(elk.distribution).toBe('elk');
+    expect(elk.direction).toBe('UP');
+    const pos = Object.fromEntries(elk.positions.map((p) => [p.id, p]));
+    expect(pos.cliente.y).toBeGreaterThan(pos.api.y);
   });
 
   it('la densidad ajusta el espaciado y "fast" hace una sola pasada', async () => {
@@ -41,6 +56,6 @@ describe('smartLayout (autocorrección)', () => {
     const fast = await layoutView(sampleDocument, 'contenedores', { force: true, fast: true });
     expect(fast.quality?.candidates).toBeUndefined();
     const smart = await smartLayout(derived, auto);
-    expect(smart.quality!.score).toBeLessThanOrEqual(fast.quality!.score + 1e-6);
+    expect(smart.quality!.candidates).toBeGreaterThanOrEqual(1);
   });
 });

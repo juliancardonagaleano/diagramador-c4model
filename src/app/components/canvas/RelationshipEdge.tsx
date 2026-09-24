@@ -1,33 +1,20 @@
 import { BaseEdge, EdgeLabelRenderer, type Edge, type EdgeProps } from '@xyflow/react';
 import { memo } from 'react';
-import { labelPosition, pathFromPoints, type Anchor, type Point } from '../../../core/layout/edgeAnchors';
-import { routeEdge } from '../../../core/layout/edgeAnchors';
+import { labelPosition, pathFromPoints, type Point } from '../../../core/layout/edgeAnchors';
 import type { C4Relationship } from '../../../core/model/types';
 
 export type RelationshipEdgeData = {
   relationship: C4Relationship;
   implied: boolean;
-  /** Ruta calculada por el autolayout (ELK), si sigue siendo válida para las posiciones actuales. */
+  /** Ruta: la del autolayout si sigue siendo válida, o la calculada por el router propio. */
   route?: { points: Point[]; label?: Point };
-  /** Anclajes calculados (puertos virtuales) cuando no hay ruta válida. */
-  sourceAnchor?: Anchor;
-  targetAnchor?: Anchor;
 };
 export type RelationshipEdgeType = Edge<RelationshipEdgeData, 'relationship'>;
 
 function RelationshipEdgeComponent({ id, data, selected, markerEnd }: EdgeProps<RelationshipEdgeType>) {
-  if (!data) return null;
-  let points: Point[];
-  let label: Point;
-  if (data.route) {
-    points = data.route.points;
-    label = data.route.label ?? labelPosition(points);
-  } else if (data.sourceAnchor && data.targetAnchor) {
-    points = routeEdge(data.sourceAnchor, data.targetAnchor);
-    label = labelPosition(points);
-  } else {
-    return null;
-  }
+  if (!data?.route) return null;
+  const points = data.route.points;
+  const label = data.route.label ?? labelPosition(points);
   const path = pathFromPoints(points, 8);
   const rel = data.relationship;
   return (

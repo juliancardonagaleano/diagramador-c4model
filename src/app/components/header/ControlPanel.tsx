@@ -5,6 +5,7 @@ import { useActions } from '../../hooks/useActions';
 import { isEmbedMode, useDocumentStore, useTemporalStore } from '../../store/documentStore';
 import { relativeTime } from '../../utils/files';
 import { AboutModal, ShortcutsModal } from './HelpModals';
+import { DIRECTIONS, DISTRIBUTIONS } from './FloatingToolbar';
 
 const Logo = () => (
   <div className="flex items-center gap-2 select-none">
@@ -124,11 +125,18 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
   ];
 
   const settingsMenu: MenuProps['items'] = [
-    ...(['DOWN', 'RIGHT', 'UP', 'LEFT'] as const).map((d) => ({
-      key: d,
-      label: `Dirección del autolayout: ${d === 'DOWN' ? 'arriba → abajo' : d === 'RIGHT' ? 'izquierda → derecha' : d === 'UP' ? 'abajo → arriba' : 'derecha → izquierda'}`,
-      checked: ui.direction === d,
-      onClick: () => setUi({ direction: d }),
+    ...DIRECTIONS.map((d) => ({
+      key: `dir-${d.value}`,
+      label: `Dirección del autolayout: ${d.label}`,
+      checked: ui.direction === d.value,
+      onClick: () => setUi({ direction: d.value }),
+    })),
+    { key: 'd0', label: '', divider: true },
+    ...DISTRIBUTIONS.map((d) => ({
+      key: `dist-${d.value}`,
+      label: d.label,
+      checked: ui.distribution === d.value,
+      onClick: () => setUi({ distribution: d.value }),
     })),
     { key: 'd1', label: '', divider: true },
     ...(['auto', 'compact', 'spacious'] as const).map((d) => ({

@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { autoLayoutDocument } from '../layout/elkLayout';
 import { formatIssues } from '../model/schema';
-import type { C4Document, LayoutDensity, LayoutDirection } from '../model/types';
+import type { C4Document, LayoutDensity, LayoutDirectionOption, LayoutDistribution } from '../model/types';
 import { generatedDocumentSchema, generatedToDocument, type GeneratedDocument } from './generationSchema';
 import { retryPrompt, systemPrompt, userPrompt } from './prompt';
 
@@ -22,9 +22,11 @@ export interface GenerateOptions {
   /** Reintentos si el modelo devuelve un documento inválido. */
   maxRetries?: number;
   /** Dirección del autolayout. */
-  direction?: LayoutDirection;
+  direction?: LayoutDirectionOption;
   /** Densidad del autolayout. */
   density?: LayoutDensity;
+  /** Distribución del autolayout. */
+  distribution?: LayoutDistribution;
   /** Desactivar el autolayout posterior (devuelve el modelo sin coordenadas). */
   skipLayout?: boolean;
   onProgress?: (message: string) => void;
@@ -107,7 +109,7 @@ export async function generateDocument(options: GenerateOptions): Promise<Genera
       progress('Modelo válido. Aplicando autolayout…');
       const document = options.skipLayout
         ? result.document
-        : await autoLayoutDocument(result.document, { direction: options.direction, density: options.density, force: true });
+        : await autoLayoutDocument(result.document, { direction: options.direction, density: options.density, distribution: options.distribution, force: true });
       return { document, model: servedModel, attempts, usage: { inputTokens, outputTokens } };
     }
     lastIssues = formatIssues(result.issues);

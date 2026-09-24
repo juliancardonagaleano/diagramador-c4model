@@ -35,7 +35,10 @@ export {
   type LayoutVariant,
   type PositionedElement,
 } from './layout/elkLayout';
-export { smartLayout, BASE_VARIANTS, RESCUE_VARIANTS } from './layout/smartLayout';
+export { smartLayout, buildCandidates, runCandidate, BASE_VARIANTS, RESCUE_VARIANTS, type LayoutCandidate } from './layout/smartLayout';
+export { distributeCentered, type DistributeParams, type DistributedLayout } from './layout/distribute';
+export { routeEdges, type RouterInput } from './layout/router';
+export { preferredDirectionFor, boundariesFromPositions, type ResolvedLayoutParams } from './layout/elkLayout';
 export { measureLayout, formatQuality, scoreQuality, type LayoutQuality } from './layout/quality';
 export { computeEdgeAnchors, routeEdge, labelPosition, pathFromPoints, chooseSide, type Rect, type Anchor, type EdgeAnchors, type Side, type Point } from './layout/edgeAnchors';
 export { estimateLabelSize, type LabelSize } from './layout/labelMetrics';

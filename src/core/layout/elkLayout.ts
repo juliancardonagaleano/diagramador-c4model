@@ -1,15 +1,29 @@
 import ELK, { type ElkExtendedEdge, type ElkNode } from 'elkjs/lib/elk.bundled.js';
 import { deriveView, type DerivedBoundary, type DerivedNode, type DerivedView } from '../model/viewDerivation';
-import { BOUNDARY_PADDING, type C4Document, type C4View, type C4ViewEdge, type C4ViewElement, type LayoutDensity, type LayoutDirection } from '../model/types';
+import {
+  BOUNDARY_PADDING,
+  type C4Document,
+  type C4View,
+  type C4ViewEdge,
+  type C4ViewElement,
+  type LayoutDensity,
+  type LayoutDirection,
+  type LayoutDirectionOption,
+  type LayoutDistribution,
+} from '../model/types';
+import { viewLevel } from '../model/factories';
 import { estimateLabelSize } from './labelMetrics';
 import { measureLayout, type EdgeRoute, type LayoutQuality } from './quality';
 
 export interface LayoutOptions {
-  direction?: LayoutDirection;
+  /** Dirección concreta o 'auto' (C1 arriba→abajo, C2/C3 izquierda→derecha, con fallback al mejor ajuste). */
+  direction?: LayoutDirectionOption;
   spacing?: number;
   layerSpacing?: number;
   /** Densidad: multiplica el espaciado (auto = según relaciones/nodo). */
   density?: LayoutDensity;
+  /** Distribución: centrada y uniforme, colocación de ELK, o auto (centrada si sale limpia). */
+  distribution?: LayoutDistribution;
   /** Recalcular todo aunque ya haya coordenadas. */
   force?: boolean;
   /** Una sola pasada de ELK (sin probar candidatos ni medir calidad). */
@@ -33,6 +47,9 @@ export interface LayoutResult {
   routes: C4ViewEdge[];
   /** Calidad medida del resultado (cruces, solapes…). */
   quality?: LayoutQuality;
+  /** Dirección y distribución efectivamente usadas. */
+  direction?: LayoutDirection;
+  distribution?: 'centered' | 'elk';
 }
 
 export function routesToMap(routes: C4ViewEdge[] | undefined): Map<string, EdgeRoute> {
@@ -64,16 +81,27 @@ function elk(): InstanceType<typeof ELK> {
 }
 
 export interface ResolvedLayoutParams {
+  /** Dirección preferida (resuelta desde 'auto' según el nivel de la vista). */
   direction: LayoutDirection;
+  /** 'auto' permite probar la otra dirección como fallback; 'fixed' no. */
+  directionMode: 'auto' | 'fixed';
+  distribution: LayoutDistribution;
   spacing: number;
   layerSpacing: number;
   density: LayoutDensity;
 }
 
+/** Dirección preferida por nivel: C1 arriba→abajo; C2 y C3 izquierda→derecha. */
+export function preferredDirectionFor(view: C4View): LayoutDirection {
+  return viewLevel(view) === 'C1' ? 'DOWN' : 'RIGHT';
+}
+
 /** Resuelve dirección y espaciado: opciones explícitas > vista > valores por defecto, con ajuste por densidad. */
 export function resolveLayoutParams(derived: DerivedView, options: LayoutOptions = {}): ResolvedLayoutParams {
   const { view, nodes, edges } = derived;
-  const direction = options.direction ?? view.layout?.direction ?? DEFAULTS.direction;
+  const requested: LayoutDirectionOption = options.direction ?? 'auto';
+  const direction = requested === 'auto' ? preferredDirectionFor(view) : requested;
+  const distribution = options.distribution ?? view.layout?.distribution ?? 'auto';
   const density = options.density ?? view.layout?.density ?? 'auto';
   const explicitSpacing = options.spacing ?? view.layout?.spacing;
   const explicitLayer = options.layerSpacing ?? view.layout?.layerSpacing;
@@ -83,6 +111,8 @@ export function resolveLayoutParams(derived: DerivedView, options: LayoutOptions
   const factor = density === 'auto' ? autoFactor : DENSITY_FACTOR[density] * Math.max(1, autoFactor * 0.85);
   return {
     direction,
+    directionMode: requested === 'auto' ? 'auto' : 'fixed',
+    distribution: distribution === 'elk' || distribution === 'centered' ? distribution : 'auto',
     spacing: Math.round(explicitSpacing ?? DEFAULTS.spacing * factor),
     layerSpacing: Math.round(explicitLayer ?? DEFAULTS.layerSpacing * factor),
     density,
@@ -111,14 +141,16 @@ export async function layoutDerivedView(derived: DerivedView, options: LayoutOpt
     const positions = nodes.map((n) => ({ id: n.id, x: n.x!, y: n.y!, width: n.width, height: n.height }));
     const bounds = boundaries.filter((b) => b.x !== undefined).map((b) => ({ id: b.id, x: b.x!, y: b.y!, width: b.width!, height: b.height! }));
     const routes = view.edges ?? [];
-    return { viewId: view.id, positions, boundaries: bounds, routes, quality: measureDerived(derived, positions, bounds, options.direction, routes) };
+    const direction = view.layout?.direction ?? DEFAULTS.direction;
+    return { viewId: view.id, positions, boundaries: bounds, routes, direction, quality: measureDerived(derived, positions, bounds, direction, routes) };
   }
 
   const params = resolveLayoutParams(derived, options);
   const interactive = anyPositioned && !force;
   if (interactive || options.fast) {
-    const result = await runElkLayout(derived, params, { name: interactive ? 'interactive' : 'fast' }, interactive);
-    result.quality = measureDerived(derived, result.positions, result.boundaries, params.direction, result.routes);
+    const direction = interactive ? (view.layout?.direction ?? params.direction) : params.direction;
+    const result = await runElkLayout(derived, { ...params, direction }, { name: interactive ? 'interactive' : 'fast' }, interactive);
+    result.quality = measureDerived(derived, result.positions, result.boundaries, direction, result.routes);
     return result;
   }
   const { smartLayout } = await import('./smartLayout');
@@ -281,10 +313,33 @@ export async function runElkLayout(derived: DerivedView, params: ResolvedLayoutP
     routes.push(label ? { id: e.id, points, label } : { id: e.id, points });
   }
 
-  return { viewId: view.id, positions, boundaries: boundaryPositions, routes };
+  return { viewId: view.id, positions, boundaries: boundaryPositions, routes, direction: params.direction, distribution: 'elk' };
 }
 
-/** Devuelve una copia de la vista con las posiciones y rutas aplicadas. */
+/** Geometría de los boundaries (bbox de sus hijos + padding) para unas posiciones dadas. */
+export function boundariesFromPositions(derived: DerivedView, positions: PositionedElement[]): PositionedElement[] {
+  const byId = new Map(positions.map((p) => [p.id, p]));
+  const result = new Map<string, PositionedElement>();
+  const depth = (b: DerivedBoundary): number => (b.boundaryId ? 1 + depth(derived.boundaries.find((x) => x.id === b.boundaryId)!) : 0);
+  for (const b of [...derived.boundaries].sort((a, c) => depth(c) - depth(a))) {
+    const rects = b.children.map((cid) => byId.get(cid) ?? result.get(cid)).filter((r): r is PositionedElement => !!r);
+    if (rects.length === 0) continue;
+    const minX = Math.min(...rects.map((r) => r.x));
+    const minY = Math.min(...rects.map((r) => r.y));
+    const maxX = Math.max(...rects.map((r) => r.x + r.width));
+    const maxY = Math.max(...rects.map((r) => r.y + r.height));
+    result.set(b.id, {
+      id: b.id,
+      x: minX - BOUNDARY_PADDING.left,
+      y: minY - BOUNDARY_PADDING.top,
+      width: maxX - minX + BOUNDARY_PADDING.left + BOUNDARY_PADDING.right,
+      height: maxY - minY + BOUNDARY_PADDING.top + BOUNDARY_PADDING.bottom,
+    });
+  }
+  return [...result.values()];
+}
+
+/** Devuelve una copia de la vista con las posiciones, rutas y opciones de layout aplicadas. */
 export function applyLayoutToView(view: C4View, result: LayoutResult): C4View {
   const byId = new Map(result.positions.map((p) => [p.id, p]));
   const elements: C4ViewElement[] = view.elements.map((ve) => {
@@ -294,6 +349,9 @@ export function applyLayoutToView(view: C4View, result: LayoutResult): C4View {
   const next: C4View = { ...view, elements };
   if (result.routes.length > 0) next.edges = result.routes;
   else delete next.edges;
+  if (result.direction || result.distribution) {
+    next.layout = { ...view.layout, ...(result.direction ? { direction: result.direction } : {}), ...(result.distribution ? { distribution: result.distribution } : {}) };
+  }
   return next;
 }
 
@@ -319,12 +377,12 @@ export async function autoLayoutDocument(doc: C4Document, options: LayoutOptions
 export async function autoLayoutDocumentWithQuality(
   doc: C4Document,
   options: LayoutOptions = {},
-): Promise<{ document: C4Document; qualities: Array<{ viewId: string; quality?: LayoutQuality }> }> {
+): Promise<{ document: C4Document; qualities: Array<{ viewId: string; quality?: LayoutQuality; direction?: LayoutDirection; distribution?: 'centered' | 'elk' }> }> {
   let current = doc;
-  const qualities: Array<{ viewId: string; quality?: LayoutQuality }> = [];
+  const qualities: Array<{ viewId: string; quality?: LayoutQuality; direction?: LayoutDirection; distribution?: 'centered' | 'elk' }> = [];
   for (const view of doc.views) {
     const result = await layoutView(current, view.id, options);
-    qualities.push({ viewId: view.id, quality: result.quality });
+    qualities.push({ viewId: view.id, quality: result.quality, direction: result.direction, distribution: result.distribution });
     current = { ...current, views: current.views.map((v) => (v.id === view.id ? applyLayoutToView(v, result) : v)) };
   }
   return { document: current, qualities };

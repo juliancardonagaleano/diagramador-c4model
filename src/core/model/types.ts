@@ -11,7 +11,11 @@ export type ElementType = 'person' | 'softwareSystem' | 'container' | 'component
 export type ElementShape = 'default' | 'database' | 'queue' | 'browser' | 'mobile';
 export type ViewType = 'systemContext' | 'container' | 'component';
 export type LayoutDirection = 'DOWN' | 'RIGHT' | 'UP' | 'LEFT';
+/** Dirección pedida: una concreta o 'auto' (C1 arriba→abajo, C2/C3 izquierda→derecha, con fallback al mejor ajuste). */
+export type LayoutDirectionOption = LayoutDirection | 'auto';
 export type LayoutDensity = 'auto' | 'compact' | 'spacious';
+/** Distribución: 'centered' (capas centradas y equiespaciadas), 'elk' (colocación de ELK) o 'auto' (centrada si sale limpia). */
+export type LayoutDistribution = 'auto' | 'centered' | 'elk';
 
 export interface C4Element {
   id: string;
@@ -53,6 +57,8 @@ export interface C4LayoutOptions {
   layerSpacing?: number;
   /** Densidad del autolayout: 'auto' (según relaciones por nodo), 'compact' o 'spacious'. */
   density?: LayoutDensity;
+  /** Distribución elegida por el último autolayout ('centered' o 'elk'); 'auto' deja decidir. */
+  distribution?: LayoutDistribution;
 }
 
 export interface C4Point {

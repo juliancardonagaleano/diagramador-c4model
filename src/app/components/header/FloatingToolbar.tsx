@@ -3,7 +3,7 @@ import { IconBolt, IconChevronDown, IconMinus, IconMoon, IconPlus, IconRedo, Ico
 import { useReactFlow, useStore as useFlowStore } from '@xyflow/react';
 import { useActions } from '../../hooks/useActions';
 import { isEmbedMode, useDocumentStore, useTemporalStore } from '../../store/documentStore';
-import { ELEMENT_TYPE_LABELS, type ElementType, type LayoutDirection } from '../../../core/model/types';
+import { ELEMENT_TYPE_LABELS, type ElementType, type LayoutDirection, type LayoutDirectionOption, type LayoutDistribution } from '../../../core/model/types';
 import { formatQuality } from '../../../core/layout/quality';
 
 const ADD_BUTTONS: Array<{ type: ElementType; glyph: string }> = [
@@ -13,11 +13,20 @@ const ADD_BUTTONS: Array<{ type: ElementType; glyph: string }> = [
   { type: 'component', glyph: '◫' },
 ];
 
-const DIRECTIONS: Array<{ value: LayoutDirection; label: string; glyph: string }> = [
+export const DIRECTION_GLYPH: Record<LayoutDirection, string> = { DOWN: '↓', RIGHT: '→', UP: '↑', LEFT: '←' };
+
+export const DIRECTIONS: Array<{ value: LayoutDirectionOption; label: string; glyph: string }> = [
+  { value: 'auto', label: 'Automática (C1 ↓, C2/C3 →)', glyph: 'A' },
   { value: 'DOWN', label: 'Arriba → abajo', glyph: '↓' },
   { value: 'RIGHT', label: 'Izquierda → derecha', glyph: '→' },
-  { value: 'UP', label: 'Abajo → arriba', glyph: '↑' },
   { value: 'LEFT', label: 'Derecha → izquierda', glyph: '←' },
+  { value: 'UP', label: 'Abajo → arriba', glyph: '↑' },
+];
+
+export const DISTRIBUTIONS: Array<{ value: LayoutDistribution; label: string }> = [
+  { value: 'auto', label: 'Distribución automática (centrada si sale limpia)' },
+  { value: 'centered', label: 'Centrada y uniforme' },
+  { value: 'elk', label: 'Colocación de ELK' },
 ];
 
 export function FloatingToolbar({ onEmbedSave }: { onEmbedSave?: (exit: boolean) => void }) {
@@ -26,6 +35,7 @@ export function FloatingToolbar({ onEmbedSave }: { onEmbedSave?: (exit: boolean)
   const readOnly = useDocumentStore((s) => s.readOnly);
   const theme = useDocumentStore((s) => s.ui.theme);
   const direction = useDocumentStore((s) => s.ui.direction);
+  const distribution = useDocumentStore((s) => s.ui.distribution);
   const layoutBusy = useDocumentStore((s) => s.layoutBusy);
   const quality = useDocumentStore((s) => s.lastLayoutQuality);
   const activeViewId = useDocumentStore((s) => s.activeViewId);
@@ -117,6 +127,8 @@ export function FloatingToolbar({ onEmbedSave }: { onEmbedSave?: (exit: boolean)
         <span className="c4-quality" data-testid="layout-quality" title="Calidad del último autolayout">
           {quality.crossings === 0 && quality.edgeNodeOverlaps + quality.labelOverlaps === 0 ? '✓ ' : ''}
           {formatQuality({ ...quality, candidates: undefined })}
+          {quality.direction ? ` · ${DIRECTION_GLYPH[quality.direction]}` : ''}
+          {quality.distribution ? ` ${quality.distribution === 'centered' ? 'centrado' : 'ELK'}` : ''}
         </span>
       )}
       <Dropdown
@@ -124,16 +136,24 @@ export function FloatingToolbar({ onEmbedSave }: { onEmbedSave?: (exit: boolean)
         position="bottomLeft"
         render={
           <Dropdown.Menu>
+            <Dropdown.Title>Dirección</Dropdown.Title>
             {DIRECTIONS.map((d) => (
               <Dropdown.Item key={d.value} active={d.value === direction} onClick={() => void actions.autoLayout(d.value).then(() => setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 30))}>
-                <span className="inline-block w-5">{d.glyph}</span> {d.label}
+                <span className="inline-block w-5 font-mono">{d.glyph}</span> {d.label}
+              </Dropdown.Item>
+            ))}
+            <Dropdown.Divider />
+            <Dropdown.Title>Distribución</Dropdown.Title>
+            {DISTRIBUTIONS.map((d) => (
+              <Dropdown.Item key={d.value} active={d.value === distribution} onClick={() => void actions.autoLayout(undefined, d.value).then(() => setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 30))}>
+                {d.label}
               </Dropdown.Item>
             ))}
           </Dropdown.Menu>
         }
       >
-        <Button theme="borderless" type="tertiary" aria-label="Dirección del autolayout" disabled={readOnly}>
-          <span className="text-base">{DIRECTIONS.find((d) => d.value === direction)?.glyph}</span>
+        <Button theme="borderless" type="tertiary" aria-label="Dirección y distribución del autolayout" disabled={readOnly}>
+          <span className="text-base font-mono">{DIRECTIONS.find((d) => d.value === direction)?.glyph}</span>
           <IconChevronDown size="small" />
         </Button>
       </Dropdown>

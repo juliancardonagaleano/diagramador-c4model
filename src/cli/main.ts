@@ -4,19 +4,26 @@ import { formatQuality, type LayoutQuality } from '../core/layout/quality';
 import { sampleDocument } from '../core/model/sample';
 import { toDrawio, type DrawioNotation } from '../core/export/drawio/toDrawio';
 import { documentJsonSchema, DocumentValidationError, formatIssues, validateDocument } from '../core/model/schema';
-import type { LayoutDensity, LayoutDirection } from '../core/model/types';
+import type { LayoutDensity, LayoutDirectionOption, LayoutDistribution } from '../core/model/types';
 import { generationJsonSchema } from '../core/ai/generationSchema';
 import { standalonePrompt } from '../core/ai/prompt';
 import { DEFAULT_AI_MODEL, generateDocument, GenerationError, type Effort } from '../core/ai/generate';
 import { analyzeDocument } from '../core/model/issues';
 import { CliError, extractJson, info, readDocument, readInput, writeOutput } from './io';
 
-const DIRECTIONS: LayoutDirection[] = ['DOWN', 'RIGHT', 'UP', 'LEFT'];
+const DIRECTIONS: LayoutDirectionOption[] = ['auto', 'DOWN', 'RIGHT', 'LEFT', 'UP'];
+const DISTRIBUTIONS: LayoutDistribution[] = ['auto', 'centered', 'elk'];
 const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 
-function parseDirection(value: string): LayoutDirection {
-  const v = value.toUpperCase() as LayoutDirection;
+function parseDirection(value: string): LayoutDirectionOption {
+  const v = (value.toLowerCase() === 'auto' ? 'auto' : value.toUpperCase()) as LayoutDirectionOption;
   if (!DIRECTIONS.includes(v)) throw new InvalidArgumentError(`Dirección inválida. Use: ${DIRECTIONS.join(', ')}`);
+  return v;
+}
+
+function parseDistribution(value: string): LayoutDistribution {
+  const v = value.toLowerCase() as LayoutDistribution;
+  if (!DISTRIBUTIONS.includes(v)) throw new InvalidArgumentError(`Distribución inválida. Use: ${DISTRIBUTIONS.join(', ')}`);
   return v;
 }
 
@@ -40,10 +47,11 @@ function parseNotation(value: string): DrawioNotation {
   return v;
 }
 
-function reportQuality(items: Array<{ viewId: string; quality?: LayoutQuality }>): void {
-  for (const { viewId, quality } of items) {
+function reportQuality(items: Array<{ viewId: string; quality?: LayoutQuality; direction?: string; distribution?: string }>): void {
+  for (const { viewId, quality, direction, distribution } of items) {
     if (!quality) continue;
-    info(`  ${viewId}: ${formatQuality(quality)}${quality.strategy ? ` (estrategia ${quality.strategy})` : ''}`);
+    const chosen = [direction, distribution === 'centered' ? 'centrado' : distribution === 'elk' ? 'ELK' : undefined].filter(Boolean).join(' ');
+    info(`  ${viewId}: ${formatQuality(quality)}${chosen ? ` · ${chosen}` : ''}${quality.strategy ? ` (estrategia ${quality.strategy})` : ''}`);
   }
 }
 
@@ -72,6 +80,7 @@ export function buildProgram(): Command {
     .option('--retries <n>', 'reintentos si el modelo devuelve un documento inválido', (v) => Number.parseInt(v, 10), 1)
     .option('--locale <es|en>', 'idioma de las etiquetas de tipo en el .drawio', 'es')
     .option('--density <auto|compact|spacious>', 'densidad del autolayout', parseDensity)
+    .option('--distribution <auto|centered|elk>', 'distribución del autolayout', parseDistribution)
     .option('--notation <c4|card>', 'notación de las figuras en el .drawio', parseNotation, 'c4')
     .action(async (instruction: string, opts) => {
       const base = opts.from ? readDocument(opts.from, false) : undefined;
@@ -81,6 +90,7 @@ export function buildProgram(): Command {
         model: opts.model,
         effort: opts.effort,
         direction: opts.direction,
+        distribution: opts.distribution,
         density: opts.density,
         maxRetries: opts.retries,
         onProgress: info,
@@ -113,16 +123,25 @@ export function buildProgram(): Command {
     .option('--layer-spacing <px>', 'separación entre capas', (v) => Number.parseFloat(v))
     .option('--force', 'recalcular aunque ya haya coordenadas', false)
     .option('--density <auto|compact|spacious>', 'densidad del autolayout', parseDensity)
+    .option('--distribution <auto|centered|elk>', 'distribución: centrada y uniforme, colocación de ELK o automática', parseDistribution)
     .option('--fast', 'una sola pasada de ELK (sin probar estrategias ni medir calidad)', false)
     .option('--view <id>', 'solo esta vista')
     .action(async (file: string | undefined, opts) => {
       const doc = readDocument(file, opts.stdin);
-      const layoutOpts = { direction: opts.direction, spacing: opts.spacing, layerSpacing: opts.layerSpacing, density: opts.density, force: opts.force, fast: opts.fast };
+      const layoutOpts = {
+        direction: opts.direction,
+        distribution: opts.distribution,
+        spacing: opts.spacing,
+        layerSpacing: opts.layerSpacing,
+        density: opts.density,
+        force: opts.force,
+        fast: opts.fast,
+      };
       let result;
       if (opts.view) {
         const laid = await layoutView(doc, opts.view, layoutOpts);
         result = { ...doc, views: doc.views.map((v) => (v.id === opts.view ? applyLayoutToView(v, laid) : v)) };
-        reportQuality([{ viewId: opts.view, quality: laid.quality }]);
+        reportQuality([{ viewId: opts.view, quality: laid.quality, direction: laid.direction, distribution: laid.distribution }]);
       } else {
         const laid = await autoLayoutDocumentWithQuality(doc, layoutOpts);
         result = laid.document;
@@ -142,13 +161,20 @@ export function buildProgram(): Command {
     .option('--force-layout', 'recalcular el layout aunque ya haya coordenadas', false)
     .option('--locale <es|en>', 'idioma de las etiquetas de tipo', 'es')
     .option('--density <auto|compact|spacious>', 'densidad del autolayout', parseDensity)
+    .option('--distribution <auto|centered|elk>', 'distribución del autolayout', parseDistribution)
     .option('--fast', 'una sola pasada de ELK al aplicar autolayout', false)
     .option('--notation <c4|card>', 'notación de las figuras: librería C4 de draw.io o tarjetas', parseNotation, 'c4')
     .option('--no-waypoints', 'no incluir los quiebres de ruta del autolayout')
     .option('--view <id...>', 'solo estas vistas')
     .action(async (file: string | undefined, opts) => {
       const doc = readDocument(file, opts.stdin);
-      const laid = await autoLayoutDocumentWithQuality(doc, { direction: opts.direction, density: opts.density, force: opts.forceLayout, fast: opts.fast });
+      const laid = await autoLayoutDocumentWithQuality(doc, {
+        direction: opts.direction,
+        distribution: opts.distribution,
+        density: opts.density,
+        force: opts.forceLayout,
+        fast: opts.fast,
+      });
       if (opts.forceLayout || doc.views.some((v) => v.elements.some((e) => e.x === undefined))) reportQuality(laid.qualities);
       const xml = toDrawio(laid.document, { locale: opts.locale, viewIds: opts.view, notation: opts.notation, waypoints: opts.waypoints });
       writeOutput(opts.out, xml);
