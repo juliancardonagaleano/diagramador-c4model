@@ -1,9 +1,10 @@
 import { Command, InvalidArgumentError } from 'commander';
-import { autoLayoutDocument, autoLayoutView } from '../core/layout/elkLayout';
+import { applyLayoutToView, autoLayoutDocumentWithQuality, layoutView } from '../core/layout/elkLayout';
+import { formatQuality, type LayoutQuality } from '../core/layout/quality';
 import { sampleDocument } from '../core/model/sample';
-import { toDrawio } from '../core/export/drawio/toDrawio';
+import { toDrawio, type DrawioNotation } from '../core/export/drawio/toDrawio';
 import { documentJsonSchema, DocumentValidationError, formatIssues, validateDocument } from '../core/model/schema';
-import type { LayoutDirection } from '../core/model/types';
+import type { LayoutDensity, LayoutDirection } from '../core/model/types';
 import { generationJsonSchema } from '../core/ai/generationSchema';
 import { standalonePrompt } from '../core/ai/prompt';
 import { DEFAULT_AI_MODEL, generateDocument, GenerationError, type Effort } from '../core/ai/generate';
@@ -23,6 +24,27 @@ function parseEffort(value: string): Effort {
   const v = value.toLowerCase() as Effort;
   if (!EFFORTS.includes(v)) throw new InvalidArgumentError(`Esfuerzo inválido. Use: ${EFFORTS.join(', ')}`);
   return v;
+}
+
+const DENSITIES: LayoutDensity[] = ['auto', 'compact', 'spacious'];
+
+function parseDensity(value: string): LayoutDensity {
+  const v = value.toLowerCase() as LayoutDensity;
+  if (!DENSITIES.includes(v)) throw new InvalidArgumentError(`Densidad inválida. Use: ${DENSITIES.join(', ')}`);
+  return v;
+}
+
+function parseNotation(value: string): DrawioNotation {
+  const v = value.toLowerCase();
+  if (v !== 'c4' && v !== 'card') throw new InvalidArgumentError('Notación inválida. Use: c4, card');
+  return v;
+}
+
+function reportQuality(items: Array<{ viewId: string; quality?: LayoutQuality }>): void {
+  for (const { viewId, quality } of items) {
+    if (!quality) continue;
+    info(`  ${viewId}: ${formatQuality(quality)}${quality.strategy ? ` (estrategia ${quality.strategy})` : ''}`);
+  }
 }
 
 function jsonOut(value: unknown): string {
@@ -49,6 +71,8 @@ export function buildProgram(): Command {
     .option('-d, --direction <dir>', `dirección del autolayout (${DIRECTIONS.join('|')})`, parseDirection)
     .option('--retries <n>', 'reintentos si el modelo devuelve un documento inválido', (v) => Number.parseInt(v, 10), 1)
     .option('--locale <es|en>', 'idioma de las etiquetas de tipo en el .drawio', 'es')
+    .option('--density <auto|compact|spacious>', 'densidad del autolayout', parseDensity)
+    .option('--notation <c4|card>', 'notación de las figuras en el .drawio', parseNotation, 'c4')
     .action(async (instruction: string, opts) => {
       const base = opts.from ? readDocument(opts.from, false) : undefined;
       const result = await generateDocument({
@@ -57,6 +81,7 @@ export function buildProgram(): Command {
         model: opts.model,
         effort: opts.effort,
         direction: opts.direction,
+        density: opts.density,
         maxRetries: opts.retries,
         onProgress: info,
       });
@@ -71,7 +96,7 @@ export function buildProgram(): Command {
         info(`JSON escrito en ${opts.json}`);
       }
       if (opts.out) {
-        writeOutput(opts.out, toDrawio(document, { locale: opts.locale }));
+        writeOutput(opts.out, toDrawio(document, { locale: opts.locale, notation: opts.notation }));
         info(`Diagrama .drawio escrito en ${opts.out}`);
       }
       if (!opts.json && !opts.out) process.stdout.write(jsonOut(document));
@@ -87,11 +112,22 @@ export function buildProgram(): Command {
     .option('--spacing <px>', 'separación entre nodos', (v) => Number.parseFloat(v))
     .option('--layer-spacing <px>', 'separación entre capas', (v) => Number.parseFloat(v))
     .option('--force', 'recalcular aunque ya haya coordenadas', false)
+    .option('--density <auto|compact|spacious>', 'densidad del autolayout', parseDensity)
+    .option('--fast', 'una sola pasada de ELK (sin probar estrategias ni medir calidad)', false)
     .option('--view <id>', 'solo esta vista')
     .action(async (file: string | undefined, opts) => {
       const doc = readDocument(file, opts.stdin);
-      const layoutOpts = { direction: opts.direction, spacing: opts.spacing, layerSpacing: opts.layerSpacing, force: opts.force };
-      const result = opts.view ? await autoLayoutView(doc, opts.view, layoutOpts) : await autoLayoutDocument(doc, layoutOpts);
+      const layoutOpts = { direction: opts.direction, spacing: opts.spacing, layerSpacing: opts.layerSpacing, density: opts.density, force: opts.force, fast: opts.fast };
+      let result;
+      if (opts.view) {
+        const laid = await layoutView(doc, opts.view, layoutOpts);
+        result = { ...doc, views: doc.views.map((v) => (v.id === opts.view ? applyLayoutToView(v, laid) : v)) };
+        reportQuality([{ viewId: opts.view, quality: laid.quality }]);
+      } else {
+        const laid = await autoLayoutDocumentWithQuality(doc, layoutOpts);
+        result = laid.document;
+        reportQuality(laid.qualities);
+      }
       writeOutput(opts.out, jsonOut(result));
       if (opts.out) info(`Documento con autolayout escrito en ${opts.out}`);
     });
@@ -105,13 +141,18 @@ export function buildProgram(): Command {
     .option('-d, --direction <dir>', `dirección del autolayout (${DIRECTIONS.join('|')})`, parseDirection)
     .option('--force-layout', 'recalcular el layout aunque ya haya coordenadas', false)
     .option('--locale <es|en>', 'idioma de las etiquetas de tipo', 'es')
+    .option('--density <auto|compact|spacious>', 'densidad del autolayout', parseDensity)
+    .option('--fast', 'una sola pasada de ELK al aplicar autolayout', false)
+    .option('--notation <c4|card>', 'notación de las figuras: librería C4 de draw.io o tarjetas', parseNotation, 'c4')
+    .option('--no-waypoints', 'no incluir los quiebres de ruta del autolayout')
     .option('--view <id...>', 'solo estas vistas')
     .action(async (file: string | undefined, opts) => {
       const doc = readDocument(file, opts.stdin);
-      const laid = await autoLayoutDocument(doc, { direction: opts.direction, force: opts.forceLayout });
-      const xml = toDrawio(laid, { locale: opts.locale, viewIds: opts.view });
+      const laid = await autoLayoutDocumentWithQuality(doc, { direction: opts.direction, density: opts.density, force: opts.forceLayout, fast: opts.fast });
+      if (opts.forceLayout || doc.views.some((v) => v.elements.some((e) => e.x === undefined))) reportQuality(laid.qualities);
+      const xml = toDrawio(laid.document, { locale: opts.locale, viewIds: opts.view, notation: opts.notation, waypoints: opts.waypoints });
       writeOutput(opts.out, xml);
-      if (opts.out) info(`Diagrama .drawio escrito en ${opts.out} (${laid.views.length} página(s))`);
+      if (opts.out) info(`Diagrama .drawio escrito en ${opts.out} (${laid.document.views.length} página(s), notación ${opts.notation})`);
     });
 
   program

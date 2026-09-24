@@ -12,7 +12,19 @@ import {
   suggestViewElements,
 } from '../../core/model/factories';
 import { sampleDocument } from '../../core/model/sample';
-import { autoLayoutView, type LayoutOptions } from '../../core/layout/elkLayout';
+import { applyLayoutToView, layoutView, type LayoutOptions } from '../../core/layout/elkLayout';
+import type { LayoutQuality } from '../../core/layout/quality';
+
+/** true si el id de ruta (relación o `rel@origen->destino`) toca alguno de los elementos movidos. */
+function touchesAny(routeId: string, moved: Map<string, unknown>): boolean {
+  const at = routeId.indexOf('@');
+  if (at >= 0) {
+    const [src, tgt] = routeId.slice(at + 1).split('->');
+    return moved.has(src) || moved.has(tgt);
+  }
+  // Relación directa: se resuelve en la vista (la validación de rutas descarta las obsoletas de todos modos).
+  return true;
+}
 import {
   DEFAULT_SIZES,
   VIEW_SCOPE_TYPE,
@@ -21,6 +33,7 @@ import {
   type C4Relationship,
   type C4View,
   type ElementType,
+  type LayoutDensity,
   type LayoutDirection,
   type ViewType,
 } from '../../core/model/types';
@@ -46,6 +59,8 @@ export interface UiState {
   direction: LayoutDirection;
   /** Notación del lienzo: 'c4' (cajas de color, convención C4) o 'card' (tarjetas estilo drawdb). */
   nodeStyle: 'c4' | 'card';
+  /** Densidad del autolayout. */
+  density: LayoutDensity;
 }
 
 export interface DocumentState {
@@ -59,6 +74,8 @@ export interface DocumentState {
   readOnly: boolean;
   ui: UiState;
   layoutBusy: boolean;
+  /** Calidad del último autolayout ejecutado (cruces, solapes, estrategia). */
+  lastLayoutQuality: (LayoutQuality & { viewId: string }) | null;
 }
 
 export interface DocumentActions {
@@ -116,6 +133,7 @@ const defaultUi: UiState = {
   panelTab: 'elements',
   direction: 'DOWN',
   nodeStyle: 'c4',
+  density: 'auto',
 };
 
 function firstViewId(doc: C4Document): string | null {
@@ -144,6 +162,7 @@ export const useDocumentStore = create<DocumentStore>()(
           readOnly: false,
           ui: defaultUi,
           layoutBusy: false,
+          lastLayoutQuality: null,
 
           setDocument: (doc, opts = {}) => {
             const activeViewId = opts.activeViewId && doc.views.some((v) => v.id === opts.activeViewId) ? opts.activeViewId : firstViewId(doc);
@@ -344,6 +363,8 @@ export const useDocumentStore = create<DocumentStore>()(
                         const size = el ? DEFAULT_SIZES[el.type] : { width: 240, height: 130 };
                         return { ...e, x: Math.round(m.x), y: Math.round(m.y), width: e.width ?? size.width, height: e.height ?? size.height };
                       }),
+                      // Las rutas del autolayout que tocan un elemento movido dejan de ser válidas.
+                      edges: v.edges?.filter((r) => !touchesAny(r.id, byId)),
                     }
                   : v,
               ),
@@ -356,23 +377,13 @@ export const useDocumentStore = create<DocumentStore>()(
             set({ layoutBusy: true });
             try {
               const direction = options.direction ?? get().ui.direction;
-              const laid = await autoLayoutView(get().doc, id, { force: true, ...options, direction });
-              const laidView = laid.views.find((v) => v.id === id)!;
+              const density = options.density ?? get().ui.density;
+              const result = await layoutView(get().doc, id, { force: true, ...options, direction, density });
               updateDoc((doc) => ({
                 ...doc,
-                views: doc.views.map((v) =>
-                  v.id === id
-                    ? {
-                        ...v,
-                        layout: { ...v.layout, direction },
-                        elements: v.elements.map((e) => {
-                          const p = laidView.elements.find((x) => x.id === e.id);
-                          return p && p.x !== undefined ? { ...e, x: p.x, y: p.y, width: p.width, height: p.height } : e;
-                        }),
-                      }
-                    : v,
-                ),
+                views: doc.views.map((v) => (v.id === id ? applyLayoutToView({ ...v, layout: { ...v.layout, direction, density } }, result) : v)),
               }));
+              set({ lastLayoutQuality: result.quality ? { viewId: id, ...result.quality } : null });
             } finally {
               set({ layoutBusy: false });
             }

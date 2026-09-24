@@ -82,6 +82,36 @@ describe('toDrawio', () => {
     expect(only).not.toContain('data:page/id');
   });
 
+  it('incluye los quiebres del autolayout como waypoints de las aristas', async () => {
+    const laid = await autoLayoutDocument(sampleDocument);
+    const xml = toDrawio(laid, { viewIds: ['contenedores'] });
+    expect(xml).toContain('<Array as="points">');
+    expect(xml).toMatch(/<mxPoint x="-?\d+" y="-?\d+"\/>/);
+    const without = toDrawio(laid, { viewIds: ['contenedores'], waypoints: false });
+    expect(without).not.toContain('<Array as="points">');
+  });
+
+  it('exporta con la notación de tarjetas (estilo drawdb)', async () => {
+    const laid = await autoLayoutDocument(sampleDocument);
+    const xml = toDrawio(laid, { notation: 'card' });
+    const parsed = parser.parse(xml);
+    const diagrams = [].concat(parsed.mxfile.diagram) as Array<{ mxGraphModel: { root: { object: Array<Record<string, unknown>> } } }>;
+    const cont = diagrams[1].mxGraphModel.root.object;
+    const api = cont.find((o) => o['@_id'] === 'api')!;
+    const apiCell = api.mxCell as Record<string, string>;
+    expect(apiCell['@_style']).toContain('fillColor=#F4F4F5');
+    expect(apiCell['@_style']).not.toContain('mxgraph.c4');
+    expect(String(api['@_label'])).toContain('background-color:#23A2D9');
+    expect(String(api['@_label'])).toContain('%c4Name%');
+    const cliente = cont.find((o) => o['@_id'] === 'cliente')!;
+    expect(String(cliente['@_label'])).toContain('height:40px');
+    const db = cont.find((o) => o['@_id'] === 'db')!;
+    expect(String((db.mxCell as Record<string, string>)['@_style'])).toContain('shape=cylinder3');
+    // Boundaries y relaciones no cambian.
+    expect(String((cont.find((o) => o['@_id'] === 'banca')!.mxCell as Record<string, string>)['@_style'])).toContain('dashed=1');
+    expect(xml).toContain('endArrow=blockThin');
+  });
+
   it('escapa caracteres especiales en atributos', async () => {
     const doc = structuredClone(sampleDocument);
     doc.model.elements[0].name = 'Cliente <"VIP"> & más';

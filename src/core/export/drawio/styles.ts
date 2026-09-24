@@ -108,6 +108,49 @@ export function elementLabel(el: C4Element): string {
   return `<b>%c4Name%</b>${typeLine}<br><div><font style="font-size: 11px"><font color="${descColor}">%c4Description%</font></div>`;
 }
 
+// ───────────── Notación "tarjeta" (estilo drawdb) ─────────────
+
+const CARD_FILL = '#F4F4F5';
+const CARD_STROKE = '#D4D4D8';
+const CARD_TEXT = '#27272A';
+
+/** Estilo mxGraph de la tarjeta: rectángulo claro con franja de color dibujada en la etiqueta HTML. */
+export function cardElementStyle(el: C4Element): string {
+  const { fill } = paletteFor(el);
+  const shape: ElementShape = el.type === 'person' ? 'default' : (el.shape ?? 'default');
+  const common = `whiteSpace=wrap;html=1;fillColor=${CARD_FILL};strokeColor=${CARD_STROKE};strokeWidth=2;fontColor=${CARD_TEXT};metaEdit=1;resizable=0;`;
+  switch (shape) {
+    case 'database':
+      return `shape=cylinder3;size=15;boundedLbl=1;rounded=0;fontSize=12;align=center;${common}strokeColor=${fill};${POINTS_CYLINDER}`;
+    case 'queue':
+      return `shape=cylinder3;size=15;direction=south;boundedLbl=1;rounded=0;fontSize=12;align=center;${common}strokeColor=${fill};${POINTS_CYLINDER}`;
+    default:
+      return `rounded=1;arcSize=8;absoluteArcSize=1;align=left;verticalAlign=top;spacing=0;spacingLeft=0;spacingTop=0;spacingRight=0;overflow=hidden;${common}${POINTS_RECT}`;
+  }
+}
+
+/** Etiqueta HTML de la tarjeta: franja superior del color C4, nombre, [tipo: tecnología] y descripción. */
+export function cardElementLabel(el: C4Element): string {
+  const { fill } = paletteFor(el);
+  const shape: ElementShape = el.type === 'person' ? 'default' : (el.shape ?? 'default');
+  const typeLine =
+    el.type === 'container' || el.type === 'component'
+      ? '[%c4Type%: %c4Technology%]'
+      : '[%c4Type%]';
+  if (shape === 'database' || shape === 'queue') {
+    return `<b>%c4Name%</b><div><font style="font-size: 10px" face="Courier New" color="#666666">${typeLine}</font></div><div><font style="font-size: 11px">%c4Description%</font></div>`;
+  }
+  const strip =
+    el.type === 'person'
+      ? `<div style="background-color:${fill};height:40px;line-height:40px;text-align:center;color:#ffffff;font-size:22px">&#128100;</div>`
+      : `<div style="background-color:${fill};height:10px"></div>`;
+  return (
+    `${strip}<div style="padding:8px 10px 4px 10px;text-align:left"><b style="font-size:13px">%c4Name%</b></div>` +
+    `<div style="padding:0 10px;text-align:left"><font style="font-size: 10px" face="Courier New" color="#666666">${typeLine}</font></div>` +
+    `<div style="padding:4px 10px 8px 10px;text-align:left"><font style="font-size: 11px" color="#3F3F46">%c4Description%</font></div>`
+  );
+}
+
 export function boundaryStyle(): string {
   return (
     'rounded=1;fontSize=11;whiteSpace=wrap;html=1;dashed=1;arcSize=20;fillColor=none;strokeColor=#666666;fontColor=#333333;' +

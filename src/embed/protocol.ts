@@ -44,6 +44,8 @@ export const mergeActionSchema = z.object({
 export const exportActionSchema = z.object({
   action: z.literal('export'),
   format: z.enum(['json', 'drawio', 'svg', 'png']),
+  /** Solo para drawio: notación C4 de draw.io (por defecto) o tarjetas estilo drawdb. */
+  notation: z.enum(['c4', 'card']).optional(),
   viewId: z.string().optional(),
   /** Identificador libre que se devuelve en la respuesta para correlacionar. */
   requestId: z.string().optional(),

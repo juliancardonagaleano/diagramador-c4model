@@ -16,6 +16,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { deriveView } from '../../../core/model/viewDerivation';
 import { findChildView } from '../../../core/model/factories';
+import { computeEdgeAnchors, type Rect } from '../../../core/layout/edgeAnchors';
+import { routeMatchesNodes } from '../../../core/layout/quality';
 import { PARENT_TYPE } from '../../../core/model/types';
 import { useDocumentStore } from '../../store/documentStore';
 import { BoundaryNode, type BoundaryNodeType } from './BoundaryNode';
@@ -97,22 +99,39 @@ export function Canvas() {
     [drillDown, fitView],
   );
 
-  const derivedEdges = useMemo<RelationshipEdgeType[]>(() => {
-    if (!derived) return [];
-    return derived.edges.map((e) => ({
-      id: e.id,
-      type: 'relationship',
-      source: e.sourceId,
-      target: e.targetId,
-      data: { relationship: e.relationship, implied: e.implied },
-      selected: selection.kind === 'relationship' && selection.id === e.relationship.id,
-      markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18, color: selection.kind === 'relationship' && selection.id === e.relationship.id ? '#175e7a' : '#808080' },
-    }));
-  }, [derived, selection]);
-
   // Estado local para arrastre fluido; se sincroniza con el store al terminar.
   const [nodes, setNodes] = useState<CanvasNode[]>(derivedNodes);
   useEffect(() => setNodes(derivedNodes), [derivedNodes]);
+
+  // Aristas: ruta del autolayout si sigue siendo válida para las posiciones actuales
+  // (incluido el arrastre en curso); si no, anclajes repartidos por lado (puertos virtuales).
+  const derivedEdges = useMemo<RelationshipEdgeType[]>(() => {
+    if (!derived) return [];
+    const rects: Rect[] = nodes
+      .filter((n) => n.type === 'element')
+      .map((n) => ({ id: n.id, x: n.position.x, y: n.position.y, width: n.width ?? 240, height: n.height ?? 130 }));
+    const rectById = new Map(rects.map((r) => [r.id, r]));
+    const direction = derived.view.layout?.direction ?? 'DOWN';
+    const anchors = computeEdgeAnchors(rects, derived.edges, direction);
+    const stored = new Map((derived.view.edges ?? []).map((r) => [r.id, r]));
+    return derived.edges.map((e) => {
+      const isSelected = selection.kind === 'relationship' && selection.id === e.relationship.id;
+      const route = stored.get(e.id);
+      const s = rectById.get(e.sourceId);
+      const t = rectById.get(e.targetId);
+      const validRoute = route && s && t && routeMatchesNodes(route, s, t) ? { points: route.points, label: route.label } : undefined;
+      const a = anchors.get(e.id);
+      return {
+        id: e.id,
+        type: 'relationship',
+        source: e.sourceId,
+        target: e.targetId,
+        data: { relationship: e.relationship, implied: e.implied, route: validRoute, sourceAnchor: a?.source, targetAnchor: a?.target },
+        selected: isSelected,
+        markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18, color: isSelected ? '#175e7a' : '#808080' },
+      };
+    });
+  }, [derived, selection, nodes]);
 
   const dragStart = useRef<Map<string, { x: number; y: number }>>(new Map());
 

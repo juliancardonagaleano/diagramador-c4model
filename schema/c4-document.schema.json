@@ -201,6 +201,57 @@
               ]
             }
           },
+          "edges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "points": {
+                  "minItems": 2,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ]
+                  }
+                },
+                "label": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "points"
+              ]
+            }
+          },
           "layout": {
             "type": "object",
             "properties": {
@@ -220,6 +271,14 @@
               "layerSpacing": {
                 "type": "number",
                 "exclusiveMinimum": 0
+              },
+              "density": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "compact",
+                  "spacious"
+                ]
               }
             }
           }

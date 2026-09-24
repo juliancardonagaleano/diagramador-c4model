@@ -4,6 +4,7 @@ import { useReactFlow, useStore as useFlowStore } from '@xyflow/react';
 import { useActions } from '../../hooks/useActions';
 import { isEmbedMode, useDocumentStore, useTemporalStore } from '../../store/documentStore';
 import { ELEMENT_TYPE_LABELS, type ElementType, type LayoutDirection } from '../../../core/model/types';
+import { formatQuality } from '../../../core/layout/quality';
 
 const ADD_BUTTONS: Array<{ type: ElementType; glyph: string }> = [
   { type: 'person', glyph: '👤' },
@@ -26,6 +27,7 @@ export function FloatingToolbar({ onEmbedSave }: { onEmbedSave?: (exit: boolean)
   const theme = useDocumentStore((s) => s.ui.theme);
   const direction = useDocumentStore((s) => s.ui.direction);
   const layoutBusy = useDocumentStore((s) => s.layoutBusy);
+  const quality = useDocumentStore((s) => s.lastLayoutQuality);
   const activeViewId = useDocumentStore((s) => s.activeViewId);
   const toggleTheme = useDocumentStore((s) => s.toggleTheme);
   const setUi = useDocumentStore((s) => s.setUi);
@@ -92,7 +94,13 @@ export function FloatingToolbar({ onEmbedSave }: { onEmbedSave?: (exit: boolean)
         </Tooltip>
       ))}
       <Divider layout="vertical" margin="6px" />
-      <Tooltip content="Autolayout de la vista (Ctrl+L)">
+      <Tooltip
+        content={
+          quality && quality.viewId === activeViewId
+            ? `Último autolayout: ${formatQuality(quality)}${quality.strategy ? ` · estrategia ${quality.strategy}` : ''}`
+            : 'Autolayout de la vista (Ctrl+L): prueba varias estrategias y elige la de menos cruces y solapes'
+        }
+      >
         <Button
           icon={<IconBolt />}
           theme="light"
@@ -105,6 +113,12 @@ export function FloatingToolbar({ onEmbedSave }: { onEmbedSave?: (exit: boolean)
           Autolayout
         </Button>
       </Tooltip>
+      {quality && quality.viewId === activeViewId && (
+        <span className="c4-quality" data-testid="layout-quality" title="Calidad del último autolayout">
+          {quality.crossings === 0 && quality.edgeNodeOverlaps + quality.labelOverlaps === 0 ? '✓ ' : ''}
+          {formatQuality({ ...quality, candidates: undefined })}
+        </span>
+      )}
       <Dropdown
         trigger="click"
         position="bottomLeft"

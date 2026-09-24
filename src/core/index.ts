@@ -25,12 +25,21 @@ export {
   layoutDerivedView,
   autoLayoutView,
   autoLayoutDocument,
+  autoLayoutDocumentWithQuality,
   applyLayoutToView,
+  resolveLayoutParams,
+  runElkLayout,
+  measureDerived,
   type LayoutOptions,
   type LayoutResult,
+  type LayoutVariant,
   type PositionedElement,
 } from './layout/elkLayout';
-export { toDrawio, DrawioExportError, type DrawioOptions } from './export/drawio/toDrawio';
+export { smartLayout, BASE_VARIANTS, RESCUE_VARIANTS } from './layout/smartLayout';
+export { measureLayout, formatQuality, scoreQuality, type LayoutQuality } from './layout/quality';
+export { computeEdgeAnchors, routeEdge, labelPosition, pathFromPoints, chooseSide, type Rect, type Anchor, type EdgeAnchors, type Side, type Point } from './layout/edgeAnchors';
+export { estimateLabelSize, type LabelSize } from './layout/labelMetrics';
+export { toDrawio, DrawioExportError, type DrawioOptions, type DrawioNotation } from './export/drawio/toDrawio';
 export type { DrawioLocale } from './export/drawio/styles';
 export {
   generatedDocumentSchema,

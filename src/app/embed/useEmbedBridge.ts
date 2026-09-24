@@ -126,7 +126,7 @@ export function useEmbedBridge(): { save: (exit: boolean) => Promise<void>; exit
             const doc = await autoLayoutDocument(s.doc);
             let data: string;
             if (action.format === 'json') data = JSON.stringify(action.viewId ? { ...doc, views: doc.views.filter((v) => v.id === action.viewId) } : doc, null, 2);
-            else if (action.format === 'drawio') data = toDrawio(doc, { viewIds: action.viewId ? [action.viewId] : undefined });
+            else if (action.format === 'drawio') data = toDrawio(doc, { viewIds: action.viewId ? [action.viewId] : undefined, notation: action.notation });
             else {
               post({ event: 'error', message: `Formato de exportación no soportado todavía: ${action.format}`, requestId: action.requestId });
               return;

@@ -60,9 +60,18 @@ try {
 
   // Autolayout.
   await page.getByRole('button', { name: 'Autolayout', exact: true }).click();
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(1200);
   const positions = await page.$$eval('.react-flow__node', (els) => els.map((e) => e.style.transform));
   check(new Set(positions).size === positions.length, 'autolayout deja posiciones distintas para todos los nodos');
+  const qualityText = await page.getByTestId('layout-quality').textContent();
+  check(/0 cruces/.test(qualityText ?? '') && /0 solapes/.test(qualityText ?? ''), `el autolayout informa 0 cruces y 0 solapes (${qualityText})`);
+  const overlaps = await page.evaluate(() => {
+    const labels = [...document.querySelectorAll('.c4-edge-label')].map((l) => l.getBoundingClientRect());
+    const shapes = [...document.querySelectorAll('.react-flow__node')].map((n) => n.getBoundingClientRect());
+    const hit = (a, b) => a.left < b.right - 2 && b.left < a.right - 2 && a.top < b.bottom - 2 && b.top < a.bottom - 2;
+    return labels.filter((l) => shapes.some((s) => hit(l, s))).length;
+  });
+  check(overlaps === 0, `ninguna etiqueta de relación pisa un nodo tras el autolayout (${overlaps})`);
   if (shotsDir) await page.screenshot({ path: `${shotsDir}/02-autolayout.png` });
 
   // Deshacer dos veces (nombre y creación) => vuelve a 4 nodos.
@@ -84,6 +93,9 @@ try {
   check((await page.locator('.c4-breadcrumb').getAttribute('data-level')) === 'C2', 'el breadcrumb muestra C2 tras bajar de nivel');
   check((await page.locator('.c4-shape.shape-database').count()) === 1, 'la base de datos se dibuja como cilindro');
   check((await page.locator('.c4-shape.shape-browser').count()) === 1, 'la app web se dibuja como navegador');
+  // Las aristas que salen del cliente nacen en puntos distintos (rutas del autolayout / puertos virtuales).
+  const starts = await page.$$eval('.react-flow__edge path.react-flow__edge-path', (paths) => paths.map((p) => (p.getAttribute('d') ?? '').split('L')[0].trim()));
+  check(new Set(starts).size === starts.length, `todas las aristas nacen en puntos distintos (${starts.length})`);
   if (shotsDir) await page.screenshot({ path: `${shotsDir}/03-contenedores.png` });
 
   // C2 → C3 con doble clic en la API y vuelta con "Subir nivel".
@@ -105,12 +117,20 @@ try {
   await page.waitForTimeout(300);
   check((await page.locator('.c4-shape-svg').count()) > 0, 'y vuelve a la notación C4 clásica');
 
-  // Exportar .drawio (descarga).
+  // Exportar .drawio (descarga) en ambas notaciones.
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Exportar .drawio' }).click()]);
   const xml = await (await import('node:fs/promises')).readFile(await download.path(), 'utf8');
   check(xml.startsWith('<mxfile'), 'la exportación produce un mxfile');
   check((xml.match(/<diagram /g) || []).length === 3, 'una página por vista');
   check(xml.includes('mxgraph.c4.person2'), 'usa las formas C4 de draw.io');
+  check(xml.includes('<Array as="points">'), 'incluye los waypoints del autolayout');
+  await page.getByText('Archivo', { exact: true }).click();
+  const [download2] = await Promise.all([page.waitForEvent('download'), page.getByText('Exportar .drawio (tarjetas)').click()]);
+  const xml2 = await (await import('node:fs/promises')).readFile(await download2.path(), 'utf8');
+  check(xml2.includes('fillColor=#F4F4F5') && !xml2.includes('mxgraph.c4.person2'), 'el menú Archivo exporta también la notación de tarjetas');
+  await page.keyboard.press('Escape');
+  await page.mouse.click(5, 5);
+  await page.waitForTimeout(300);
 
   // Persistencia tras recargar.
   await page.getByRole('tab', { name: /Elementos/ }).click();

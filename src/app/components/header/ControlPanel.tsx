@@ -84,7 +84,8 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
         { key: 'save', label: 'Guardar', onClick: () => onEmbedSave?.(false), shortcut: 'Ctrl+S' },
         { key: 'save-exit', label: 'Guardar y salir', onClick: () => onEmbedSave?.(true) },
         { key: 'd1', label: '', divider: true },
-        { key: 'export', label: 'Exportar .drawio…', onClick: actions.exportDrawio },
+        { key: 'export', label: 'Exportar .drawio (notación C4)…', onClick: () => void actions.exportDrawio('c4') },
+        { key: 'export-card', label: 'Exportar .drawio (tarjetas)…', onClick: () => void actions.exportDrawio('card') },
         { key: 'json', label: 'Descargar JSON…', onClick: actions.saveJson },
         { key: 'd2', label: '', divider: true },
         { key: 'exit', label: 'Salir sin guardar', onClick: onEmbedExit },
@@ -95,7 +96,8 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
         { key: 'open', label: 'Abrir JSON…', onClick: actions.openJson, shortcut: 'Ctrl+O' },
         { key: 'd1', label: '', divider: true },
         { key: 'save', label: 'Guardar JSON', onClick: actions.saveJson, shortcut: 'Ctrl+S' },
-        { key: 'export', label: 'Exportar .drawio', onClick: actions.exportDrawio, shortcut: 'Ctrl+E' },
+        { key: 'export', label: 'Exportar .drawio (notación C4)', onClick: () => void actions.exportDrawio('c4'), shortcut: 'Ctrl+E' },
+        { key: 'export-card', label: 'Exportar .drawio (tarjetas)', onClick: () => void actions.exportDrawio('card') },
       ];
 
   const editMenu: MenuProps['items'] = [
@@ -121,12 +123,21 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
     { key: 'style-card', label: 'Tarjetas (estilo drawdb)', checked: ui.nodeStyle === 'card', onClick: () => setUi({ nodeStyle: 'card' }) },
   ];
 
-  const settingsMenu: MenuProps['items'] = (['DOWN', 'RIGHT', 'UP', 'LEFT'] as const).map((d) => ({
-    key: d,
-    label: `Dirección del autolayout: ${d === 'DOWN' ? 'arriba → abajo' : d === 'RIGHT' ? 'izquierda → derecha' : d === 'UP' ? 'abajo → arriba' : 'derecha → izquierda'}`,
-    checked: ui.direction === d,
-    onClick: () => setUi({ direction: d }),
-  }));
+  const settingsMenu: MenuProps['items'] = [
+    ...(['DOWN', 'RIGHT', 'UP', 'LEFT'] as const).map((d) => ({
+      key: d,
+      label: `Dirección del autolayout: ${d === 'DOWN' ? 'arriba → abajo' : d === 'RIGHT' ? 'izquierda → derecha' : d === 'UP' ? 'abajo → arriba' : 'derecha → izquierda'}`,
+      checked: ui.direction === d,
+      onClick: () => setUi({ direction: d }),
+    })),
+    { key: 'd1', label: '', divider: true },
+    ...(['auto', 'compact', 'spacious'] as const).map((d) => ({
+      key: `density-${d}`,
+      label: `Densidad del autolayout: ${d === 'auto' ? 'automática (según relaciones)' : d === 'compact' ? 'compacta' : 'amplia'}`,
+      checked: ui.density === d,
+      onClick: () => setUi({ density: d }),
+    })),
+  ];
 
   const helpMenu: MenuProps['items'] = [
     { key: 'shortcuts', label: 'Atajos de teclado', onClick: () => setShowShortcuts(true) },
@@ -198,7 +209,7 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
             </Button>
           </>
         ) : (
-          <Button icon={<IconDownload />} theme="solid" type="primary" size="large" className="!rounded-md" aria-label="Exportar .drawio" onClick={actions.exportDrawio}>
+          <Button icon={<IconDownload />} theme="solid" type="primary" size="large" className="!rounded-md" aria-label="Exportar .drawio" onClick={() => void actions.exportDrawio()}>
             Exportar .drawio
           </Button>
         )}

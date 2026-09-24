@@ -5,12 +5,17 @@ import {
   boundaryLabel,
   boundaryStyle,
   c4TypeLabel,
+  cardElementLabel,
+  cardElementStyle,
   elementLabel,
   elementStyle,
   relationshipLabel,
   relationshipStyle,
   type DrawioLocale,
 } from './styles';
+
+/** Notación de los elementos: librería C4 de draw.io ('c4') o tarjetas estilo drawdb ('card'). */
+export type DrawioNotation = 'c4' | 'card';
 
 export interface DrawioOptions {
   /** Idioma de las etiquetas de tipo (c4Type). */
@@ -19,6 +24,10 @@ export interface DrawioOptions {
   modified?: Date;
   /** Solo exportar estas vistas (ids). Por defecto todas. */
   viewIds?: string[];
+  /** Notación de las figuras (por defecto 'c4'). */
+  notation?: DrawioNotation;
+  /** Incluir los quiebres de ruta calculados por el autolayout como waypoints (por defecto true). */
+  waypoints?: boolean;
 }
 
 export class DrawioExportError extends Error {
@@ -46,7 +55,9 @@ export function toDrawio(doc: C4Document, options: DrawioOptions = {}): string {
     const child = findChildView(doc, el.id);
     if (child && exportedIds.has(child.id)) pageLinks.set(el.id, child.id);
   }
-  const pages = views.map((v) => diagramXml(deriveView(doc, v.id), locale, pageLinks));
+  const notation = options.notation ?? 'c4';
+  const waypoints = options.waypoints ?? true;
+  const pages = views.map((v) => diagramXml(deriveView(doc, v.id), locale, pageLinks, notation, waypoints));
   return (
     `<mxfile host="diagramador-c4model" modified="${modified}" agent="diagramador-c4model" version="24.0.0" type="device">\n` +
     pages.join('\n') +
@@ -54,7 +65,13 @@ export function toDrawio(doc: C4Document, options: DrawioOptions = {}): string {
   );
 }
 
-function diagramXml(derived: DerivedView, locale: DrawioLocale, pageLinks: Map<string, string> = new Map()): string {
+function diagramXml(
+  derived: DerivedView,
+  locale: DrawioLocale,
+  pageLinks: Map<string, string> = new Map(),
+  notation: DrawioNotation = 'c4',
+  waypoints = true,
+): string {
   const { view, nodes, boundaries, edges } = derived;
   const unpositioned = nodes.filter((n) => !n.positioned);
   if (unpositioned.length > 0) {
@@ -106,21 +123,23 @@ function diagramXml(derived: DerivedView, locale: DrawioLocale, pageLinks: Map<s
       c4Name: el.name,
       c4Type: c4TypeLabel(locale, el.type),
       c4Description: el.description ?? '',
-      label: elementLabel(el),
+      label: notation === 'card' ? cardElementLabel(el) : elementLabel(el),
     };
     if (el.type === 'container' || el.type === 'component') attrs.c4Technology = el.technology ?? '';
     const childPage = pageLinks.get(el.id);
     if (childPage && childPage !== view.id) attrs.link = `data:page/id,${childPage}`;
+    const style = notation === 'card' ? cardElementStyle(el) : elementStyle(el);
     cells.push(
       objectCell(
         cellId(n.id),
         attrs,
-        `<mxCell style="${elementStyle(el)}" vertex="1" parent="${parentCell(n.boundaryId)}">` +
+        `<mxCell style="${style}" vertex="1" parent="${parentCell(n.boundaryId)}">` +
           `<mxGeometry x="${geo.x}" y="${geo.y}" width="${n.width}" height="${n.height}" as="geometry"/></mxCell>`,
       ),
     );
   }
 
+  const routes = new Map((view.edges ?? []).map((r) => [r.id, r]));
   for (const e of edges) {
     const rel = e.relationship;
     const hasTech = !!rel.technology;
@@ -130,12 +149,18 @@ function diagramXml(derived: DerivedView, locale: DrawioLocale, pageLinks: Map<s
       label: relationshipLabel(hasTech),
     };
     if (hasTech) attrs.c4Technology = rel.technology!;
+    // Waypoints del autolayout (quiebres intermedios en coordenadas absolutas; las aristas cuelgan de la capa raíz).
+    const route = waypoints ? routes.get(e.id) : undefined;
+    const bends = route ? route.points.slice(1, -1) : [];
+    const geometry =
+      bends.length > 0
+        ? `<mxGeometry relative="1" as="geometry"><Array as="points">${bends.map((p) => `<mxPoint x="${p.x}" y="${p.y}"/>`).join('')}</Array></mxGeometry>`
+        : `<mxGeometry relative="1" as="geometry"/>`;
     cells.push(
       objectCell(
         cellId(e.id),
         attrs,
-        `<mxCell style="${relationshipStyle()}" edge="1" parent="1" source="${cellId(e.sourceId)}" target="${cellId(e.targetId)}">` +
-          `<mxGeometry relative="1" as="geometry"/></mxCell>`,
+        `<mxCell style="${relationshipStyle()}" edge="1" parent="1" source="${cellId(e.sourceId)}" target="${cellId(e.targetId)}">${geometry}</mxCell>`,
       ),
     );
   }

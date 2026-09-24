@@ -59,6 +59,8 @@ Un documento contiene un **modelo** compartido (elementos y relaciones) y N **vi
 | `view.type` | `systemContext`, `container`, `component` |
 | `view.scopeId` | sistema (contexto/contenedores) o contenedor (componentes); se dibuja como **boundary** |
 | `view.layout.direction` | `DOWN`, `RIGHT`, `UP`, `LEFT` |
+| `view.layout.density` | `auto`, `compact`, `spacious` |
+| `view.edges[]` | rutas del autolayout: `{ id, points: [{x,y}…], label?: {x,y} }` (opcional; se recalculan si quedan obsoletas) |
 
 Reglas que se derivan automáticamente (no se almacenan):
 
@@ -80,6 +82,16 @@ Todas las vistas comparten un mismo modelo; el **tipo** de cada vista es su nive
 - En el `.drawio`, los sistemas y contenedores con vista hija llevan un enlace `data:page/id,<vista>`, así que en draw.io también se salta de página con Ctrl/⌘ + clic.
 - En modo embebido, cada cambio de vista emite el evento `viewChange { viewId, level, scopeId, title }` y el anfitrión puede navegar con `setView`.
 
+## Autolayout inteligente
+
+El autolayout no acepta el primer resultado de ELK: **mide la calidad** del diagrama y **se autocorrige**.
+
+1. **Etiquetas con espacio**: cada relación se envía a ELK con el tamaño estimado de su etiqueta (`elk.edgeLabels`), así que las capas dejan hueco real y las etiquetas nunca caen sobre un nodo.
+2. **Rutas ortogonales reales**: las rutas y posiciones de etiqueta que calcula ELK se guardan en la vista (`view.edges[]`, coordenadas absolutas) y son las que dibuja la app y las que se exportan como waypoints al `.drawio`. Si mueves un nodo, sus rutas se descartan y esa arista pasa a usar **puertos virtuales**: los puntos de salida se reparten a lo largo del lado para que las aristas que comparten nodo no se superpongan.
+3. **Densidad adaptativa**: el espaciado crece con las relaciones por nodo (`spacing = base × (1 + 0.25·min(relaciones/nodo, 3))`); en Ajustes o con `--density` se puede forzar `compact`, `auto` o `spacious`.
+4. **Convenciones C4**: las personas sin relaciones entrantes van en la primera capa y los sistemas externos "sumidero" en la última, para que todas las vistas se lean igual.
+5. **Métrica y candidatos**: cada candidato se puntúa por cruces entre aristas, aristas que atraviesan nodos, etiquetas solapadas, área y proporción. Se prueban varias estrategias (`BRANDES_KOEPF`, `NETWORK_SIMPLEX`, `LINEAR_SEGMENTS`, espaciado ampliado y, si persisten cruces, `LAYER_SWEEP` exhaustivo) y se elige la mejor; se detiene en cuanto una sale limpia. La toolbar muestra el resultado ("✓ 0 cruces · 0 solapes") y el CLI lo imprime por vista. `--fast` hace una sola pasada.
+
 ## Conversión a `.drawio`
 
 Cada vista se convierte en una página de draw.io. Los elementos se envuelven en `<object placeholders="1" c4Name=… c4Type=… c4Description=… c4Technology=…>` con los estilos de la librería C4 (`shape=mxgraph.c4.person2`, `cylinder3` para bases de datos, boundary punteado, relaciones ortogonales). Los hijos de un boundary cuelgan de su celda con geometría relativa, tal como los crea draw.io. El archivo se escribe sin comprimir, así que draw.io / diagrams.net lo abre directamente y se puede versionar en git.
@@ -87,14 +99,22 @@ Cada vista se convierte en una página de draw.io. Los elementos se envuelven en
 ```bash
 npx c4diagram convert examples/banca.json --out banca.drawio          # aplica autolayout si faltan coordenadas
 npx c4diagram convert examples/banca.json --locale en --view contexto  # etiquetas de tipo en inglés, una sola vista
+npx c4diagram convert examples/banca.json --notation card --out banca-tarjetas.drawio  # tarjetas estilo drawdb
 ```
+
+Dos **notaciones** de figuras (`--notation`, menú Archivo o `toDrawio(doc, { notation })`):
+
+- `c4` (por defecto): librería C4 oficial de draw.io (persona, sistema, contenedor, componente, cilindro).
+- `card`: tarjetas estilo drawdb (rectángulo claro con franja del color C4, nombre, `[Tipo: tecnología]` y descripción); las bases de datos y colas conservan el cilindro con relleno claro.
+
+Los archivos [`examples/banca-c4.drawio`](examples/banca-c4.drawio) y [`examples/banca-tarjetas.drawio`](examples/banca-tarjetas.drawio) son el ejemplo de banca exportado en cada notación (3 páginas, enlaces entre niveles y waypoints del autolayout).
 
 ## CLI `c4diagram`
 
 ```
 c4diagram generate "<instrucción>" [--from base.json] [--out d.drawio] [--json d.json] [--model claude-opus-5] [--effort high] [--direction DOWN]
-c4diagram layout   [archivo.json | --stdin] [--out out.json] [--direction RIGHT] [--force] [--view id]
-c4diagram convert  [archivo.json | --stdin] [--out out.drawio] [--locale es|en] [--view id...]
+c4diagram layout   [archivo.json | --stdin] [--out out.json] [--direction RIGHT] [--density auto|compact|spacious] [--fast] [--force] [--view id]
+c4diagram convert  [archivo.json | --stdin] [--out out.drawio] [--notation c4|card] [--no-waypoints] [--locale es|en] [--view id...]
 c4diagram validate [archivo.json | --stdin] [--strict]
 c4diagram schema   [--generation]
 c4diagram prompt   "<instrucción>" [--from base.json]
@@ -164,7 +184,7 @@ Abre la app con `?embed=1&proto=json[&origin=https://mi-host][&theme=dark][&ui=m
 | `load` | `document?` (objeto o JSON), `autosave?`, `title?`, `readOnly?`, `theme?`, `viewId?`, `autoLayout?` |
 | `configure` | `theme?`, `ui?: 'full' \| 'min'`, `hideSidePanel?` |
 | `merge` | `document`, `autoLayout?` — fusiona elementos/relaciones/vistas y relanza el autolayout |
-| `export` | `format: 'json' \| 'drawio'` (`svg`/`png` responden `error` por ahora), `viewId?`, `requestId?` |
+| `export` | `format: 'json' \| 'drawio'` (`svg`/`png` responden `error` por ahora), `notation?: 'c4' \| 'card'`, `viewId?`, `requestId?` |
 | `autoLayout` | `viewId?`, `direction?`, `force?` |
 | `setView` | `viewId` |
 | `status` | `message`, `modified?` — texto en la cabecera |

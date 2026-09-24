@@ -11,6 +11,7 @@ export type ElementType = 'person' | 'softwareSystem' | 'container' | 'component
 export type ElementShape = 'default' | 'database' | 'queue' | 'browser' | 'mobile';
 export type ViewType = 'systemContext' | 'container' | 'component';
 export type LayoutDirection = 'DOWN' | 'RIGHT' | 'UP' | 'LEFT';
+export type LayoutDensity = 'auto' | 'compact' | 'spacious';
 
 export interface C4Element {
   id: string;
@@ -50,6 +51,23 @@ export interface C4LayoutOptions {
   spacing?: number;
   /** Separación entre capas (px). */
   layerSpacing?: number;
+  /** Densidad del autolayout: 'auto' (según relaciones por nodo), 'compact' o 'spacious'. */
+  density?: LayoutDensity;
+}
+
+export interface C4Point {
+  x: number;
+  y: number;
+}
+
+/** Ruta calculada por el autolayout para una relación visible en la vista (coordenadas absolutas). */
+export interface C4ViewEdge {
+  /** Id de la relación (o `${rel}@origen->destino` para relaciones implícitas). */
+  id: string;
+  /** Polilínea ortogonal: punto de salida, quiebres y punto de llegada. */
+  points: C4Point[];
+  /** Centro de la etiqueta, si el autolayout la colocó. */
+  label?: C4Point;
 }
 
 export interface C4View {
@@ -60,6 +78,8 @@ export interface C4View {
   title?: string;
   description?: string;
   elements: C4ViewElement[];
+  /** Rutas de aristas generadas por el autolayout (opcional; si faltan o están obsoletas se calculan al vuelo). */
+  edges?: C4ViewEdge[];
   layout?: C4LayoutOptions;
 }
 

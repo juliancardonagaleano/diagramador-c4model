@@ -46,10 +46,21 @@ export const viewElementSchema = z.object({
   height: z.number().positive().optional(),
 });
 
+export const layoutDensitySchema = z.enum(['auto', 'compact', 'spacious']);
+
 export const layoutOptionsSchema = z.object({
   direction: layoutDirectionSchema.optional(),
   spacing: z.number().positive().optional(),
   layerSpacing: z.number().positive().optional(),
+  density: layoutDensitySchema.optional(),
+});
+
+export const pointSchema = z.object({ x: z.number(), y: z.number() });
+
+export const viewEdgeSchema = z.object({
+  id: idSchema,
+  points: z.array(pointSchema).min(2),
+  label: pointSchema.optional(),
 });
 
 export const viewSchema = z.object({
@@ -59,6 +70,7 @@ export const viewSchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
   elements: z.array(viewElementSchema).default([]),
+  edges: z.array(viewEdgeSchema).optional(),
   layout: layoutOptionsSchema.optional(),
 });
 

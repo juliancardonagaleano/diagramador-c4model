@@ -49,7 +49,8 @@ export interface C4Embed {
   ready: Promise<void>;
   load(document?: C4Document | string, options?: Omit<LoadAction, 'action' | 'document'>): Promise<C4Document>;
   merge(document: C4Document | string, autoLayout?: boolean): void;
-  export(format: ExportFormat, viewId?: string): Promise<string>;
+  /** Exporta; para `drawio`, `notation` elige entre la librería C4 de draw.io ('c4', por defecto) y tarjetas ('card'). */
+  export(format: ExportFormat, viewId?: string, notation?: 'c4' | 'card'): Promise<string>;
   autoLayout(options?: { viewId?: string; direction?: LayoutDirection; force?: boolean }): void;
   setView(viewId: string): void;
   status(message: string, modified?: boolean): void;
@@ -187,11 +188,11 @@ export function createC4Embed(options: C4EmbedOptions): C4Embed {
     merge(doc, autoLayout) {
       send({ action: 'merge', document: doc, autoLayout });
     },
-    export(format, viewId) {
+    export(format, viewId, notation) {
       const requestId = `exp-${++counter}`;
       return new Promise((resolve, reject) => {
         pendingExports.set(requestId, { resolve, reject });
-        send({ action: 'export', format, viewId, requestId });
+        send({ action: 'export', format, viewId, requestId, notation });
       });
     },
     autoLayout(opts = {}) {

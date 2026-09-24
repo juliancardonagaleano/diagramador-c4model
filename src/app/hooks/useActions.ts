@@ -1,6 +1,6 @@
 import { Toast } from '@douyinfe/semi-ui';
 import { useCallback } from 'react';
-import { toDrawio } from '../../core/export/drawio/toDrawio';
+import { toDrawio, type DrawioNotation } from '../../core/export/drawio/toDrawio';
 import { autoLayoutDocument } from '../../core/layout/elkLayout';
 import { validateDocument, formatIssues } from '../../core/model/schema';
 import type { LayoutDirection } from '../../core/model/types';
@@ -11,22 +11,26 @@ import { downloadText, extractJson, pickTextFile, safeFilename } from '../utils/
 export function useActions() {
   const store = useDocumentStore;
 
-  const exportDrawio = useCallback(async () => {
-    const { doc } = store.getState();
-    if (doc.views.length === 0) {
-      Toast.warning('No hay vistas que exportar');
-      return;
-    }
-    try {
-      const laid = await autoLayoutDocument(doc);
-      if (laid !== doc) store.getState().setDocument(laid, { activeViewId: store.getState().activeViewId ?? undefined });
-      const xml = toDrawio(laid);
-      downloadText(safeFilename(doc.workspace.name, 'drawio'), xml, 'application/xml');
-      Toast.success('Archivo .drawio exportado');
-    } catch (error) {
-      Toast.error(`No se pudo exportar: ${(error as Error).message}`);
-    }
-  }, [store]);
+  const exportDrawio = useCallback(
+    async (notation?: DrawioNotation) => {
+      const { doc, ui } = store.getState();
+      const chosen = notation ?? (ui.nodeStyle === 'card' ? 'card' : 'c4');
+      if (doc.views.length === 0) {
+        Toast.warning('No hay vistas que exportar');
+        return;
+      }
+      try {
+        const laid = await autoLayoutDocument(doc, { density: ui.density });
+        if (laid !== doc) store.getState().setDocument(laid, { activeViewId: store.getState().activeViewId ?? undefined });
+        const xml = toDrawio(laid, { notation: chosen });
+        downloadText(safeFilename(`${doc.workspace.name}${chosen === 'card' ? '-tarjetas' : ''}`, 'drawio'), xml, 'application/xml');
+        Toast.success(`Archivo .drawio exportado (${chosen === 'card' ? 'tarjetas' : 'notación C4'})`);
+      } catch (error) {
+        Toast.error(`No se pudo exportar: ${(error as Error).message}`);
+      }
+    },
+    [store],
+  );
 
   const saveJson = useCallback(() => {
     const { doc, markSaved } = store.getState();
@@ -67,7 +71,7 @@ export function useActions() {
       const s = store.getState();
       if (direction) s.setUi({ direction });
       try {
-        await s.runAutoLayout(undefined, { direction: direction ?? s.ui.direction, force: true });
+        await s.runAutoLayout(undefined, { direction: direction ?? s.ui.direction, density: s.ui.density, force: true });
       } catch (error) {
         Toast.error(`Autolayout falló: ${(error as Error).message}`);
       }
