@@ -37,6 +37,10 @@ push a `master` (también se puede lanzar a mano desde la pestaña *Actions*):
   rechaza el despliegue. La primera ejecución del workflow intenta activar Pages con ese origen; si ya estaba
   activado desde una rama, cámbialo a mano y relanza el workflow.
 
+**Sin GitHub Actions** (por ejemplo, cuenta con la facturación bloqueada): `npm run deploy:pages` construye la app
+con la ruta base y publica `dist/app` en la rama `gh-pages`. En ese caso el origen de Pages es *Deploy from a
+branch → `gh-pages` / (root)*. La rama se reescribe en cada publicación (contiene solo el sitio compilado).
+
 ## Formato JSON
 
 Un documento contiene un **modelo** compartido (elementos y relaciones) y N **vistas**. Las coordenadas son absolutas y opcionales: cualquier elemento sin `x`/`y` se posiciona con autolayout.

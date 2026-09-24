@@ -40,6 +40,7 @@
     "schema": "tsx scripts/generate-schema.ts",
     "cli": "tsx src/cli/index.ts",
     "e2e": "node tests/e2e/run.mjs",
+    "deploy:pages": "bash scripts/deploy-gh-pages.sh",
     "verify": "npm run typecheck && npm test && npm run build && npm run e2e"
   },
   "dependencies": {
