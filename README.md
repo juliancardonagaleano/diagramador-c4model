@@ -20,6 +20,20 @@ npm run e2e        # pruebas de extremo a extremo con Playwright (requiere build
 
 Requisitos: Node 20+.
 
+## Despliegue (GitHub Pages)
+
+La app es un sitio estático (`dist/app`), sin servidor: la generación con IA vive solo en el CLI. El workflow
+`.github/workflows/deploy-pages.yml` construye la app con `npm run build:app` y la publica en GitHub Pages en cada
+push a `master` (también se puede lanzar a mano desde la pestaña *Actions*):
+
+- URL: `https://<usuario>.github.io/<repositorio>/` (la demo del modo embebido queda en
+  `.../examples/embed-host.html`).
+- Como Pages sirve bajo `/<repositorio>/`, el workflow fija `BASE_PATH` y `vite.config.ts` lo usa como `base`.
+  En hostings que sirven en la raíz (Cloudflare Pages, Netlify, Vercel) basta con el comando `npm run build:app`
+  y la carpeta `dist/app`, sin definir `BASE_PATH`.
+- La primera ejecución activa Pages con origen "GitHub Actions"; si el repositorio lo impide, actívalo en
+  *Settings → Pages → Source → GitHub Actions* y relanza el workflow.
+
 ## Formato JSON
 
 Un documento contiene un **modelo** compartido (elementos y relaciones) y N **vistas**. Las coordenadas son absolutas y opcionales: cualquier elemento sin `x`/`y` se posiciona con autolayout.

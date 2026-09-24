@@ -3,7 +3,15 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 
+/**
+ * Ruta base pública. En GitHub Pages la app se sirve bajo `/<repositorio>/`, así que el
+ * workflow de despliegue fija `BASE_PATH=/diagramador-c4model/`; en local y en hostings
+ * que sirven en la raíz (Cloudflare Pages, Netlify, Vercel) se deja `/`.
+ */
+const base = process.env.BASE_PATH ?? '/';
+
 export default defineConfig({
+  base,
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
