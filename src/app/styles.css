@@ -186,6 +186,124 @@ body {
   justify-content: center;
 }
 
+/* Notación C4 clásica (cajas de color, persona con cabeza, cilindros…) */
+.c4-shape {
+  position: relative;
+  display: block;
+}
+.c4-shape-svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  filter: drop-shadow(0 4px 6px rgb(0 0 0 / 0.18));
+}
+.c4-shape:hover .c4-shape-outline {
+  stroke: #3b82f6;
+  stroke-dasharray: 6 4;
+}
+.c4-shape.selected .c4-shape-outline {
+  stroke: #3b82f6;
+  stroke-dasharray: none;
+  stroke-width: 3;
+}
+.c4-shape-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 3px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.c4-shape-name {
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.2;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.c4-shape-type {
+  font-size: 11px;
+  line-height: 1.2;
+  opacity: 0.85;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.c4-shape-desc {
+  font-size: 11.5px;
+  line-height: 1.3;
+  opacity: 0.92;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.c4-drill-badge {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 12px;
+  line-height: 1;
+  border: 1px solid;
+  border-radius: 4px;
+  padding: 1px 4px;
+  opacity: 0.75;
+  pointer-events: none;
+}
+.c4-shape.shape-person .c4-drill-badge {
+  top: 28px;
+}
+.c4-node .c4-drill-badge {
+  position: static;
+  color: var(--semi-color-text-2);
+}
+.has-child {
+  cursor: pointer;
+}
+
+/* Breadcrumb de niveles C1 › C2 › C3 */
+.c4-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  max-width: 100%;
+  overflow: hidden;
+}
+.c4-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  max-width: 260px;
+  color: var(--semi-color-text-1);
+}
+.c4-crumb.is-current {
+  background-color: var(--semi-color-bg-2);
+  font-weight: 600;
+  cursor: default;
+}
+.c4-crumb-level {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background-color: var(--c4-primary);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
 /* Boundary */
 .c4-boundary {
   border: 2px dashed var(--c4-boundary-border);

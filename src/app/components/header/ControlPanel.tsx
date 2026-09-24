@@ -116,6 +116,9 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
     { key: 'minimap', label: 'Minimapa', checked: ui.showMinimap, onClick: () => setUi({ showMinimap: !ui.showMinimap }) },
     { key: 'd2', label: '', divider: true },
     { key: 'theme', label: 'Tema oscuro', checked: ui.theme === 'dark', onClick: () => setUi({ theme: ui.theme === 'dark' ? 'light' : 'dark' }) },
+    { key: 'd3', label: '', divider: true },
+    { key: 'style-c4', label: 'Notación C4 clásica', checked: ui.nodeStyle === 'c4', onClick: () => setUi({ nodeStyle: 'c4' }) },
+    { key: 'style-card', label: 'Tarjetas (estilo drawdb)', checked: ui.nodeStyle === 'card', onClick: () => setUi({ nodeStyle: 'card' }) },
   ];
 
   const settingsMenu: MenuProps['items'] = (['DOWN', 'RIGHT', 'UP', 'LEFT'] as const).map((d) => ({

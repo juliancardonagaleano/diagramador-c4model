@@ -67,6 +67,21 @@ describe('toDrawio', () => {
     expect(r11['@_c4Technology']).toBe('JDBC');
   });
 
+  it('enlaza las páginas de niveles inferiores (C1 → C2 → C3) con link=data:page/id', async () => {
+    const laid = await autoLayoutDocument(sampleDocument);
+    const xml = toDrawio(laid);
+    const parsed = parser.parse(xml);
+    const diagrams = [].concat(parsed.mxfile.diagram) as Array<{ mxGraphModel: { root: { object: Array<Record<string, unknown>> } } }>;
+    const ctx = diagrams[0].mxGraphModel.root.object;
+    expect(ctx.find((o) => o['@_id'] === 'banca')?.['@_link']).toBe('data:page/id,contenedores');
+    expect(ctx.find((o) => o['@_id'] === 'cliente')?.['@_link']).toBeUndefined();
+    const cont = diagrams[1].mxGraphModel.root.object;
+    expect(cont.find((o) => o['@_id'] === 'api')?.['@_link']).toBe('data:page/id,componentes-api');
+    // Si la página hija no se exporta, no se enlaza.
+    const only = toDrawio(laid, { viewIds: ['contexto'] });
+    expect(only).not.toContain('data:page/id');
+  });
+
   it('escapa caracteres especiales en atributos', async () => {
     const doc = structuredClone(sampleDocument);
     doc.model.elements[0].name = 'Cliente <"VIP"> & más';

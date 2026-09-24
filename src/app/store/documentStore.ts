@@ -2,10 +2,13 @@ import { create, useStore } from 'zustand';
 import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
 import { temporal } from 'zundo';
 import {
+  childViewType,
   createElement,
   createEmptyDocument,
   createRelationship,
   createView,
+  findChildView,
+  findParentView,
   suggestViewElements,
 } from '../../core/model/factories';
 import { sampleDocument } from '../../core/model/sample';
@@ -41,6 +44,8 @@ export interface UiState {
   sidebarMode: 'structure' | 'json';
   panelTab: PanelTab;
   direction: LayoutDirection;
+  /** Notación del lienzo: 'c4' (cajas de color, convención C4) o 'card' (tarjetas estilo drawdb). */
+  nodeStyle: 'c4' | 'card';
 }
 
 export interface DocumentState {
@@ -82,6 +87,10 @@ export interface DocumentActions {
   setReadOnly: (readOnly: boolean) => void;
   setUi: (patch: Partial<UiState>) => void;
   toggleTheme: () => void;
+  /** Baja al nivel inferior de un elemento (sistema → C2, contenedor → C3); crea la vista si no existe. */
+  drillDown: (elementId: string) => string | null;
+  /** Sube al nivel superior de la vista activa (C3 → C2 → C1). */
+  drillUp: () => string | null;
 }
 
 export type DocumentStore = DocumentState & DocumentActions;
@@ -106,6 +115,7 @@ const defaultUi: UiState = {
   sidebarMode: 'structure',
   panelTab: 'elements',
   direction: 'DOWN',
+  nodeStyle: 'c4',
 };
 
 function firstViewId(doc: C4Document): string | null {
@@ -373,6 +383,29 @@ export const useDocumentStore = create<DocumentStore>()(
           setReadOnly: (readOnly) => set({ readOnly }),
           setUi: (patch) => set((s) => ({ ui: { ...s.ui, ...patch } })),
           toggleTheme: () => set((s) => ({ ui: { ...s.ui, theme: s.ui.theme === 'dark' ? 'light' : 'dark' } })),
+
+          drillDown: (elementId) => {
+            const { doc } = get();
+            const element = doc.model.elements.find((e) => e.id === elementId);
+            if (!element) return null;
+            const existing = findChildView(doc, elementId);
+            if (existing) {
+              set({ activeViewId: existing.id, selection: { kind: 'none' } });
+              return existing.id;
+            }
+            const type = childViewType(element);
+            if (!type || get().readOnly) return null;
+            return get().addView(type, elementId).id;
+          },
+          drillUp: () => {
+            const { doc, activeViewId } = get();
+            const view = doc.views.find((v) => v.id === activeViewId);
+            if (!view) return null;
+            const parent = findParentView(doc, view);
+            if (!parent) return null;
+            set({ activeViewId: parent.id, selection: view.scopeId ? { kind: 'element', id: view.scopeId } : { kind: 'none' } });
+            return parent.id;
+          },
         };
       },
       {
@@ -385,6 +418,11 @@ export const useDocumentStore = create<DocumentStore>()(
       name: 'diagramador-c4model',
       storage: createJSONStorage(() => (isEmbedMode ? noopStorage : localStorage)),
       partialize: (state) => ({ doc: state.doc, activeViewId: state.activeViewId, ui: state.ui, lastSavedAt: state.lastSavedAt }),
+      // Los ajustes nuevos (p. ej. nodeStyle) conservan su valor por defecto aunque el localStorage sea anterior.
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<DocumentState>;
+        return { ...current, ...p, ui: { ...current.ui, ...(p.ui ?? {}) } };
+      },
       version: 1,
     },
   ),

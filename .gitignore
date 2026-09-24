@@ -5,3 +5,5 @@ dist
 /playwright-report
 /test-results
 /examples/*.generated.*
+.env
+.env.*

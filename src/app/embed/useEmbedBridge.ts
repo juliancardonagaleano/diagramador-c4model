@@ -2,6 +2,7 @@ import { Modal, Toast } from '@douyinfe/semi-ui';
 import { useEffect, useRef } from 'react';
 import { toDrawio } from '../../core/export/drawio/toDrawio';
 import { autoLayoutDocument } from '../../core/layout/elkLayout';
+import { viewLevel } from '../../core/model/factories';
 import { formatIssues, validateDocument } from '../../core/model/schema';
 import type { C4Document } from '../../core/model/types';
 import { parseHostAction, PROTOCOL_VERSION, type EmbedEvent, type HostAction } from '../../embed/protocol';
@@ -184,7 +185,13 @@ export function useEmbedBridge(): { save: (exit: boolean) => Promise<void>; exit
     // Autosave/change con throttle.
     let timer: ReturnType<typeof setTimeout> | null = null;
     let lastDoc = store.getState().doc;
+    let lastViewId = store.getState().activeViewId;
     const unsub = store.subscribe((state) => {
+      if (state.activeViewId !== lastViewId) {
+        lastViewId = state.activeViewId;
+        const view = state.doc.views.find((v) => v.id === state.activeViewId);
+        if (view) post({ event: 'viewChange', viewId: view.id, level: viewLevel(view), scopeId: view.scopeId, title: view.title });
+      }
       if (state.doc === lastDoc) return;
       lastDoc = state.doc;
       if (!state.modified) return;

@@ -87,6 +87,7 @@
         onChange: (document) => print('autosave', { elementos: document.model.elements.length }),
         onSave: ({ document, drawio, exit }) => print('save', { exit, drawioBytes: drawio?.length ?? 0, elementos: document.model.elements.length }),
         onExit: ({ modified }) => { state.textContent = 'salió'; print('exit', { modified }); },
+        onViewChange: (v) => print('viewChange', v),
         onError: (e) => print('error', e),
       });
       window.embed = embed; // útil para depurar desde la consola

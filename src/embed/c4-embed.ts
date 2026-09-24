@@ -36,6 +36,8 @@ export interface C4EmbedOptions {
   onSave?: (payload: { document: C4Document; drawio?: string; exit: boolean }) => void;
   onExit?: (payload: { modified: boolean }) => void;
   onExport?: (payload: { format: ExportFormat; data: string; viewId?: string }) => void;
+  /** El usuario navegó a otra vista (C1/C2/C3), por doble clic, breadcrumb o `setView`. */
+  onViewChange?: (payload: { viewId: string; level: 'C1' | 'C2' | 'C3'; scopeId?: string; title?: string }) => void;
   onError?: (payload: { message: string; issues?: Array<{ path: string; message: string }> }) => void;
   /** Recibe todos los eventos del iframe. */
   onEvent?: (event: EmbedEvent) => void;
@@ -141,6 +143,9 @@ export function createC4Embed(options: C4EmbedOptions): C4Embed {
         break;
       case 'save':
         options.onSave?.({ document: msg.document, drawio: msg.drawio, exit: msg.exit });
+        break;
+      case 'viewChange':
+        options.onViewChange?.({ viewId: msg.viewId, level: msg.level, scopeId: msg.scopeId, title: msg.title });
         break;
       case 'exit':
         options.onExit?.({ modified: msg.modified });

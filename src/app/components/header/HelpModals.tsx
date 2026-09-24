@@ -8,6 +8,8 @@ const SHORTCUTS: Array<[string, string]> = [
   ['Ctrl/⌘ + O', 'Abrir JSON'],
   ['Ctrl/⌘ + L', 'Autolayout de la vista activa'],
   ['Supr / Retroceso', 'Quitar de la vista el elemento seleccionado (o borrar la relación)'],
+  ['Doble clic en sistema / contenedor', 'Bajar al nivel inferior (C1 → C2 → C3)'],
+  ['Alt + ↓ / Alt + ↑', 'Bajar al nivel del elemento seleccionado / subir de nivel'],
   ['Ctrl/⌘ + rueda', 'Zoom'],
   ['Rueda / Shift + rueda', 'Desplazar vertical / horizontal'],
   ['Botón central o derecho + arrastrar', 'Desplazar el lienzo'],

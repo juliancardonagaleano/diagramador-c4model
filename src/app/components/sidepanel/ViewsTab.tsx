@@ -1,7 +1,7 @@
 import { Button, Empty, Input, Select, Tag } from '@douyinfe/semi-ui';
 import { IconDelete, IconPlus, IconTreeTriangleDown, IconTreeTriangleRight } from '@douyinfe/semi-icons';
 import { useState } from 'react';
-import { suggestViewElements } from '../../../core/model/factories';
+import { suggestViewElements, viewLevel } from '../../../core/model/factories';
 import { VIEW_SCOPE_TYPE, VIEW_TYPE_LABELS, type C4View, type ViewType } from '../../../core/model/types';
 import { useDocumentStore } from '../../store/documentStore';
 
@@ -27,6 +27,9 @@ function ViewCard({ view }: { view: C4View }) {
           }}
         >
           {open ? <IconTreeTriangleDown size="small" /> : <IconTreeTriangleRight size="small" />}
+        </span>
+        <span className="c4-crumb-level flex-none" title={VIEW_TYPE_LABELS[view.type]}>
+          {viewLevel(view)}
         </span>
         <span className="font-medium truncate flex-1">{view.title ?? view.id}</span>
         <Tag size="small" color={view.type === 'systemContext' ? 'blue' : view.type === 'container' ? 'cyan' : 'light-blue'}>
@@ -117,7 +120,11 @@ export function ViewsTab() {
         <Button icon={<IconPlus />} theme="solid" size="small" disabled={readOnly || (type !== 'systemContext' && !scopeId)} onClick={() => addView(type, scopeId)} />
       </div>
       <p className="text-xs text-color-3">Al crear una vista se incluyen automáticamente los elementos que el modelo C4 sugiere y se aplica autolayout.</p>
-      {doc.views.length === 0 ? <Empty description="Aún no hay vistas" className="py-6" /> : doc.views.map((v) => <ViewCard key={v.id} view={v} />)}
+      {doc.views.length === 0 ? (
+        <Empty description="Aún no hay vistas" className="py-6" />
+      ) : (
+        [...doc.views].sort((a, b) => viewLevel(a).localeCompare(viewLevel(b))).map((v) => <ViewCard key={v.id} view={v} />)
+      )}
     </div>
   );
 }

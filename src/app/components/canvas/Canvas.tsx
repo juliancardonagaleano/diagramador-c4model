@@ -15,6 +15,7 @@ import {
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { deriveView } from '../../../core/model/viewDerivation';
+import { findChildView } from '../../../core/model/factories';
 import { PARENT_TYPE } from '../../../core/model/types';
 import { useDocumentStore } from '../../store/documentStore';
 import { BoundaryNode, type BoundaryNodeType } from './BoundaryNode';
@@ -34,8 +35,9 @@ export function Canvas() {
   const showGrid = useDocumentStore((s) => s.ui.showGrid);
   const showMinimap = useDocumentStore((s) => s.ui.showMinimap);
   const theme = useDocumentStore((s) => s.ui.theme);
+  const nodeStyle = useDocumentStore((s) => s.ui.nodeStyle);
   const layoutBusy = useDocumentStore((s) => s.layoutBusy);
-  const { moveElements, addRelationship, select, updateElement, runAutoLayout } = useDocumentStore.getState();
+  const { moveElements, addRelationship, select, updateElement, runAutoLayout, drillDown } = useDocumentStore.getState();
   const { fitView } = useReactFlow();
 
   const derived = useMemo(() => (activeViewId && doc.views.some((v) => v.id === activeViewId) ? deriveView(doc, activeViewId) : null), [doc, activeViewId]);
@@ -77,13 +79,23 @@ export function Canvas() {
         position: { x: n.x!, y: n.y! },
         width: n.width,
         height: n.height,
-        data: { element: n.element, readOnly },
+        data: { element: n.element, readOnly, nodeStyle, childViewId: findChildView(doc, n.id)?.id },
         selected: selection.kind === 'element' && selection.id === n.id,
         draggable: !readOnly,
         connectable: !readOnly,
       }));
     return [...boundaries, ...nodes];
-  }, [derived, selection, readOnly]);
+  }, [derived, selection, readOnly, nodeStyle, doc]);
+
+  // Doble clic: bajar al nivel inferior (sistema → contenedores, contenedor → componentes).
+  const onNodeDoubleClick = useCallback(
+    (_: unknown, node: Node) => {
+      if (node.type !== 'element') return;
+      const target = drillDown(node.id);
+      if (target) setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 80);
+    },
+    [drillDown, fitView],
+  );
 
   const derivedEdges = useMemo<RelationshipEdgeType[]>(() => {
     if (!derived) return [];
@@ -211,6 +223,7 @@ export function Canvas() {
       onNodesChange={onNodesChange}
       onNodeDragStart={onNodeDragStart}
       onNodeDragStop={onNodeDragStop}
+      onNodeDoubleClick={onNodeDoubleClick}
       onConnect={onConnect}
       onSelectionChange={onSelectionChange}
       connectionMode={ConnectionMode.Loose}

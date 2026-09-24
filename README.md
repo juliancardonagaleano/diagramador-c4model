@@ -67,6 +67,19 @@ Reglas que se derivan automáticamente (no se almacenan):
 
 El JSON Schema está en [`schema/c4-document.schema.json`](schema/c4-document.schema.json) (`npm run schema` lo regenera; `c4diagram schema` lo imprime).
 
+## Notación del lienzo
+
+Por defecto los nodos usan la **notación C4 clásica** (c4model.com / Structurizr): cajas rellenas con el color del tipo y texto blanco, persona con cabeza, cilindro para bases de datos, cilindro horizontal para colas, ventana para apps web y dispositivo para apps móviles; los boundaries son rectángulos punteados con etiqueta abajo‑izquierda. En el menú **Ver** se puede cambiar a **Tarjetas (estilo drawdb)**. El `.drawio` exportado usa siempre las formas C4 de draw.io.
+
+## Niveles C1 › C2 › C3 y navegación
+
+Todas las vistas comparten un mismo modelo; el **tipo** de cada vista es su nivel: `systemContext` = **C1**, `container` = **C2**, `component` = **C3**, y el `scopeId` indica qué sistema o contenedor detalla. Entre niveles se navega:
+
+- **Doble clic** en un sistema (en C1) abre su vista de contenedores; doble clic en un contenedor (en C2) abre su vista de componentes. Si la vista no existe se crea con los elementos sugeridos por el modelo y autolayout. Los nodos con nivel inferior muestran la marca `⤵`.
+- **Breadcrumb** en la esquina inferior izquierda (`C1 Contexto · Banca › C2 Contenedores · Banca › C3 Componentes · API`): cada tramo es clicable y el botón ↑ **sube de nivel** (`Alt+↑`; `Alt+↓` baja al nivel del elemento seleccionado).
+- En el `.drawio`, los sistemas y contenedores con vista hija llevan un enlace `data:page/id,<vista>`, así que en draw.io también se salta de página con Ctrl/⌘ + clic.
+- En modo embebido, cada cambio de vista emite el evento `viewChange { viewId, level, scopeId, title }` y el anfitrión puede navegar con `setView`.
+
 ## Conversión a `.drawio`
 
 Cada vista se convierte en una página de draw.io. Los elementos se envuelven en `<object placeholders="1" c4Name=… c4Type=… c4Description=… c4Technology=…>` con los estilos de la librería C4 (`shape=mxgraph.c4.person2`, `cylinder3` para bases de datos, boundary punteado, relaciones ortogonales). Los hijos de un boundary cuelgan de su celda con geometría relativa, tal como los crea draw.io. El archivo se escribe sin comprimir, así que draw.io / diagrams.net lo abre directamente y se puede versionar en git.
@@ -140,6 +153,7 @@ Abre la app con `?embed=1&proto=json[&origin=https://mi-host][&theme=dark][&ui=m
 | `save` | Guardar / Guardar y salir | `{ document, drawio, exit }` |
 | `export` | respuesta a `action: export` | `{ format, data, viewId, requestId }` |
 | `autoLayout` | tras un autolayout pedido por el anfitrión | `{ viewId, direction }` |
+| `viewChange` | el usuario (o `setView`) cambió de vista | `{ viewId, level: 'C1' \| 'C2' \| 'C3', scopeId, title }` |
 | `exit` | salir | `{ modified }` |
 | `error` | documento inválido, acción desconocida… | `{ message, issues?, requestId? }` |
 
@@ -205,6 +219,20 @@ tests/e2e/    pruebas Playwright
 - **La IA nunca produce coordenadas**: produce el modelo; ELK produce la geometría. Esto hace la generación robusta y el autolayout la pieza central del sistema.
 - **ELK `layered` con `hierarchyHandling: INCLUDE_CHILDREN`** porque es el único motor JS que trata los boundaries como nodos compuestos.
 - **Semi UI + Tailwind 4** son las mismas librerías que usa drawdb, lo que permite reproducir su estética (tabs tipo card, cards colapsables, grid de puntos, tarjetas con franja de color).
+- **Niveles como vistas tipadas sobre un modelo único**, no diagramas independientes: así C1, C2 y C3 se mantienen coherentes entre sí y la navegación (doble clic, breadcrumb, enlaces de página en draw.io) se deriva de la relación vista ↔ alcance sin datos adicionales.
+
+## Pendiente: prueba real de `generate` con la API de Anthropic
+
+La generación con Claude está implementada y cubierta por pruebas con cliente simulado (`src/core/ai/generate.test.ts`) y por el test del CLI sin credenciales, pero **todavía no se ha ejecutado contra la API real** porque requiere una clave con créditos en la Consola de Claude (la suscripción de Claude.ai no incluye acceso a la API). Cuando exista la clave:
+
+1. Guardarla fuera del repositorio: como variable de entorno `ANTHROPIC_API_KEY` (en Claude Code web, en los ajustes del entorno → *API credentials*). Nunca en el chat, en el código ni en git (`.gitignore` excluye `.env*`).
+2. Ejecutar:
+   ```bash
+   npm run cli -- generate "Sistema de banca en línea con app web (React), API (Node.js), PostgreSQL y una pasarela de pagos externa" \
+     --json examples/banca-ia.generated.json --out examples/banca-ia.generated.drawio
+   npm run cli -- validate examples/banca-ia.generated.json
+   ```
+3. Comprobar que `validate` no reporta errores, que todas las vistas tienen coordenadas y que el `.drawio` abre en draw.io con una página por vista. Los archivos `*.generated.*` están ignorados por git.
 
 ## Fuera de alcance (v1)
 

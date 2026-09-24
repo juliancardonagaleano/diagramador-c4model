@@ -1,6 +1,7 @@
 import { ReactFlowProvider } from '@xyflow/react';
 import { useEffect } from 'react';
 import { Canvas } from './components/canvas/Canvas';
+import { Breadcrumb } from './components/header/Breadcrumb';
 import { ControlPanel } from './components/header/ControlPanel';
 import { FloatingToolbar } from './components/header/FloatingToolbar';
 import { SidePanel } from './components/sidepanel/SidePanel';
@@ -58,6 +59,13 @@ export default function App() {
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && !typing) {
         e.preventDefault();
         actions.deleteSelection();
+      } else if (e.altKey && e.key === 'ArrowUp' && !typing) {
+        e.preventDefault();
+        useDocumentStore.getState().drillUp();
+      } else if (e.altKey && e.key === 'ArrowDown' && !typing) {
+        e.preventDefault();
+        const sel = useDocumentStore.getState().selection;
+        if (sel.kind === 'element') useDocumentStore.getState().drillDown(sel.id);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -74,6 +82,9 @@ export default function App() {
             <Canvas />
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 max-w-[calc(100%-24px)]">
               <FloatingToolbar onEmbedSave={(exit) => void embed.save(exit)} />
+            </div>
+            <div className="absolute bottom-3 left-3 z-10 max-w-[calc(100%-24px)]">
+              <Breadcrumb />
             </div>
           </div>
         </div>

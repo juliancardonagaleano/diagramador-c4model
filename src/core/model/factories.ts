@@ -160,6 +160,53 @@ export function suggestViewElements(doc: C4Document, type: ViewType, scopeId?: s
   return [...ids];
 }
 
+export type ViewLevel = 'C1' | 'C2' | 'C3';
+
+/** Nivel C4 de una vista: contexto = C1, contenedores = C2, componentes = C3. */
+export function viewLevel(view: Pick<C4View, 'type'>): ViewLevel {
+  return view.type === 'systemContext' ? 'C1' : view.type === 'container' ? 'C2' : 'C3';
+}
+
+/** Tipo de vista "hija" que detalla a un elemento (sistema → contenedores, contenedor → componentes). */
+export function childViewType(element: Pick<C4Element, 'type'>): ViewType | null {
+  if (element.type === 'softwareSystem') return 'container';
+  if (element.type === 'container') return 'component';
+  return null;
+}
+
+/** Vista que detalla el interior de un elemento (nivel inferior), si existe en el documento. */
+export function findChildView(doc: C4Document, elementId: string): C4View | undefined {
+  const element = doc.model.elements.find((e) => e.id === elementId);
+  if (!element) return undefined;
+  const type = childViewType(element);
+  if (!type) return undefined;
+  return doc.views.find((v) => v.type === type && v.scopeId === elementId);
+}
+
+/** Vista de nivel superior a la dada (C3 → C2 del contenedor padre, C2 → C1 del sistema), si existe. */
+export function findParentView(doc: C4Document, view: C4View): C4View | undefined {
+  if (view.type === 'systemContext') return undefined;
+  const scope = view.scopeId ? doc.model.elements.find((e) => e.id === view.scopeId) : undefined;
+  if (view.type === 'component') {
+    const containerId = scope?.parentId;
+    return doc.views.find((v) => v.type === 'container' && v.scopeId === containerId) ?? doc.views.find((v) => v.type === 'container');
+  }
+  return doc.views.find((v) => v.type === 'systemContext' && v.scopeId === view.scopeId) ?? doc.views.find((v) => v.type === 'systemContext');
+}
+
+/** Cadena de navegación C1 › C2 › C3 que conduce a la vista dada (la propia vista al final). */
+export function viewBreadcrumb(doc: C4Document, viewId: string): C4View[] {
+  const chain: C4View[] = [];
+  let current = doc.views.find((v) => v.id === viewId);
+  const guard = new Set<string>();
+  while (current && !guard.has(current.id)) {
+    guard.add(current.id);
+    chain.unshift(current);
+    current = findParentView(doc, current);
+  }
+  return chain;
+}
+
 export function topLevelId(elementId: string, elements: Map<string, C4Element>): string {
   const chain = ancestorIds(elementId, elements);
   return chain.length ? chain[chain.length - 1] : elementId;

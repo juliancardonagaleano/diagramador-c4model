@@ -34,6 +34,9 @@ Vistas (elige según el nivel de detalle descrito):
 - Una vista "component" por cada container con componentes (scopeId = el contenedor): incluye sus
   componentes y los contenedores/sistemas externos con los que se relacionan.
 - Crea componentes solo si la descripción los menciona o los pide explícitamente.
+- Las vistas forman una jerarquía navegable C1 › C2 › C3: la vista "container" de un sistema debe tener como
+  scopeId exactamente ese sistema, y la vista "component" de un contenedor exactamente ese contenedor, para que
+  desde el nivel superior se pueda "bajar" al detalle de cada elemento.
 - Títulos de vista cortos ("Contexto - Banca", "Contenedores - Banca").
 
 Responde en el idioma de la instrucción del usuario (nombres, descripciones, títulos). Sé concreto y

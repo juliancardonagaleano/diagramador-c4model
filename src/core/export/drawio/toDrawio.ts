@@ -1,3 +1,4 @@
+import { findChildView } from '../../model/factories';
 import { deriveView, type DerivedBoundary, type DerivedNode, type DerivedView } from '../../model/viewDerivation';
 import type { C4Document } from '../../model/types';
 import {
@@ -38,7 +39,14 @@ export function toDrawio(doc: C4Document, options: DrawioOptions = {}): string {
   const views = options.viewIds ? doc.views.filter((v) => options.viewIds!.includes(v.id)) : doc.views;
   if (views.length === 0) throw new DrawioExportError('El documento no tiene vistas que exportar');
 
-  const pages = views.map((v) => diagramXml(deriveView(doc, v.id), locale));
+  // Enlaces entre páginas: un elemento con vista hija exportada (sistema → C2, contenedor → C3) enlaza a esa página.
+  const exportedIds = new Set(views.map((v) => v.id));
+  const pageLinks = new Map<string, string>();
+  for (const el of doc.model.elements) {
+    const child = findChildView(doc, el.id);
+    if (child && exportedIds.has(child.id)) pageLinks.set(el.id, child.id);
+  }
+  const pages = views.map((v) => diagramXml(deriveView(doc, v.id), locale, pageLinks));
   return (
     `<mxfile host="diagramador-c4model" modified="${modified}" agent="diagramador-c4model" version="24.0.0" type="device">\n` +
     pages.join('\n') +
@@ -46,7 +54,7 @@ export function toDrawio(doc: C4Document, options: DrawioOptions = {}): string {
   );
 }
 
-function diagramXml(derived: DerivedView, locale: DrawioLocale): string {
+function diagramXml(derived: DerivedView, locale: DrawioLocale, pageLinks: Map<string, string> = new Map()): string {
   const { view, nodes, boundaries, edges } = derived;
   const unpositioned = nodes.filter((n) => !n.positioned);
   if (unpositioned.length > 0) {
@@ -101,6 +109,8 @@ function diagramXml(derived: DerivedView, locale: DrawioLocale): string {
       label: elementLabel(el),
     };
     if (el.type === 'container' || el.type === 'component') attrs.c4Technology = el.technology ?? '';
+    const childPage = pageLinks.get(el.id);
+    if (childPage && childPage !== view.id) attrs.link = `data:page/id,${childPage}`;
     cells.push(
       objectCell(
         cellId(n.id),

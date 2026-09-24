@@ -72,12 +72,38 @@ try {
   await page.waitForTimeout(300);
   check((await page.locator('.react-flow__node').count()) === 4, 'deshacer revierte la creación del elemento');
 
-  // Cambiar de vista y comprobar boundary.
-  await page.getByRole('tab', { name: /Vistas/ }).click();
-  await page.locator('.c4-card-header', { hasText: 'Contenedores' }).click();
-  await page.waitForTimeout(600);
-  check((await page.locator('.c4-boundary').count()) === 1, 'la vista de contenedores dibuja el boundary del sistema');
+  // Notación C4 clásica por defecto: formas SVG (persona con cabeza, cilindro…).
+  check((await page.locator('.c4-shape.shape-person').count()) === 1, 'la persona se dibuja con la forma C4 (cabeza + cuerpo)');
+  check((await page.locator('.c4-shape-svg').count()) === 4, 'todos los nodos usan la notación C4 clásica');
+  check((await page.locator('.c4-breadcrumb [data-level], .c4-breadcrumb').first().getAttribute('data-level')) === 'C1', 'el breadcrumb muestra el nivel C1');
+
+  // Navegación C1 → C2 con doble clic en el sistema.
+  await page.locator('.react-flow__node', { hasText: 'Sistema de banca en línea' }).dblclick();
+  await page.waitForTimeout(700);
+  check((await page.locator('.c4-boundary').count()) === 1, 'doble clic en el sistema abre la vista de contenedores (boundary visible)');
+  check((await page.locator('.c4-breadcrumb').getAttribute('data-level')) === 'C2', 'el breadcrumb muestra C2 tras bajar de nivel');
+  check((await page.locator('.c4-shape.shape-database').count()) === 1, 'la base de datos se dibuja como cilindro');
+  check((await page.locator('.c4-shape.shape-browser').count()) === 1, 'la app web se dibuja como navegador');
   if (shotsDir) await page.screenshot({ path: `${shotsDir}/03-contenedores.png` });
+
+  // C2 → C3 con doble clic en la API y vuelta con "Subir nivel".
+  await page.locator('.react-flow__node', { hasText: 'Aplicación API' }).dblclick();
+  await page.waitForTimeout(700);
+  check((await page.locator('.c4-breadcrumb').getAttribute('data-level')) === 'C3', 'doble clic en el contenedor abre la vista de componentes (C3)');
+  if (shotsDir) await page.screenshot({ path: `${shotsDir}/03b-componentes.png` });
+  await page.getByRole('button', { name: 'Subir nivel' }).click();
+  await page.waitForTimeout(500);
+  check((await page.locator('.c4-breadcrumb').getAttribute('data-level')) === 'C2', '"Subir nivel" vuelve a C2');
+
+  // Conmutar a tarjetas estilo drawdb desde el menú Ver.
+  await page.getByText('Ver', { exact: true }).click();
+  await page.getByText('Tarjetas (estilo drawdb)').click();
+  await page.waitForTimeout(300);
+  check((await page.locator('.c4-node').count()) > 0 && (await page.locator('.c4-shape-svg').count()) === 0, 'el menú Ver cambia a la notación de tarjetas');
+  await page.getByText('Ver', { exact: true }).click();
+  await page.getByText('Notación C4 clásica').click();
+  await page.waitForTimeout(300);
+  check((await page.locator('.c4-shape-svg').count()) > 0, 'y vuelve a la notación C4 clásica');
 
   // Exportar .drawio (descarga).
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Exportar .drawio' }).click()]);
@@ -115,6 +141,11 @@ try {
 
   const xmlLen = await host.evaluate(async () => (await window.embed.export('drawio')).length);
   check(xmlLen > 500, 'action export devuelve el .drawio al anfitrión');
+
+  // setView desde el anfitrión → evento viewChange.
+  await host.evaluate(() => window.embed.setView('cont'));
+  await host.waitForTimeout(500);
+  check(/viewChange.*"level":"C2"/.test((await host.locator('#log').textContent()) ?? ''), 'setView emite viewChange con el nivel C2');
 
   await host.click('#btn-merge');
   await host.waitForTimeout(800);

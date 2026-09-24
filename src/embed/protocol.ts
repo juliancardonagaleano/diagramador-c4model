@@ -130,7 +130,16 @@ export interface LayoutDoneEvent {
   direction?: LayoutDirection;
 }
 
+export interface ViewChangeEvent {
+  event: 'viewChange';
+  viewId: string;
+  level: 'C1' | 'C2' | 'C3';
+  scopeId?: string;
+  title?: string;
+}
+
 export type EmbedEvent =
+  | ViewChangeEvent
   | InitEvent
   | ConfigureEvent
   | LoadEvent
