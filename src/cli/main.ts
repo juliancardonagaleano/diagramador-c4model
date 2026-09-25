@@ -2,7 +2,7 @@ import { Command, InvalidArgumentError } from 'commander';
 import { applyLayoutToView, autoLayoutDocumentWithQuality, layoutView } from '../core/layout/elkLayout';
 import { formatQuality, type LayoutQuality } from '../core/layout/quality';
 import { sampleDocument } from '../core/model/sample';
-import { toDrawio, type DrawioNotation } from '../core/export/drawio/toDrawio';
+import { toDrawio, DrawioExportError, type DrawioNotation } from '../core/export/drawio/toDrawio';
 import { documentJsonSchema, DocumentValidationError, formatIssues, validateDocument } from '../core/model/schema';
 import type { LayoutDensity, LayoutDirectionOption, LayoutDistribution } from '../core/model/types';
 import { generationJsonSchema } from '../core/ai/generationSchema';
@@ -47,6 +47,26 @@ function parseNotation(value: string): DrawioNotation {
   return v;
 }
 
+function parsePositiveNumber(value: string, label: string): number {
+  const n = Number.parseFloat(value);
+  if (!Number.isFinite(n) || n <= 0) throw new InvalidArgumentError(`${label} debe ser un número positivo.`);
+  return n;
+}
+
+function parseSpacing(value: string): number {
+  return parsePositiveNumber(value, 'La separación');
+}
+
+function parseLayerSpacing(value: string): number {
+  return parsePositiveNumber(value, 'La separación entre capas');
+}
+
+function parseRetries(value: string): number {
+  const n = Number.parseInt(value, 10);
+  if (!Number.isInteger(n) || n < 0) throw new InvalidArgumentError('Los reintentos deben ser un entero ≥ 0.');
+  return n;
+}
+
 function reportQuality(items: Array<{ viewId: string; quality?: LayoutQuality; direction?: string; distribution?: string }>): void {
   for (const { viewId, quality, direction, distribution } of items) {
     if (!quality) continue;
@@ -77,7 +97,7 @@ export function buildProgram(): Command {
     .option('-m, --model <modelo>', 'modelo de Claude', DEFAULT_AI_MODEL)
     .option('-e, --effort <nivel>', `esfuerzo de razonamiento (${EFFORTS.join('|')})`, parseEffort)
     .option('-d, --direction <dir>', `dirección del autolayout (${DIRECTIONS.join('|')})`, parseDirection)
-    .option('--retries <n>', 'reintentos si el modelo devuelve un documento inválido', (v) => Number.parseInt(v, 10), 1)
+    .option('--retries <n>', 'reintentos si el modelo devuelve un documento inválido', parseRetries, 1)
     .option('--locale <es|en>', 'idioma de las etiquetas de tipo en el .drawio', 'es')
     .option('--density <auto|compact|spacious>', 'densidad del autolayout', parseDensity)
     .option('--distribution <auto|centered|elk>', 'distribución del autolayout', parseDistribution)
@@ -119,8 +139,8 @@ export function buildProgram(): Command {
     .option('--stdin', 'leer el documento de la entrada estándar')
     .option('-o, --out <archivo.json>', 'archivo de salida (por defecto stdout)')
     .option('-d, --direction <dir>', `dirección (${DIRECTIONS.join('|')})`, parseDirection)
-    .option('--spacing <px>', 'separación entre nodos', (v) => Number.parseFloat(v))
-    .option('--layer-spacing <px>', 'separación entre capas', (v) => Number.parseFloat(v))
+    .option('--spacing <px>', 'separación entre nodos', parseSpacing)
+    .option('--layer-spacing <px>', 'separación entre capas', parseLayerSpacing)
     .option('--force', 'recalcular aunque ya haya coordenadas', false)
     .option('--density <auto|compact|spacious>', 'densidad del autolayout', parseDensity)
     .option('--distribution <auto|centered|elk>', 'distribución: centrada y uniforme, colocación de ELK o automática', parseDistribution)
@@ -259,12 +279,18 @@ export async function run(argv = process.argv): Promise<void> {
       process.exitCode = 4;
       return;
     }
+    if (error instanceof DrawioExportError) {
+      process.stderr.write(`${error.message}\n`);
+      process.exitCode = 3;
+      return;
+    }
     if (error && typeof error === 'object' && 'code' in error && String((error as { code: string }).code).startsWith('commander.')) {
       const code = (error as { exitCode?: number }).exitCode ?? 1;
       process.exitCode = code;
       return;
     }
-    process.stderr.write(`Error inesperado: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+    // Cualquier otro error (p. ej. "la vista X no existe"): mensaje de una línea, nunca el stack crudo.
+    process.stderr.write(`Error inesperado: ${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
   }
 }

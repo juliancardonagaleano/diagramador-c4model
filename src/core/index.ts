@@ -54,3 +54,4 @@ export {
 export { systemPrompt, userPrompt, standalonePrompt } from './ai/prompt';
 export { generateDocument, GenerationError, DEFAULT_AI_MODEL, type GenerateOptions, type GenerateResult, type Effort } from './ai/generate';
 export { analyzeDocument, type DocumentIssue } from './model/issues';
+export { extractJson } from './util/extractJson';

@@ -101,17 +101,18 @@ function diagramXml(
   };
 
   for (const b of orderedBoundaries) {
+    // Boundary sin ningún hijo (vista/alcance vacío): sin geometría calculada, se omite en vez de
+    // dibujar una caja falsa en (0,0). Si tuviera hijos sin posicionar, ya se habría lanzado arriba.
+    if (b.width === undefined || b.height === undefined) continue;
     const el = b.element;
     const typeKey = el.type === 'container' ? 'boundary-container' : 'boundary-softwareSystem';
     const geo = relativeTo(b.boundaryId, b.x ?? 0, b.y ?? 0);
-    const width = b.width ?? 300;
-    const height = b.height ?? 200;
     cells.push(
       objectCell(
-        cellId(b.id),
+        cellId('el', b.id),
         { c4Name: el.name, c4Type: c4TypeLabel(locale, typeKey), label: boundaryLabel() },
         `<mxCell style="${boundaryStyle()}" vertex="1" parent="${parentCell(b.boundaryId)}">` +
-          `<mxGeometry x="${geo.x}" y="${geo.y}" width="${width}" height="${height}" as="geometry"/></mxCell>`,
+          `<mxGeometry x="${geo.x}" y="${geo.y}" width="${b.width}" height="${b.height}" as="geometry"/></mxCell>`,
       ),
     );
   }
@@ -131,7 +132,7 @@ function diagramXml(
     const style = notation === 'card' ? cardElementStyle(el) : elementStyle(el);
     cells.push(
       objectCell(
-        cellId(n.id),
+        cellId('el', n.id),
         attrs,
         `<mxCell style="${style}" vertex="1" parent="${parentCell(n.boundaryId)}">` +
           `<mxGeometry x="${geo.x}" y="${geo.y}" width="${n.width}" height="${n.height}" as="geometry"/></mxCell>`,
@@ -158,9 +159,9 @@ function diagramXml(
         : `<mxGeometry relative="1" as="geometry"/>`;
     cells.push(
       objectCell(
-        cellId(e.id),
+        cellId('rel', e.id),
         attrs,
-        `<mxCell style="${relationshipStyle()}" edge="1" parent="1" source="${cellId(e.sourceId)}" target="${cellId(e.targetId)}">${geometry}</mxCell>`,
+        `<mxCell style="${relationshipStyle()}" edge="1" parent="1" source="${cellId('el', e.sourceId)}" target="${cellId('el', e.targetId)}">${geometry}</mxCell>`,
       ),
     );
   }
@@ -177,11 +178,17 @@ function diagramXml(
 }
 
 function parentCell(boundaryId: string | undefined): string {
-  return boundaryId ? cellId(boundaryId) : '1';
+  return boundaryId ? cellId('el', boundaryId) : '1';
 }
 
-function cellId(id: string): string {
-  return escapeAttr(id);
+/**
+ * Id de celda drawio con prefijo según su clase ('el' para elementos/boundaries, 'rel' para
+ * relaciones). Evita dos colisiones posibles con el id crudo del usuario: con los ids reservados
+ * `"0"`/`"1"` del root de cada página, y entre un elemento y una relación que comparten el mismo
+ * id (el schema solo garantiza unicidad dentro de cada colección, no entre ambas).
+ */
+function cellId(kind: 'el' | 'rel', id: string): string {
+  return `${kind}-${escapeAttr(id)}`;
 }
 
 function objectCell(id: string, attrs: Record<string, string>, inner: string): string {
@@ -193,6 +200,8 @@ function objectCell(id: string, attrs: Record<string, string>, inner: string): s
 
 export function escapeAttr(value: string): string {
   return value
+    // Caracteres de control no válidos en XML 1.0 (se descartan; tab, LF y CR sí son válidos).
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

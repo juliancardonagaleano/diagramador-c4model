@@ -1,7 +1,10 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { parseDocument } from '../core/model/schema';
+import { extractJson } from '../core/util/extractJson';
 import type { C4Document } from '../core/model/types';
+
+export { extractJson };
 
 export function readInput(file: string | undefined, useStdin: boolean): string {
   if (useStdin || file === '-' || !file) {
@@ -28,24 +31,17 @@ export function readDocument(file: string | undefined, useStdin: boolean): C4Doc
   return parseDocument(json);
 }
 
-/** Acepta JSON puro o JSON envuelto en un bloque ```json ... ``` (salida típica de una IA). */
-export function extractJson(raw: string): string {
-  const trimmed = raw.trim();
-  const fence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  if (fence) return fence[1];
-  const first = trimmed.indexOf('{');
-  const last = trimmed.lastIndexOf('}');
-  if (first > 0 && last > first) return trimmed.slice(first, last + 1);
-  return trimmed;
-}
-
 export function writeOutput(file: string | undefined, content: string): void {
   if (!file || file === '-') {
     process.stdout.write(content);
     return;
   }
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, content);
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, content);
+  } catch (error) {
+    throw new CliError(`No se pudo escribir "${file}": ${(error as Error).message}`);
+  }
 }
 
 export class CliError extends Error {

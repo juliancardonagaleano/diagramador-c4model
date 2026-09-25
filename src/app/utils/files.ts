@@ -1,3 +1,5 @@
+export { extractJson } from '../../core/util/extractJson';
+
 export function downloadText(filename: string, content: string, mime = 'application/octet-stream'): void {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -46,15 +48,4 @@ export function relativeTime(ts: number | null): string {
   if (m < 60) return `Guardado hace ${m} min`;
   const h = Math.round(m / 60);
   return `Guardado hace ${h} h`;
-}
-
-/** Acepta JSON puro o envuelto en un bloque ```json (salida típica de una IA). */
-export function extractJson(raw: string): string {
-  const trimmed = raw.trim();
-  const fence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  if (fence) return fence[1];
-  const first = trimmed.indexOf('{');
-  const last = trimmed.lastIndexOf('}');
-  if (first > 0 && last > first) return trimmed.slice(first, last + 1);
-  return trimmed;
 }

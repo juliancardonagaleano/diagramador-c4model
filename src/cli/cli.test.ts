@@ -52,6 +52,46 @@ describe('c4diagram (CLI)', () => {
     expect(JSON.parse(execFileSync(cli[0], [cli[1], 'example'], { encoding: 'utf8' })).views).toHaveLength(3);
   });
 
+  it('errores conocidos (vista inexistente, sin vistas) terminan en un mensaje de una línea, sin stack', () => {
+    const r1 = run(['convert', example, '--view', 'no-existe']);
+    expect(r1.status).toBe(3);
+    expect(r1.stderr).not.toMatch(/\n\s+at /); // sin stack trace
+    expect(r1.stderr.trim().split('\n').at(-1)).toBe('El documento no tiene vistas que exportar');
+
+    const r2 = run(['layout', example, '--view', 'no-existe']);
+    expect(r2.status).not.toBe(0);
+    expect(r2.stderr).toMatch(/no existe/);
+    expect(r2.stderr).not.toMatch(/\n\s+at /);
+
+    const empty = join(dir, 'empty.json');
+    writeFileSync(empty, JSON.stringify({ version: '1.0', workspace: { name: 'x' }, model: { elements: [], relationships: [] }, views: [] }));
+    const r3 = run(['convert', empty]);
+    expect(r3.status).not.toBe(0);
+    expect(r3.stderr).toMatch(/no tiene vistas/);
+    expect(r3.stderr).not.toMatch(/\n\s+at /);
+  });
+
+  it('--spacing, --layer-spacing y --retries rechazan valores inválidos con un mensaje claro', () => {
+    const bad1 = run(['layout', example, '--spacing', 'abc']);
+    expect(bad1.status).not.toBe(0);
+    expect(bad1.stderr).toMatch(/separación/i);
+
+    const bad2 = run(['layout', example, '--spacing', '-5']);
+    expect(bad2.status).not.toBe(0);
+    expect(bad2.stderr).toMatch(/separación/i);
+
+    const bad3 = run(['layout', example, '--layer-spacing', 'NaN']);
+    expect(bad3.status).not.toBe(0);
+    expect(bad3.stderr).toMatch(/separación/i);
+
+    const bad4 = run(['generate', 'algo', '--retries', '-1']);
+    expect(bad4.status).not.toBe(0);
+    expect(bad4.stderr).toMatch(/reintentos/i);
+
+    const ok = run(['layout', example, '--spacing', '80', '--layer-spacing', '120']);
+    expect(ok.status).toBe(0);
+  });
+
   it('generate falla con un mensaje claro sin credenciales', () => {
     const r = spawnSync(cli[0], [cli[1], 'generate', 'Una tienda'], {
       encoding: 'utf8',
