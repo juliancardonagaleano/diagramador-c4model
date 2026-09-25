@@ -1,7 +1,8 @@
 import { Button, Input, Select, Switch, TextArea, Tooltip } from '@douyinfe/semi-ui';
 import { IconDelete, IconEyeClosed, IconEyeOpened, IconTreeTriangleDown, IconTreeTriangleRight } from '@douyinfe/semi-icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { C4_COLORS, C4_EXTERNAL_COLOR, ELEMENT_TYPE_LABELS, PARENT_TYPE, type C4Element, type ElementShape, type ElementType } from '../../../core/model/types';
+import { isValidParentType } from '../../../core/model/factories';
 import { useDocumentStore } from '../../store/documentStore';
 
 const SHAPES: Array<{ value: ElementShape; label: string }> = [
@@ -22,6 +23,11 @@ export function ElementCard({ element, inActiveView, selected }: { element: C4El
   const color = element.color ?? (element.external ? C4_EXTERNAL_COLOR : C4_COLORS[element.type]);
   const parentType = PARENT_TYPE[element.type];
   const parents = parentType ? doc.model.elements.filter((e) => e.type === parentType) : [];
+
+  // Borrador local del nombre: si el store lo controlara directamente, vaciar el campo para
+  // reescribirlo "rebotaría" al valor anterior (el store ignora los cambios a nombre vacío).
+  const [nameDraft, setNameDraft] = useState(element.name);
+  useEffect(() => setNameDraft(element.name), [element.id, element.name]);
   const activeView = doc.views.find((v) => v.id === activeViewId);
   const isScope = activeView?.scopeId === element.id;
 
@@ -59,7 +65,16 @@ export function ElementCard({ element, inActiveView, selected }: { element: C4El
         <div className="c4-card-body">
           <div className="c4-field">
             <label>Nombre</label>
-            <Input size="small" value={element.name} disabled={readOnly} validateStatus={element.name.trim() ? 'default' : 'error'} onChange={(v) => updateElement(element.id, { name: v })} />
+            <Input
+              size="small"
+              value={nameDraft}
+              disabled={readOnly}
+              validateStatus={nameDraft.trim() ? 'default' : 'error'}
+              onChange={(v) => {
+                setNameDraft(v);
+                if (v.trim()) updateElement(element.id, { name: v });
+              }}
+            />
           </div>
           <div className="c4-field">
             <label>Tipo</label>
@@ -69,7 +84,12 @@ export function ElementCard({ element, inActiveView, selected }: { element: C4El
               value={element.type}
               disabled={readOnly}
               optionList={(Object.keys(ELEMENT_TYPE_LABELS) as ElementType[]).map((t) => ({ value: t, label: ELEMENT_TYPE_LABELS[t] }))}
-              onChange={(v) => updateElement(element.id, { type: v as ElementType, parentId: PARENT_TYPE[v as ElementType] ? element.parentId : undefined })}
+              onChange={(v) => {
+                const newType = v as ElementType;
+                const currentParent = element.parentId ? doc.model.elements.find((e) => e.id === element.parentId) : undefined;
+                const parentStillValid = isValidParentType(currentParent?.type, newType);
+                updateElement(element.id, { type: newType, parentId: parentStillValid ? element.parentId : undefined });
+              }}
             />
           </div>
           {parentType && (

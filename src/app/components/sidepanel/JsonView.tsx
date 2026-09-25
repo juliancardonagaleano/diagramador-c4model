@@ -15,8 +15,12 @@ export function JsonView() {
           size="small"
           icon={<IconCopy />}
           onClick={async () => {
-            await navigator.clipboard.writeText(text).catch(() => undefined);
-            Toast.success('JSON copiado');
+            try {
+              await navigator.clipboard.writeText(text);
+              Toast.success('JSON copiado');
+            } catch {
+              Toast.error('No se pudo copiar al portapapeles');
+            }
           }}
         >
           Copiar

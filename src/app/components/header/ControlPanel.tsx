@@ -1,4 +1,4 @@
-import { Button, Dropdown, Input, Tag, Tooltip } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Input, Modal, Tag, Tooltip } from '@douyinfe/semi-ui';
 import { IconDownload, IconEdit, IconExit, IconSave } from '@douyinfe/semi-icons';
 import { useEffect, useState } from 'react';
 import { useActions } from '../../hooks/useActions';
@@ -80,6 +80,23 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
     return () => clearInterval(t);
   }, []);
 
+  // Descartar el documento actual (Nuevo/Cargar ejemplo/Abrir JSON) sin guardar antes pide
+  // confirmación, igual que ya hace `useEmbedBridge.exit()` cuando hay cambios sin guardar.
+  const confirmDiscard = (proceed: () => void) => {
+    if (!modified) {
+      proceed();
+      return;
+    }
+    Modal.confirm({
+      title: 'Descartar cambios sin guardar',
+      content: 'Hay cambios sin guardar en el diagrama actual. ¿Deseas continuar de todos modos?',
+      okText: 'Continuar',
+      cancelText: 'Cancelar',
+      okType: 'danger',
+      onOk: proceed,
+    });
+  };
+
   const fileMenu: MenuProps['items'] = isEmbedMode
     ? [
         { key: 'save', label: 'Guardar', onClick: () => onEmbedSave?.(false), shortcut: 'Ctrl+S' },
@@ -92,9 +109,9 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
         { key: 'exit', label: 'Salir sin guardar', onClick: onEmbedExit },
       ]
     : [
-        { key: 'new', label: 'Nuevo diagrama', onClick: newDocument },
-        { key: 'sample', label: 'Cargar ejemplo (banca en línea)', onClick: loadSample },
-        { key: 'open', label: 'Abrir JSON…', onClick: actions.openJson, shortcut: 'Ctrl+O' },
+        { key: 'new', label: 'Nuevo diagrama', onClick: () => confirmDiscard(newDocument) },
+        { key: 'sample', label: 'Cargar ejemplo (banca en línea)', onClick: () => confirmDiscard(loadSample) },
+        { key: 'open', label: 'Abrir JSON…', onClick: () => confirmDiscard(actions.openJson), shortcut: 'Ctrl+O' },
         { key: 'd1', label: '', divider: true },
         { key: 'save', label: 'Guardar JSON', onClick: actions.saveJson, shortcut: 'Ctrl+S' },
         { key: 'export', label: 'Exportar .drawio (notación C4)', onClick: () => void actions.exportDrawio('c4'), shortcut: 'Ctrl+E' },

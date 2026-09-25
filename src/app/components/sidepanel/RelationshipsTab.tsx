@@ -1,6 +1,7 @@
 import { Button, Empty, Input, Select } from '@douyinfe/semi-ui';
 import { IconDelete, IconPlus, IconTreeTriangleDown, IconTreeTriangleRight } from '@douyinfe/semi-icons';
 import { useEffect, useState } from 'react';
+import { relationshipCreationBlocked } from '../../../core/model/factories';
 import type { C4Relationship } from '../../../core/model/types';
 import { useDocumentStore } from '../../store/documentStore';
 
@@ -31,11 +32,29 @@ function RelationshipCard({ rel, selected }: { rel: C4Relationship; selected: bo
         <div className="c4-card-body">
           <div className="c4-field">
             <label>Origen</label>
-            <Select size="small" className="w-full" value={rel.sourceId} optionList={options} disabled={readOnly} filter onChange={(v) => updateRelationship(rel.id, { sourceId: v as string })} />
+            <Select
+              size="small"
+              className="w-full"
+              value={rel.sourceId}
+              optionList={options}
+              disabled={readOnly}
+              filter
+              validateStatus={rel.sourceId === rel.targetId ? 'error' : 'default'}
+              onChange={(v) => updateRelationship(rel.id, { sourceId: v as string })}
+            />
           </div>
           <div className="c4-field">
             <label>Destino</label>
-            <Select size="small" className="w-full" value={rel.targetId} optionList={options} disabled={readOnly} filter onChange={(v) => updateRelationship(rel.id, { targetId: v as string })} />
+            <Select
+              size="small"
+              className="w-full"
+              value={rel.targetId}
+              optionList={options}
+              disabled={readOnly}
+              filter
+              validateStatus={rel.sourceId === rel.targetId ? 'error' : 'default'}
+              onChange={(v) => updateRelationship(rel.id, { targetId: v as string })}
+            />
           </div>
           <div className="c4-field">
             <label>Descripción</label>
@@ -65,6 +84,7 @@ export function RelationshipsTab() {
   const [source, setSource] = useState<string | undefined>();
   const [target, setTarget] = useState<string | undefined>();
   const options = doc.model.elements.map((e) => ({ value: e.id, label: e.name }));
+  const blocked = relationshipCreationBlocked(doc.model.relationships, source, target);
 
   useEffect(() => {
     if (selection.kind !== 'relationship') return;
@@ -78,16 +98,23 @@ export function RelationshipsTab() {
         <span className="text-color-3">→</span>
         <Select size="small" placeholder="Destino" className="flex-1" value={target} optionList={options} filter onChange={(v) => setTarget(v as string)} disabled={readOnly} />
         <Button
+          aria-label="Añadir relación"
           icon={<IconPlus />}
           theme="solid"
           size="small"
-          disabled={readOnly || !source || !target || source === target}
+          disabled={readOnly || !source || !target || !!blocked}
           onClick={() => {
             if (source && target) addRelationship(source, target);
           }}
         />
       </div>
-      <p className="text-xs text-color-3">También puedes arrastrar desde el punto de conexión de un nodo hasta otro en el lienzo.</p>
+      <p className="text-xs text-color-3">
+        {blocked === 'duplicate'
+          ? 'Ya existe una relación entre estos dos elementos.'
+          : blocked === 'self'
+            ? 'Origen y destino no pueden ser el mismo elemento.'
+            : 'También puedes arrastrar desde el punto de conexión de un nodo hasta otro en el lienzo.'}
+      </p>
       {doc.model.relationships.length === 0 ? (
         <Empty description="Aún no hay relaciones" className="py-6" />
       ) : (
