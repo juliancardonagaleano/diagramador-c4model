@@ -1,5 +1,5 @@
 import { elementMap } from './factories';
-import type { C4Document } from './types';
+import { ELEMENT_TYPE_LABELS, PARENT_TYPE, VIEW_SCOPE_TYPE, type C4Document } from './types';
 
 export interface DocumentIssue {
   severity: 'error' | 'warning';
@@ -27,6 +27,17 @@ export function analyzeDocument(doc: C4Document): DocumentIssue[] {
     if ((el.type === 'container' || el.type === 'component') && !el.parentId) {
       issues.push({ severity: 'error', message: `"${el.name}" (${el.type}) no tiene padre asignado`, elementId: el.id });
     }
+    if (el.parentId) {
+      const parent = elements.get(el.parentId);
+      const expected = PARENT_TYPE[el.type];
+      if (parent && expected && parent.type !== expected) {
+        issues.push({
+          severity: 'error',
+          message: `"${el.name}" tiene un padre de tipo incorrecto (se esperaba ${ELEMENT_TYPE_LABELS[expected].toLowerCase()})`,
+          elementId: el.id,
+        });
+      }
+    }
     const related = doc.model.relationships.some((r) => r.sourceId === el.id || r.targetId === el.id);
     const hasChildren = doc.model.elements.some((e) => e.parentId === el.id);
     if (!related && !hasChildren) {
@@ -44,9 +55,12 @@ export function analyzeDocument(doc: C4Document): DocumentIssue[] {
   }
 
   for (const rel of doc.model.relationships) {
+    const s = elements.get(rel.sourceId)?.name ?? rel.sourceId;
+    const t = elements.get(rel.targetId)?.name ?? rel.targetId;
+    if (rel.sourceId === rel.targetId) {
+      issues.push({ severity: 'error', message: `La relación en "${s}" no puede apuntar al mismo elemento`, relationshipId: rel.id });
+    }
     if (!rel.description?.trim()) {
-      const s = elements.get(rel.sourceId)?.name ?? rel.sourceId;
-      const t = elements.get(rel.targetId)?.name ?? rel.targetId;
       issues.push({ severity: 'warning', message: `La relación ${s} → ${t} no tiene descripción`, relationshipId: rel.id });
     }
   }
@@ -61,6 +75,13 @@ export function analyzeDocument(doc: C4Document): DocumentIssue[] {
     if (v.elements.length === 0) issues.push({ severity: 'warning', message: `La vista "${v.title ?? v.id}" está vacía`, viewId: v.id });
     if (v.type !== 'systemContext' && !v.scopeId) {
       issues.push({ severity: 'error', message: `La vista "${v.title ?? v.id}" (${v.type}) necesita un alcance`, viewId: v.id });
+    }
+    if (v.scopeId) {
+      const scope = elements.get(v.scopeId);
+      const expected = VIEW_SCOPE_TYPE[v.type];
+      if (scope && scope.type !== expected) {
+        issues.push({ severity: 'error', message: `La vista "${v.title ?? v.id}" tiene un alcance de tipo incorrecto`, viewId: v.id });
+      }
     }
   }
   return issues;
