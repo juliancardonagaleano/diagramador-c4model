@@ -30,6 +30,8 @@ export interface C4EmbedOptions {
   origin?: string;
   /** Atributos extra del iframe (por ejemplo `title`, `allow`). */
   iframeAttributes?: Record<string, string>;
+  /** Tiempo máximo (ms) que esperan `load()`/`export()` antes de rechazar. Por defecto 15000. */
+  responseTimeout?: number;
   onInit?: () => void;
   onLoad?: (payload: { document: C4Document; viewId?: string }) => void;
   onChange?: (document: C4Document) => void;
@@ -96,6 +98,19 @@ export function createC4Embed(options: C4EmbedOptions): C4Embed {
   const pendingExports = new Map<string, { resolve: (data: string) => void; reject: (e: Error) => void }>();
   const pendingLoads: Array<{ resolve: (doc: C4Document) => void; reject: (e: Error) => void }> = [];
   let counter = 0;
+  const responseTimeout = options.responseTimeout ?? 15000;
+
+  /** Rechaza `promise` si no se resuelve en `responseTimeout` ms, limpiando `onTimeout`. */
+  function withTimeout<T>(promise: Promise<T>, onTimeout: () => void): Promise<T> {
+    let timer: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        onTimeout();
+        reject(new Error(`El diagramador embebido no respondió en ${responseTimeout}ms`));
+      }, responseTimeout);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  }
 
   const initialLoad = (): HostAction => ({
     action: 'load',
@@ -111,14 +126,22 @@ export function createC4Embed(options: C4EmbedOptions): C4Embed {
     if (event.source !== iframe.contentWindow) return;
     if (targetOrigin !== '*' && event.origin !== targetOrigin) return;
     let data: unknown = event.data;
+    let parseFailed = false;
     if (typeof data === 'string') {
       try {
         data = JSON.parse(data);
       } catch {
-        return;
+        parseFailed = true;
       }
     }
-    if (!data || typeof data !== 'object' || !('event' in data)) return;
+    if (parseFailed || !data || typeof data !== 'object' || !('event' in data)) {
+      // El diagramador embebido serializa sus eventos como JSON en string, así que un mensaje
+      // con esa forma pero roto casi seguro viene de él (versión desalineada, bug); en vez de
+      // descartarlo en silencio se avisa. El resto (ruido ajeno a nuestro protocolo) se ignora.
+      const looksAddressedToUs = parseFailed ? (event.data as string).trim().startsWith('{') : !!data && typeof data === 'object';
+      if (looksAddressedToUs) options.onError?.({ message: 'Mensaje recibido del diagramador embebido no reconocido' });
+      return;
+    }
     const msg = data as EmbedEvent;
     options.onEvent?.(msg);
     switch (msg.event) {
@@ -181,9 +204,16 @@ export function createC4Embed(options: C4EmbedOptions): C4Embed {
     iframe,
     ready,
     load(doc, opts = {}) {
-      return new Promise((resolve, reject) => {
-        pendingLoads.push({ resolve, reject });
+      const entry: { resolve: (doc: C4Document) => void; reject: (e: Error) => void } = { resolve: () => {}, reject: () => {} };
+      const promise = new Promise<C4Document>((resolve, reject) => {
+        entry.resolve = resolve;
+        entry.reject = reject;
+        pendingLoads.push(entry);
         send({ action: 'load', document: doc, ...opts });
+      });
+      return withTimeout(promise, () => {
+        const i = pendingLoads.indexOf(entry);
+        if (i >= 0) pendingLoads.splice(i, 1);
       });
     },
     merge(doc, autoLayout) {
@@ -191,10 +221,11 @@ export function createC4Embed(options: C4EmbedOptions): C4Embed {
     },
     export(format, viewId, notation) {
       const requestId = `exp-${++counter}`;
-      return new Promise((resolve, reject) => {
+      const promise = new Promise<string>((resolve, reject) => {
         pendingExports.set(requestId, { resolve, reject });
         send({ action: 'export', format, viewId, requestId, notation });
       });
+      return withTimeout(promise, () => pendingExports.delete(requestId));
     },
     autoLayout(opts = {}) {
       send({ action: 'autoLayout', ...opts });

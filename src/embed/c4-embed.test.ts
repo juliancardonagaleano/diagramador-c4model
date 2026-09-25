@@ -63,4 +63,36 @@ describe('createC4Embed (SDK de anfitrión)', () => {
     expect(onEvent).not.toHaveBeenCalled();
     embed.destroy();
   });
+
+  it('un mensaje con JSON roto (string que empieza por "{") dispara onError, no se ignora en silencio', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const onError = vi.fn();
+    const onEvent = vi.fn();
+    const embed = createC4Embed({ container, url: 'http://localhost/app/', onError, onEvent });
+    window.dispatchEvent(new MessageEvent('message', { data: '{"event": "load", roto', source: embed.iframe.contentWindow, origin: 'http://localhost' }));
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onEvent).not.toHaveBeenCalled();
+    embed.destroy();
+  });
+
+  it('un mensaje ajeno al protocolo (no parece JSON) se sigue ignorando en silencio', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const onError = vi.fn();
+    const embed = createC4Embed({ container, url: 'http://localhost/app/', onError });
+    window.dispatchEvent(new MessageEvent('message', { data: 'webpackHotUpdate', source: embed.iframe.contentWindow, origin: 'http://localhost' }));
+    window.dispatchEvent(new MessageEvent('message', { data: 42, source: embed.iframe.contentWindow, origin: 'http://localhost' }));
+    expect(onError).not.toHaveBeenCalled();
+    embed.destroy();
+  });
+
+  it('load()/export() rechazan si el iframe nunca responde, en vez de colgarse', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const embed = createC4Embed({ container, url: 'http://localhost/app/', responseTimeout: 30 });
+    await expect(embed.load(sampleDocument)).rejects.toThrow(/no respondió/);
+    await expect(embed.export('drawio')).rejects.toThrow(/no respondió/);
+    embed.destroy();
+  });
 });

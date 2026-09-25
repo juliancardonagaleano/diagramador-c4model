@@ -17,6 +17,12 @@ function post(event: EmbedEvent) {
   window.parent.postMessage(JSON.stringify(event), allowedOrigin ?? '*');
 }
 
+/** Heurística para no confundir ruido de terceros con un intento (aunque roto) de hablar el protocolo. */
+function looksAddressedToUs(data: unknown): boolean {
+  if (data && typeof data === 'object') return true;
+  return typeof data === 'string' && data.trim().startsWith('{');
+}
+
 function parseIncomingDocument(input: C4Document | string): { ok: true; document: C4Document } | { ok: false; message: string; issues?: Array<{ path: string; message: string }> } {
   let json: unknown = input;
   if (typeof input === 'string') {
@@ -139,7 +145,10 @@ export function useEmbedBridge(): { save: (exit: boolean) => Promise<void>; exit
         }
         case 'autoLayout': {
           const id = action.viewId ?? s.activeViewId;
-          if (!id) return;
+          if (!id) {
+            post({ event: 'error', message: 'No hay ninguna vista activa (¿se cargó un documento con "load"?)' });
+            return;
+          }
           if (action.direction) s.setUi({ direction: action.direction });
           if (action.distribution) s.setUi({ distribution: action.distribution });
           await s.runAutoLayout(id, { direction: action.direction, distribution: action.distribution, force: action.force ?? true });
@@ -170,7 +179,12 @@ export function useEmbedBridge(): { save: (exit: boolean) => Promise<void>; exit
       if (allowedOrigin && event.origin !== allowedOrigin) return;
       const parsed = parseHostAction(event.data);
       if (!parsed.ok) {
-        if (event.data && typeof event.data === 'object' && 'action' in event.data) post({ event: 'error', message: parsed.error });
+        // Solo se responde si el mensaje "parece" dirigido a nuestro protocolo (objeto, o string
+        // que arranca con "{"): el propio SDK de anfitrión envía sus acciones como JSON
+        // *serializado en string*, así que un mensaje con JSON roto pasa por aquí como string, no
+        // como objeto — descartarlo en silencio dejaba a un anfitrión con un bug sin ningún aviso.
+        // El resto (ruido de terceros ajeno a nuestro protocolo) sigue ignorándose en silencio.
+        if (looksAddressedToUs(event.data)) post({ event: 'error', message: parsed.error });
         return;
       }
       void handle(parsed.action).catch((error) => {
