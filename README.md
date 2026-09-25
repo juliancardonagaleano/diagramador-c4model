@@ -14,11 +14,24 @@ Editor web de diagramas del **modelo C4** (Contexto, Contenedores y Componentes)
 npm install
 npm run dev        # editor web en http://localhost:5173
 npm run build      # librería (dist/core), CLI (dist/cli), SDK de embebido (dist/embed) y app (dist/app)
-npm test           # pruebas unitarias (vitest)
-npm run e2e        # pruebas de extremo a extremo con Playwright (requiere build previo)
+npm test           # pruebas unitarias y de componente (vitest + Testing Library)
+npm run test:coverage  # igual, con informe de cobertura (informativo, sin umbral que bloquee)
+npm run e2e        # pruebas de extremo a extremo con @playwright/test (requiere build:app previo)
+npm run verify     # typecheck + test + build + e2e, de punta a punta
 ```
 
 Requisitos: Node 20+.
+
+## Pruebas
+
+- **Unitarias y de componente** (`src/**/*.test.ts(x)`, vitest): cubren el núcleo (modelo, autolayout,
+  export a `.drawio`, CLI), el store (`documentStore.test.ts`) y componentes React puntuales donde aporta algo que
+  ni el store ni un E2E cubren mejor (`@testing-library/react`, entorno jsdom vía pragma
+  `// @vitest-environment jsdom`). `npm run test:coverage` genera el informe (`@vitest/coverage-v8`).
+- **Extremo a extremo** (`tests/e2e/*.spec.ts`, `@playwright/test`): recorren la app compilada (`vite preview`)
+  en el Chromium del entorno. `playwright.config.ts` ya apunta a `CHROMIUM_PATH` (o
+  `/opt/pw-browsers/chromium`) sin descargar un navegador propio, y guarda captura + traza solo si una prueba
+  falla (`npx playwright show-trace test-results/.../trace.zip`).
 
 ## Despliegue (GitHub Pages)
 

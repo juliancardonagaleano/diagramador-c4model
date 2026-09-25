@@ -4,6 +4,7 @@ dist
 .DS_Store
 /playwright-report
 /test-results
+/coverage
 /examples/*.generated.*
 .env
 .env.*
