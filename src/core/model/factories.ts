@@ -3,6 +3,7 @@ import {
   DEFAULT_SIZES,
   DOCUMENT_VERSION,
   ELEMENT_TYPE_LABELS,
+  PARENT_TYPE,
   VIEW_TYPE_LABELS,
   type C4Document,
   type C4Element,
@@ -11,6 +12,33 @@ import {
   type ElementType,
   type ViewType,
 } from './types';
+
+/**
+ * Por qué no se puede crear una relación entre `source` y `target` con las ya existentes, o
+ * `null` si es válida. Usado tanto por el formulario del panel lateral como por el lienzo
+ * (arrastrar una conexión) para dar el mismo criterio y el mismo mensaje en los dos sitios.
+ */
+export function relationshipCreationBlocked(
+  relationships: Pick<C4Relationship, 'sourceId' | 'targetId'>[],
+  source: string | undefined,
+  target: string | undefined,
+): 'self' | 'duplicate' | null {
+  if (!source || !target) return null;
+  if (source === target) return 'self';
+  if (relationships.some((r) => r.sourceId === source && r.targetId === target)) return 'duplicate';
+  return null;
+}
+
+/**
+ * ¿Sigue siendo válido un padre de tipo `parentType` si el elemento cambia al tipo `newType`?
+ * Usado al editar el tipo de un elemento para decidir si hay que limpiar su `parentId` (p. ej.
+ * un `component` con padre `container` que pasa a `container`: ese padre ya no es válido, porque
+ * `PARENT_TYPE.container` es `softwareSystem`).
+ */
+export function isValidParentType(parentType: ElementType | undefined, newType: ElementType): boolean {
+  const required = PARENT_TYPE[newType];
+  return !!required && parentType === required;
+}
 
 /** Convierte un nombre en un id legible y estable (kebab-case ASCII). */
 export function slugify(name: string): string {
@@ -183,15 +211,22 @@ export function findChildView(doc: C4Document, elementId: string): C4View | unde
   return doc.views.find((v) => v.type === type && v.scopeId === elementId);
 }
 
-/** Vista de nivel superior a la dada (C3 → C2 del contenedor padre, C2 → C1 del sistema), si existe. */
+/**
+ * Vista de nivel superior a la dada (C3 → C2 del contenedor padre, C2 → C1 del sistema), si
+ * existe. Sin vista exacta para ese ancestro, solo se usa una vista "genérica" del tipo
+ * correspondiente cuando es la única que hay en todo el documento (caso inambiguo); con varias,
+ * no se adivina cuál — evita que "Subir nivel"/el breadcrumb aterricen en un sistema no
+ * relacionado cuando el documento tiene más de un sistema independiente.
+ */
 export function findParentView(doc: C4Document, view: C4View): C4View | undefined {
   if (view.type === 'systemContext') return undefined;
   const scope = view.scopeId ? doc.model.elements.find((e) => e.id === view.scopeId) : undefined;
-  if (view.type === 'component') {
-    const containerId = scope?.parentId;
-    return doc.views.find((v) => v.type === 'container' && v.scopeId === containerId) ?? doc.views.find((v) => v.type === 'container');
-  }
-  return doc.views.find((v) => v.type === 'systemContext' && v.scopeId === view.scopeId) ?? doc.views.find((v) => v.type === 'systemContext');
+  const parentType: ViewType = view.type === 'component' ? 'container' : 'systemContext';
+  const parentScopeId = view.type === 'component' ? scope?.parentId : view.scopeId;
+  const exact = doc.views.find((v) => v.type === parentType && v.scopeId === parentScopeId);
+  if (exact) return exact;
+  const candidates = doc.views.filter((v) => v.type === parentType);
+  return candidates.length === 1 ? candidates[0] : undefined;
 }
 
 /** Cadena de navegación C1 › C2 › C3 que conduce a la vista dada (la propia vista al final). */

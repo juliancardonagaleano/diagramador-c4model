@@ -13,6 +13,7 @@ import {
   type NodeChange,
   type OnSelectionChangeParams,
 } from '@xyflow/react';
+import { Toast } from '@douyinfe/semi-ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { deriveView, type DerivedView } from '../../../core/model/viewDerivation';
 import { findChildView } from '../../../core/model/factories';
@@ -41,12 +42,15 @@ export function Canvas() {
   const theme = useDocumentStore((s) => s.ui.theme);
   const nodeStyle = useDocumentStore((s) => s.ui.nodeStyle);
   const layoutBusy = useDocumentStore((s) => s.layoutBusy);
-  const { moveElements, addRelationship, select, updateElement, runAutoLayout, drillDown } = useDocumentStore.getState();
+  const { moveElements, addRelationship, select, runAutoLayout, drillDown } = useDocumentStore.getState();
   const { fitView } = useReactFlow();
 
   const derived = useMemo(() => (activeViewId && doc.views.some((v) => v.id === activeViewId) ? deriveView(doc, activeViewId) : null), [doc, activeViewId]);
 
-  // Autolayout automático cuando hay elementos sin posición (p. ej. documento generado por IA o recién importado).
+  // Autolayout automático cuando hay elementos sin posición (p. ej. documento generado por IA,
+  // recién importado, o la carga inicial de la app antes de que exista nada persistido). No se
+  // registra como paso de deshacer propio (pause/resume): si no, un Ctrl+Z de más después de las
+  // acciones del usuario retrocede a este estado "sin posicionar" en vez de quedarse quieto.
   const layoutRequested = useRef<string | null>(null);
   useEffect(() => {
     if (!derived || layoutBusy) return;
@@ -54,7 +58,12 @@ export function Canvas() {
     const key = `${derived.view.id}:${derived.nodes.map((n) => n.id).join(',')}`;
     if (needs && layoutRequested.current !== key) {
       layoutRequested.current = key;
-      void runAutoLayout(derived.view.id, { force: false }).then(() => setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50));
+      const temporal = useDocumentStore.temporal.getState();
+      temporal.pause();
+      void runAutoLayout(derived.view.id, { force: false })
+        .then(() => setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50))
+        .catch((error) => Toast.error(`Autolayout automático falló: ${(error as Error).message}`))
+        .finally(() => temporal.resume());
     }
   }, [derived, layoutBusy, runAutoLayout, fitView]);
 
@@ -200,9 +209,10 @@ export function Canvas() {
           moves.push({ id: n.id, x: n.position.x, y: n.position.y });
         }
       }
-      moveElements(derived.view.id, moves);
-
-      // Soltar un nodo dentro de un boundary compatible lo adopta como padre.
+      // Soltar un nodo dentro de un boundary compatible lo adopta como padre; fuera de todos
+      // los boundaries compatibles, lo desvincula. Se aplica junto con el movimiento en una sola
+      // llamada al store para que quede como un único paso de deshacer.
+      let reparent: { id: string; parentId: string | undefined } | undefined;
       if (dragged.length === 1 && !boundaryIds.has(dragged[0].id)) {
         const n = dragged[0];
         const node = derived.nodes.find((x) => x.id === n.id);
@@ -216,14 +226,15 @@ export function Canvas() {
               cx <= b.x + (b.width ?? 0) &&
               cy >= b.y! &&
               cy <= b.y! + (b.height ?? 0) &&
-              PARENT_TYPE[node.element.type] === b.element.type &&
-              node.element.parentId !== b.id,
+              PARENT_TYPE[node.element.type] === b.element.type,
           );
-          if (target) updateElement(n.id, { parentId: target.id });
+          const nextParentId = target?.id;
+          if (nextParentId !== node.element.parentId) reparent = { id: n.id, parentId: nextParentId };
         }
       }
+      moveElements(derived.view.id, moves, reparent);
     },
-    [derived, moveElements, updateElement],
+    [derived, moveElements],
   );
 
   const onConnect = useCallback(

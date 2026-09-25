@@ -102,7 +102,7 @@ export interface DocumentActions {
   removeView: (id: string) => void;
   addElementToView: (viewId: string, elementId: string, position?: { x: number; y: number }) => void;
   removeElementFromView: (viewId: string, elementId: string) => void;
-  moveElements: (viewId: string, moves: Array<{ id: string; x: number; y: number }>) => void;
+  moveElements: (viewId: string, moves: Array<{ id: string; x: number; y: number }>, reparent?: { id: string; parentId: string | undefined }) => void;
   runAutoLayout: (viewId?: string, options?: LayoutOptions) => Promise<void>;
   markSaved: () => void;
   setStatusMessage: (message: string | null, modified?: boolean) => void;
@@ -248,7 +248,11 @@ export const useDocumentStore = create<DocumentStore>()(
                 elements: doc.model.elements.map((e) => {
                   if (e.id !== id) return e;
                   const next = { ...e, ...patch } as C4Element;
+                  // `name` es obligatorio: un patch vacío/solo espacios se ignora (conserva el
+                  // nombre anterior) en vez de dejar el elemento sin nombre.
+                  if (typeof patch.name === 'string' && !patch.name.trim()) next.name = e.name;
                   for (const key of Object.keys(next) as Array<keyof C4Element>) {
+                    if (key === 'name') continue;
                     if (next[key] === undefined || next[key] === '') delete next[key];
                   }
                   return next;
@@ -268,15 +272,28 @@ export const useDocumentStore = create<DocumentStore>()(
                   }
                 }
               }
+              const relationships = doc.model.relationships.filter((r) => !descendants.has(r.sourceId) && !descendants.has(r.targetId));
+              const relIds = new Set(relationships.map((r) => r.id));
+              // Una ruta guardada en la vista sigue viva si su relación (directa) no se eliminó,
+              // o si ninguno de sus extremos (implícita, `rel@origen->destino`) era un descendiente.
+              const routeStillValid = (routeId: string): boolean => {
+                const at = routeId.indexOf('@');
+                if (at >= 0) {
+                  const [src, tgt] = routeId.slice(at + 1).split('->');
+                  return !descendants.has(src) && !descendants.has(tgt);
+                }
+                return relIds.has(routeId);
+              };
               return {
                 ...doc,
-                model: {
-                  elements: doc.model.elements.filter((e) => !descendants.has(e.id)),
-                  relationships: doc.model.relationships.filter((r) => !descendants.has(r.sourceId) && !descendants.has(r.targetId)),
-                },
+                model: { elements: doc.model.elements.filter((e) => !descendants.has(e.id)), relationships },
                 views: doc.views
                   .filter((v) => !(v.scopeId && descendants.has(v.scopeId)))
-                  .map((v) => ({ ...v, elements: v.elements.filter((e) => !descendants.has(e.id)) })),
+                  .map((v) => ({
+                    ...v,
+                    elements: v.elements.filter((e) => !descendants.has(e.id)),
+                    edges: v.edges?.filter((r) => routeStillValid(r.id)),
+                  })),
               };
             });
             const s = get();
@@ -287,6 +304,8 @@ export const useDocumentStore = create<DocumentStore>()(
           addRelationship: (sourceId, targetId, partial = {}) => {
             if (sourceId === targetId) return null;
             const { doc } = get();
+            const duplicate = doc.model.relationships.some((r) => r.sourceId === sourceId && r.targetId === targetId);
+            if (duplicate) return null;
             const rel = createRelationship(sourceId, targetId, { description: 'Usa', ...partial }, doc.model.relationships.map((r) => r.id));
             updateDoc((d) => ({ ...d, model: { ...d.model, relationships: [...d.model.relationships, rel] } }));
             set({ selection: { kind: 'relationship', id: rel.id } });
@@ -300,6 +319,10 @@ export const useDocumentStore = create<DocumentStore>()(
                 relationships: doc.model.relationships.map((r) => {
                   if (r.id !== id) return r;
                   const next = { ...r, ...patch } as C4Relationship;
+                  // Ignora la edición si dejaría una auto-referencia o duplicaría otra relación ya existente.
+                  if (next.sourceId === next.targetId) return r;
+                  const duplicate = doc.model.relationships.some((o) => o.id !== id && o.sourceId === next.sourceId && o.targetId === next.targetId);
+                  if (duplicate) return r;
                   for (const key of Object.keys(next) as Array<keyof C4Relationship>) {
                     if (next[key] === undefined || next[key] === '') delete next[key];
                   }
@@ -308,7 +331,12 @@ export const useDocumentStore = create<DocumentStore>()(
               },
             })),
           removeRelationship: (id) => {
-            updateDoc((doc) => ({ ...doc, model: { ...doc.model, relationships: doc.model.relationships.filter((r) => r.id !== id) } }));
+            updateDoc((doc) => ({
+              ...doc,
+              model: { ...doc.model, relationships: doc.model.relationships.filter((r) => r.id !== id) },
+              // Purga también las rutas guardadas que colgaban de esta relación (directa o implícita).
+              views: doc.views.map((v) => ({ ...v, edges: v.edges?.filter((r) => r.id !== id && !r.id.startsWith(`${id}@`)) })),
+            }));
             const s = get();
             if (s.selection.kind === 'relationship' && s.selection.id === id) set({ selection: { kind: 'none' } });
           },
@@ -353,11 +381,26 @@ export const useDocumentStore = create<DocumentStore>()(
               ...doc,
               views: doc.views.map((v) => (v.id === viewId ? { ...v, elements: v.elements.filter((e) => e.id !== elementId) } : v)),
             })),
-          moveElements: (viewId, moves) => {
-            if (moves.length === 0) return;
+          moveElements: (viewId, moves, reparent) => {
+            if (moves.length === 0 && !reparent) return;
             const byId = new Map(moves.map((m) => [m.id, m]));
             updateDoc((doc) => ({
               ...doc,
+              // Reparentar (adoptar un boundary nuevo, o desvincularse si se sale de todos) se
+              // aplica en la misma actualización que el movimiento: así un solo gesto de
+              // arrastre queda como un único paso de deshacer, no dos.
+              model: reparent
+                ? {
+                    ...doc.model,
+                    elements: doc.model.elements.map((e) => {
+                      if (e.id !== reparent.id) return e;
+                      const next = { ...e };
+                      if (reparent.parentId) next.parentId = reparent.parentId;
+                      else delete next.parentId;
+                      return next;
+                    }),
+                  }
+                : doc.model,
               views: doc.views.map((v) =>
                 v.id === viewId
                   ? {
