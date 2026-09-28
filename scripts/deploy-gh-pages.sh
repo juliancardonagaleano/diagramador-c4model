@@ -12,16 +12,18 @@ cd "$root"
 BASE_PATH="${BASE_PATH:-/$repo/}" OUT_DIR=dist/pages npm run build:app
 
 wt=$(mktemp -d)
+tmp_branch="gh-pages-deploy-$$"
 git worktree add --detach "$wt" >/dev/null
+# Rama huérfana temporal: así no choca con una rama local `gh-pages` de un despliegue anterior.
+trap 'git worktree remove --force "$wt" 2>/dev/null || true; git branch -D "$tmp_branch" >/dev/null 2>&1 || true' EXIT
 (
   cd "$wt"
-  git checkout -q --orphan gh-pages
+  git checkout -q --orphan "$tmp_branch"
   git rm -rfq .
   cp -r "$root/dist/pages/." .
   touch .nojekyll
   git add -A
   git commit -qm "Sitio compilado desde $(git -C "$root" rev-parse --short HEAD)"
-  git push -f origin gh-pages
+  git push -f origin "$tmp_branch:gh-pages"
 )
-git worktree remove --force "$wt"
 echo "Publicado en gh-pages. Origen de Pages: Settings → Pages → Deploy from a branch → gh-pages / (root)."
