@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sampleDocument } from './sample';
-import { deriveView } from './viewDerivation';
+import { deriveView, resolveDropReparent } from './viewDerivation';
 import { validateDocument } from './schema';
 
 describe('deriveView', () => {
@@ -94,5 +94,42 @@ describe('validateDocument', () => {
       expect(r.document.views).toEqual([]);
       expect(r.document.workspace.name).toBeTruthy();
     }
+  });
+});
+
+describe('resolveDropReparent (soltar un nodo tras arrastrarlo)', () => {
+  const laid = async () => (await import('../layout/elkLayout')).autoLayoutDocument(structuredClone(sampleDocument));
+
+  it('no toca la jerarquía de un nodo cuyo padre no se dibuja como boundary en la vista (spa/db en C3)', async () => {
+    const doc = await laid();
+    const c3 = deriveView(doc, 'componentes-api');
+    expect(c3.boundaries.map((b) => b.id)).toEqual(['api']); // "banca" (padre de spa/db/mobile-app) no es boundary aquí
+    for (const id of ['spa', 'mobile-app', 'db']) {
+      const n = c3.nodes.find((x) => x.id === id)!;
+      expect(resolveDropReparent(c3, id, { x: n.x! + 500, y: n.y! + 500 })).toBeNull();
+    }
+  });
+
+  it('desvincula al sacar un nodo de la caja de su boundary y no hace nada mientras siga dentro', async () => {
+    const doc = await laid();
+    const c2 = deriveView(doc, 'contenedores');
+    const banca = c2.boundaries.find((b) => b.id === 'banca')!;
+    const api = c2.nodes.find((n) => n.id === 'api')!;
+    // Dentro de la caja: sin cambios.
+    expect(resolveDropReparent(c2, 'api', { x: api.x!, y: api.y! })).toBeNull();
+    // Muy por fuera de la caja: se desvincula.
+    expect(resolveDropReparent(c2, 'api', { x: banca.x! + banca.width! + 800, y: banca.y! + banca.height! + 800 })).toEqual({ id: 'api', parentId: undefined });
+  });
+
+  it('adopta el boundary compatible al soltar un nodo sin padre dentro de él, y no adopta uno incompatible', async () => {
+    const doc = structuredClone(await laid());
+    doc.model.elements.find((e) => e.id === 'db')!.parentId = undefined;
+    delete doc.model.elements.find((e) => e.id === 'db')!.parentId;
+    const c2 = deriveView(doc, 'contenedores');
+    const banca = c2.boundaries.find((b) => b.id === 'banca')!;
+    const inside = { x: banca.x! + banca.width! / 2 - 120, y: banca.y! + banca.height! / 2 - 65 };
+    expect(resolveDropReparent(c2, 'db', inside)).toEqual({ id: 'db', parentId: 'banca' });
+    // Una persona no admite padre: soltarla dentro del boundary no cambia nada.
+    expect(resolveDropReparent(c2, 'cliente', inside)).toBeNull();
   });
 });

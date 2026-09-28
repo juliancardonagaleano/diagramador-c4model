@@ -21,7 +21,16 @@ export function useActions() {
       }
       try {
         const laid = await autoLayoutDocument(doc, { density: ui.density });
-        if (laid !== doc) store.getState().setDocument(laid, { activeViewId: store.getState().activeViewId ?? undefined });
+        // Las vistas que aún no tenían posiciones (nunca abiertas) quedan colocadas en el documento. Se
+        // aplica en silencio: exportar no es una edición, así que no marca "Cambios sin guardar", no
+        // deselecciona y no añade un paso al historial de deshacer (antes lo hacía siempre, porque
+        // autoLayoutDocument devuelve un objeto nuevo aunque no cambie nada).
+        if (JSON.stringify(laid) !== JSON.stringify(doc)) {
+          const temporal = store.temporal.getState();
+          temporal.pause();
+          store.setState({ doc: laid });
+          temporal.resume();
+        }
         const xml = toDrawio(laid, { notation: chosen });
         downloadText(safeFilename(`${doc.workspace.name}${chosen === 'card' ? '-tarjetas' : ''}`, 'drawio'), xml, 'application/xml');
         Toast.success(`Archivo .drawio exportado (${chosen === 'card' ? 'tarjetas' : 'notación C4'})`);

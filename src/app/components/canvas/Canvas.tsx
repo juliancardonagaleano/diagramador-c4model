@@ -15,13 +15,12 @@ import {
 } from '@xyflow/react';
 import { Toast } from '@douyinfe/semi-ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { deriveView, type DerivedView } from '../../../core/model/viewDerivation';
+import { deriveView, resolveDropReparent, type DerivedView } from '../../../core/model/viewDerivation';
 import { findChildView } from '../../../core/model/factories';
 import type { Point, Rect } from '../../../core/layout/edgeAnchors';
 import { estimateLabelSize } from '../../../core/layout/labelMetrics';
 import { routeMatchesNodes } from '../../../core/layout/quality';
 import { routeEdges } from '../../../core/layout/router';
-import { PARENT_TYPE } from '../../../core/model/types';
 import { useDocumentStore } from '../../store/documentStore';
 import { BoundaryNode, type BoundaryNodeType } from './BoundaryNode';
 import { ElementNode, elementColor, type ElementNodeType } from './ElementNode';
@@ -59,11 +58,16 @@ export function Canvas() {
     if (needs && layoutRequested.current !== key) {
       layoutRequested.current = key;
       const temporal = useDocumentStore.temporal.getState();
+      const wasModified = useDocumentStore.getState().modified;
       temporal.pause();
       void runAutoLayout(derived.view.id, { force: false })
         .then(() => setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50))
         .catch((error) => Toast.error(`Autolayout automático falló: ${(error as Error).message}`))
-        .finally(() => temporal.resume());
+        .finally(() => {
+          temporal.resume();
+          // Colocar por primera vez una vista no es una edición del usuario: no debe marcar "Cambios sin guardar".
+          useDocumentStore.setState({ modified: wasModified });
+        });
     }
   }, [derived, layoutBusy, runAutoLayout, fitView]);
 
@@ -209,29 +213,11 @@ export function Canvas() {
           moves.push({ id: n.id, x: n.position.x, y: n.position.y });
         }
       }
-      // Soltar un nodo dentro de un boundary compatible lo adopta como padre; fuera de todos
-      // los boundaries compatibles, lo desvincula. Se aplica junto con el movimiento en una sola
-      // llamada al store para que quede como un único paso de deshacer.
-      let reparent: { id: string; parentId: string | undefined } | undefined;
-      if (dragged.length === 1 && !boundaryIds.has(dragged[0].id)) {
-        const n = dragged[0];
-        const node = derived.nodes.find((x) => x.id === n.id);
-        if (node) {
-          const cx = n.position.x + node.width / 2;
-          const cy = n.position.y + node.height / 2;
-          const target = derived.boundaries.find(
-            (b) =>
-              b.x !== undefined &&
-              cx >= b.x &&
-              cx <= b.x + (b.width ?? 0) &&
-              cy >= b.y! &&
-              cy <= b.y! + (b.height ?? 0) &&
-              PARENT_TYPE[node.element.type] === b.element.type,
-          );
-          const nextParentId = target?.id;
-          if (nextParentId !== node.element.parentId) reparent = { id: n.id, parentId: nextParentId };
-        }
-      }
+      // Soltar un nodo dentro de un boundary compatible lo adopta como padre; salir de la caja que lo
+      // contenía lo desvincula (ver resolveDropReparent). Se aplica junto con el movimiento en una
+      // sola llamada al store para que quede como un único paso de deshacer.
+      const reparent =
+        dragged.length === 1 && !boundaryIds.has(dragged[0].id) ? (resolveDropReparent(derived, dragged[0].id, dragged[0].position) ?? undefined) : undefined;
       moveElements(derived.view.id, moves, reparent);
     },
     [derived, moveElements],

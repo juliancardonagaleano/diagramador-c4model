@@ -63,3 +63,24 @@ test('Nuevo diagrama / Cargar ejemplo / Abrir JSON piden confirmación si hay ca
   await page.waitForTimeout(300);
   await expect(page.locator('.react-flow__node')).toHaveCount(0);
 });
+
+test('navegar a vistas sin colocar y exportar .drawio no cuentan como cambios sin guardar', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.waitForSelector('.react-flow__node');
+  const header = page.locator('header');
+  await expect(header).not.toContainText('Cambios sin guardar');
+
+  // Bajar a C2/C3 dispara el autolayout inicial de cada vista: no es una edición del usuario.
+  await page.locator('.react-flow__node', { hasText: 'Sistema de banca en línea' }).dblclick();
+  await page.waitForTimeout(1200);
+  await page.locator('.react-flow__node', { hasText: 'Aplicación API' }).dblclick();
+  await page.waitForTimeout(1200);
+  await expect(header).not.toContainText('Cambios sin guardar');
+
+  // Exportar coloca las vistas que faltan, pero tampoco marca el documento como modificado ni añade un paso de deshacer.
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Exportar .drawio' }).click()]);
+  const xml = await (await import('node:fs/promises')).readFile((await download.path())!, 'utf8');
+  expect(xml.startsWith('<mxfile')).toBe(true);
+  await expect(header).not.toContainText('Cambios sin guardar');
+  await expect(page.getByRole('button', { name: 'Deshacer' })).toBeDisabled();
+});

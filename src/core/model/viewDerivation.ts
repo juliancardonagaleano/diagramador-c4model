@@ -2,6 +2,7 @@ import { ancestorIds, elementMap } from './factories';
 import {
   BOUNDARY_PADDING,
   DEFAULT_SIZES,
+  PARENT_TYPE,
   type C4Document,
   type C4Element,
   type C4Relationship,
@@ -178,4 +179,36 @@ export function viewBounds(derived: DerivedView): { x: number; y: number; width:
   const maxX = Math.max(...rects.map((r) => r.x! + r.width!));
   const maxY = Math.max(...rects.map((r) => r.y! + r.height!));
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+/**
+ * Qué padre corresponde a un nodo soltado en `position` (esquina superior izquierda) dentro de una vista,
+ * o `null` si no cambia. Soltarlo dentro de un boundary compatible lo adopta como padre. Soltarlo fuera
+ * de todos solo lo desvincula si su padre actual se dibuja como boundary en esta vista (es decir, si
+ * salió de la caja que lo contenía): si el padre no está dibujado (p. ej. `spa` en la vista de
+ * componentes, cuyo padre `banca` no aparece), mover el nodo no debe tocar su jerarquía.
+ */
+export function resolveDropReparent(
+  derived: DerivedView,
+  nodeId: string,
+  position: { x: number; y: number },
+): { id: string; parentId: string | undefined } | null {
+  const node = derived.nodes.find((n) => n.id === nodeId);
+  if (!node) return null;
+  const cx = position.x + node.width / 2;
+  const cy = position.y + node.height / 2;
+  const target = derived.boundaries.find(
+    (b) =>
+      b.x !== undefined &&
+      b.y !== undefined &&
+      cx >= b.x &&
+      cx <= b.x + (b.width ?? 0) &&
+      cy >= b.y &&
+      cy <= b.y + (b.height ?? 0) &&
+      PARENT_TYPE[node.element.type] === b.element.type,
+  );
+  const current = node.element.parentId;
+  if (target) return target.id !== current ? { id: nodeId, parentId: target.id } : null;
+  const parentIsDrawnAsBoundary = !!current && derived.boundaries.some((b) => b.id === current);
+  return parentIsDrawnAsBoundary ? { id: nodeId, parentId: undefined } : null;
 }
