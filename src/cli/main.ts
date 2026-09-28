@@ -33,6 +33,14 @@ function parseEffort(value: string): Effort {
   return v;
 }
 
+const PROVIDERS = ['auto', 'anthropic', 'foundry'] as const;
+
+function parseProvider(value: string): (typeof PROVIDERS)[number] {
+  const v = value.toLowerCase() as (typeof PROVIDERS)[number];
+  if (!PROVIDERS.includes(v)) throw new InvalidArgumentError(`Plataforma inválida. Use: ${PROVIDERS.join(', ')}`);
+  return v;
+}
+
 const DENSITIES: LayoutDensity[] = ['auto', 'compact', 'spacious'];
 
 function parseDensity(value: string): LayoutDensity {
@@ -94,7 +102,8 @@ export function buildProgram(): Command {
     .option('-o, --out <archivo.drawio>', 'archivo .drawio de salida')
     .option('-j, --json <archivo.json>', 'archivo JSON de salida (documento C4 con coordenadas)')
     .option('-f, --from <archivo.json>', 'documento existente a refinar')
-    .option('-m, --model <modelo>', 'modelo de Claude', DEFAULT_AI_MODEL)
+    .option('-p, --provider <plataforma>', 'plataforma de Claude: auto|anthropic|foundry (auto: Foundry si hay ANTHROPIC_FOUNDRY_*)', parseProvider, 'auto')
+    .option('-m, --model <modelo>', `modelo de Claude (por defecto ${DEFAULT_AI_MODEL}; en Foundry, el nombre de tu despliegue o ANTHROPIC_FOUNDRY_MODEL)`)
     .option('-e, --effort <nivel>', `esfuerzo de razonamiento (${EFFORTS.join('|')})`, parseEffort)
     .option('-d, --direction <dir>', `dirección del autolayout (${DIRECTIONS.join('|')})`, parseDirection)
     .option('--retries <n>', 'reintentos si el modelo devuelve un documento inválido', parseRetries, 1)
@@ -107,6 +116,7 @@ export function buildProgram(): Command {
       const result = await generateDocument({
         instruction,
         base,
+        provider: opts.provider,
         model: opts.model,
         effort: opts.effort,
         direction: opts.direction,
@@ -117,7 +127,7 @@ export function buildProgram(): Command {
       });
       const { document } = result;
       info(
-        `Modelo generado con ${result.model} en ${result.attempts} intento(s): ${document.model.elements.length} elementos, ` +
+        `Modelo generado con ${result.model} (${result.provider}) en ${result.attempts} intento(s): ${document.model.elements.length} elementos, ` +
           `${document.model.relationships.length} relaciones, ${document.views.length} vistas ` +
           `(${result.usage.inputTokens} tokens de entrada, ${result.usage.outputTokens} de salida).`,
       );

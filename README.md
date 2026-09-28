@@ -184,6 +184,19 @@ npx c4diagram generate "Sistema de banca en línea con app web (React), API (Nod
 
 Flujo: la instrucción se envía a Claude (`claude-opus-5` por defecto) con **salida estructurada** contra el esquema del modelo *sin coordenadas*; el resultado se valida (referencias, jerarquía C4) con un reintento automático si hay errores; después se aplica **autolayout** a todas las vistas y se escriben el JSON y el `.drawio`. Con `--from base.json` la instrucción se trata como un refinamiento del documento existente ("agrega una cola Kafka entre la API y las notificaciones"), conservando los ids y posiciones ya fijados.
 
+#### Con Microsoft (Azure) Foundry
+
+`generate` también funciona con Claude desplegado en Foundry. Basta con definir estas variables de entorno (guárdalas como secretos del entorno, nunca en el repositorio); con ellas la plataforma se detecta sola, o se fuerza con `--provider foundry`:
+
+```bash
+export ANTHROPIC_FOUNDRY_API_KEY=…
+export ANTHROPIC_FOUNDRY_BASE_URL=https://<recurso>.services.ai.azure.com/anthropic/   # o ANTHROPIC_FOUNDRY_RESOURCE=<recurso>
+export ANTHROPIC_FOUNDRY_MODEL=<nombre-de-tu-despliegue>   # en Foundry `model` es el nombre del despliegue
+npx c4diagram generate "Una tienda en línea con web, API y base de datos" --json tienda.json --out tienda.drawio
+```
+
+En Foundry no se envían los *fallbacks* del servidor (solo existen en la API de Anthropic); el resto del flujo (salida estructurada, validación, reintento, autolayout) es idéntico.
+
 ### Sin clave de API: cualquier IA o agente
 
 `c4diagram prompt` imprime un prompt autocontenido (reglas C4 + JSON Schema + instrucción). Pégalo en el asistente que prefieras (o deja que un agente como Claude Code lo ejecute) y tuberiza la respuesta:

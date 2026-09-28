@@ -4,6 +4,7 @@ import { autoLayoutDocument } from '../layout/elkLayout';
 import { formatIssues } from '../model/schema';
 import type { C4Document, LayoutDensity, LayoutDirectionOption, LayoutDistribution } from '../model/types';
 import { generatedDocumentSchema, generatedToDocument, type GeneratedDocument } from './generationSchema';
+import { createAiClient, credentialsHint, resolveModel, resolveProvider, type AiProvider } from './client';
 import { retryPrompt, systemPrompt, userPrompt } from './prompt';
 
 export const DEFAULT_AI_MODEL = 'claude-opus-5';
@@ -15,8 +16,11 @@ export interface GenerateOptions {
   instruction: string;
   /** Documento existente a refinar. */
   base?: C4Document;
-  /** Cliente de Anthropic (inyectable para pruebas). Por defecto `new Anthropic()`. */
+  /** Cliente de Anthropic (inyectable para pruebas). Por defecto se crea según `provider`. */
   client?: Anthropic;
+  /** Plataforma: `anthropic`, `foundry` o `auto` (por defecto: Foundry si hay variables `ANTHROPIC_FOUNDRY_*`). */
+  provider?: AiProvider | 'auto';
+  /** Modelo (en Foundry, el nombre de tu despliegue). */
   model?: string;
   effort?: Effort;
   /** Reintentos si el modelo devuelve un documento inválido. */
@@ -35,6 +39,7 @@ export interface GenerateOptions {
 export interface GenerateResult {
   document: C4Document;
   model: string;
+  provider: AiProvider;
   attempts: number;
   usage: { inputTokens: number; outputTokens: number };
 }
@@ -54,8 +59,9 @@ export class GenerationError extends Error {
  * salida estructurada, valida el resultado y aplica autolayout.
  */
 export async function generateDocument(options: GenerateOptions): Promise<GenerateResult> {
-  const client = options.client ?? new Anthropic();
-  const model = options.model ?? DEFAULT_AI_MODEL;
+  const provider = resolveProvider(options.provider);
+  const client = options.client ?? (await createAiClient(provider));
+  const model = resolveModel(provider, options.model, DEFAULT_AI_MODEL);
   const maxRetries = options.maxRetries ?? 1;
   const progress = options.onProgress ?? (() => {});
 
@@ -78,8 +84,8 @@ export async function generateDocument(options: GenerateOptions): Promise<Genera
       const response = await client.beta.messages.parse({
         model,
         max_tokens: 16000,
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
+        // Los fallbacks del servidor solo existen en la API de Anthropic, no en Foundry.
+        ...(provider === 'anthropic' ? { betas: ['server-side-fallback-2026-07-01' as const], fallbacks: 'default' as const } : {}),
         system: systemPrompt(),
         messages,
         output_config: {
@@ -101,7 +107,7 @@ export async function generateDocument(options: GenerateOptions): Promise<Genera
       messages.push({ role: 'assistant', content: response.content.filter((b) => b.type === 'text' || b.type === 'thinking') });
     } catch (error) {
       if (error instanceof GenerationError) throw error;
-      throw new GenerationError(describeApiError(error), error);
+      throw new GenerationError(describeApiError(error, provider), error);
     }
 
     const result = generatedToDocument(generated);
@@ -110,7 +116,7 @@ export async function generateDocument(options: GenerateOptions): Promise<Genera
       const document = options.skipLayout
         ? result.document
         : await autoLayoutDocument(result.document, { direction: options.direction, density: options.density, distribution: options.distribution, force: true });
-      return { document, model: servedModel, attempts, usage: { inputTokens, outputTokens } };
+      return { document, model: servedModel, provider, attempts, usage: { inputTokens, outputTokens } };
     }
     lastIssues = formatIssues(result.issues);
     messages.push({ role: 'user', content: retryPrompt(lastIssues) });
@@ -119,9 +125,9 @@ export async function generateDocument(options: GenerateOptions): Promise<Genera
   throw new GenerationError(`El modelo no produjo un documento válido tras ${attempts} intentos:\n${lastIssues}`);
 }
 
-function describeApiError(error: unknown): string {
+function describeApiError(error: unknown, provider: AiProvider): string {
   if (error instanceof Anthropic.AuthenticationError) {
-    return 'Credenciales inválidas o ausentes. Defina ANTHROPIC_API_KEY o inicie sesión con `ant auth login`.';
+    return credentialsHint(provider);
   }
   if (error instanceof Anthropic.RateLimitError) return 'Límite de tasa alcanzado. Inténtelo de nuevo en unos segundos.';
   if (error instanceof Anthropic.BadRequestError) return `Solicitud rechazada por la API: ${error.message}`;

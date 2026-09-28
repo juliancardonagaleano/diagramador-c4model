@@ -83,12 +83,23 @@ describe('generateDocument', () => {
 
   it('usa el modelo por defecto y salida estructurada', async () => {
     const client = fakeClient([good]);
-    await generateDocument({ instruction: 'x', client, skipLayout: true, effort: 'high' });
+    await generateDocument({ instruction: 'x', client, provider: 'anthropic', skipLayout: true, effort: 'high' });
     const params = (client.beta.messages.parse as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
     expect(params.model).toBe('claude-opus-5');
     expect(params.fallbacks).toBe('default');
     expect((params.output_config as Record<string, unknown>).effort).toBe('high');
     expect((params.output_config as { format: { type: string } }).format.type).toBe('json_schema');
+  });
+
+  it('en Foundry no envía fallbacks ni betas del servidor y usa el despliegue indicado', async () => {
+    const client = fakeClient([good]);
+    const r = await generateDocument({ instruction: 'x', client, provider: 'foundry', model: 'mi-despliegue', skipLayout: true });
+    const params = (client.beta.messages.parse as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
+    expect(params.model).toBe('mi-despliegue');
+    expect(params).not.toHaveProperty('fallbacks');
+    expect(params).not.toHaveProperty('betas');
+    expect((params.output_config as { format: { type: string } }).format.type).toBe('json_schema');
+    expect(r.provider).toBe('foundry');
   });
 });
 

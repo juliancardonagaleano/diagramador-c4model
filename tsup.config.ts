@@ -12,7 +12,7 @@ export default defineConfig([
     outDir: 'dist',
     target: 'es2022',
     platform: 'neutral',
-    external: ['elkjs', 'zod', '@anthropic-ai/sdk', 'nanoid'],
+    external: ['elkjs', 'zod', '@anthropic-ai/sdk', '@anthropic-ai/foundry-sdk', 'nanoid'],
   },
   {
     entry: { 'cli/index': 'src/cli/index.ts' },
@@ -25,7 +25,7 @@ export default defineConfig([
     target: 'node20',
     platform: 'node',
     banner: { js: '#!/usr/bin/env node' },
-    external: ['elkjs', 'zod', '@anthropic-ai/sdk', 'commander', 'nanoid'],
+    external: ['elkjs', 'zod', '@anthropic-ai/sdk', '@anthropic-ai/foundry-sdk', 'commander', 'nanoid'],
   },
   {
     entry: { 'embed/c4-embed': 'src/embed/c4-embed.ts' },
