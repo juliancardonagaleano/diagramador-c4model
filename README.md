@@ -317,23 +317,36 @@ tests/e2e/    pruebas Playwright
 - **Semi UI + Tailwind 4** son las mismas librerías que usa drawdb, lo que permite reproducir su estética (tabs tipo card, cards colapsables, grid de puntos, tarjetas con franja de color).
 - **Niveles como vistas tipadas sobre un modelo único**, no diagramas independientes: así C1, C2 y C3 se mantienen coherentes entre sí y la navegación (doble clic, breadcrumb, enlaces de página en draw.io) se deriva de la relación vista ↔ alcance sin datos adicionales.
 
-## Pendiente: prueba real de `generate` (Foundry o API de Anthropic)
+## Prueba real de `generate`
 
-La generación con IA está implementada y cubierta por pruebas con clientes simulados (`src/core/ai/*.test.ts`) y por el test del CLI sin credenciales, pero **todavía no se ha ejecutado contra ningún servicio real**. Estado a fecha de hoy:
+La generación con IA está cubierta por pruebas con clientes simulados (`src/core/ai/*.test.ts`) y, además, se ejecutó
+contra un servicio real. Estado por proveedor:
 
-- **Foundry (cualquier modelo, `--provider openai`)**: el entorno de la sesión ya define `ANTHROPIC_FOUNDRY_BASE_URL` (`https://aif-co-nop-arq.openai.azure.com/openai/v1`) y `ANTHROPIC_FOUNDRY_MODEL` (`DeepSeek-V4-Pro`), pero **falta la clave**: `ANTHROPIC_FOUNDRY_API_KEY` (o `AI_API_KEY`) no llegó a la sesión. Hay que guardarla en los ajustes del entorno (menú del entorno en la barra de título → Edit → *Environment variables* o *API credentials*) y abrir una **sesión nueva** para que la vea. Nunca en el chat, en el código ni en git (`.gitignore` excluye `.env*`). Puede que también haga falta permitir el host `aif-co-nop-arq.openai.azure.com` en *Network access*.
-- **Claude en Foundry (`--provider foundry`)**: requiere un despliegue de Claude en el recurso, URL `https://<recurso>.services.ai.azure.com/anthropic/` y `ANTHROPIC_FOUNDRY_MODEL` con el nombre de ese despliegue. Hoy solo hay un despliegue de DeepSeek.
-- **API de Anthropic**: requiere una clave con créditos (`ANTHROPIC_API_KEY`); la suscripción de Claude.ai no incluye acceso a la API.
+| Proveedor | Estado |
+|---|---|
+| **Foundry, cualquier modelo** (`--provider openai`) | **Probado** con DeepSeek‑V4‑Pro (28‑09‑2026): un intento, JSON válido, 6 elementos, 4 relaciones y 2 vistas; `validate --strict` sin errores ni avisos, todas las vistas con coordenadas y el `.drawio` con una página por vista. Variables usadas: `AI_API_KEY`, `AI_BASE_URL` y `AI_MODEL` (también valen las `ANTHROPIC_FOUNDRY_*`). |
+| **Claude en Foundry** (`--provider foundry`) | **Sin probar**: requiere un despliegue de Claude en el recurso, `ANTHROPIC_FOUNDRY_BASE_URL` (`https://<recurso>.services.ai.azure.com/anthropic/`) o `ANTHROPIC_FOUNDRY_RESOURCE`, `ANTHROPIC_FOUNDRY_API_KEY` y `ANTHROPIC_FOUNDRY_MODEL` con el nombre de ese despliegue. |
+| **API de Anthropic** | **Sin probar**: requiere `ANTHROPIC_API_KEY` con créditos (la suscripción de Claude.ai no incluye acceso a la API). |
 
-Cuando haya credenciales, ejecutar:
+La prueba real destapó un defecto que las pruebas con clientes simulados no veían: la vista de contexto salía **sin su
+propio sistema** (y por tanto sin aristas) porque `generatedToDocument` descartaba el `scopeId` en todas las vistas
+y ningún validador lo exigía. Ahora solo se descarta en contenedores/componentes, y `validateDocument` rechaza una vista
+`systemContext` que no incluya su alcance (lo que dispara el reintento con el error), con el mismo aviso en el panel de
+problemas y en `validate --strict`.
+
+Para repetir la prueba con otro proveedor o modelo:
 
 ```bash
 npm run cli -- generate "Sistema de banca en línea con app web (React), API (Node.js), PostgreSQL y una pasarela de pagos externa" \
   --json examples/banca-ia.generated.json --out examples/banca-ia.generated.drawio
-npm run cli -- validate examples/banca-ia.generated.json
+npm run cli -- validate examples/banca-ia.generated.json --strict
 ```
 
-y comprobar que `validate` no reporta errores, que todas las vistas tienen coordenadas y que el `.drawio` abre en draw.io con una página por vista. Los archivos `*.generated.*` están ignorados por git. Si el endpoint rechaza algo (formato de respuesta, parámetros de tokens, autenticación), el ajuste va en `src/core/ai/openaiCompat.ts`.
+y comprobar que `validate` no reporta errores, que todas las vistas tienen coordenadas y que el `.drawio` abre en
+draw.io con una página por vista (la vista de contexto debe llevar el sistema y sus relaciones). Los archivos
+`*.generated.*` están ignorados por git. Si el endpoint rechaza algo (formato de respuesta, parámetros de tokens,
+autenticación), el ajuste va en `src/core/ai/openaiCompat.ts`. Las credenciales van siempre en los ajustes del entorno
+(*Environment variables* / *API credentials*), nunca en el chat, en el código ni en git (`.gitignore` excluye `.env*`).
 
 ## Fuera de alcance (v1)
 
