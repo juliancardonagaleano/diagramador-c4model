@@ -149,9 +149,18 @@ export async function layoutDerivedView(derived: DerivedView, options: LayoutOpt
   const interactive = anyPositioned && !force;
   if (interactive || options.fast) {
     const direction = interactive ? (view.layout?.direction ?? params.direction) : params.direction;
-    const result = await runElkLayout(derived, { ...params, direction }, { name: interactive ? 'interactive' : 'fast' }, interactive);
-    result.quality = measureDerived(derived, result.positions, result.boundaries, direction, result.routes);
-    return result;
+    try {
+      const result = await runElkLayout(derived, { ...params, direction }, { name: interactive ? 'interactive' : 'fast' }, interactive);
+      result.quality = measureDerived(derived, result.positions, result.boundaries, direction, result.routes);
+      return result;
+    } catch (error) {
+      // El modo interactivo de ELK (conserva las posiciones existentes y coloca las nuevas) lanza
+      // UnsupportedGraphException en grafos jerárquicos (C2/C3, con boundaries) cuando solo
+      // algunos nodos tienen posición — p. ej. tras añadir un elemento existente a la vista. En vez
+      // de propagar el error (que rompía el autolayout y la exportación a .drawio de todo el
+      // documento), se recalcula la vista completa con la estrategia normal.
+      if (!interactive) throw error;
+    }
   }
   const { smartLayout } = await import('./smartLayout');
   return smartLayout(derived, params);

@@ -1,5 +1,5 @@
 import type { DerivedView } from '../model/viewDerivation';
-import type { LayoutDirection } from '../model/types';
+import { BOUNDARY_PADDING, type LayoutDirection } from '../model/types';
 import { distributeCentered } from './distribute';
 import {
   boundariesFromPositions,
@@ -7,6 +7,7 @@ import {
   runElkLayout,
   type LayoutResult,
   type LayoutVariant,
+  type PositionedElement,
   type ResolvedLayoutParams,
 } from './elkLayout';
 import { estimateLabelSize } from './labelMetrics';
@@ -62,6 +63,78 @@ export function buildCandidates(params: ResolvedLayoutParams): LayoutCandidate[]
   return list;
 }
 
+/** Enrutado propio (con esquiva de nodos y boundaries) para unas posiciones ya calculadas. */
+function buildRoutes(derived: DerivedView, positions: PositionedElement[], boundaries: PositionedElement[], direction: LayoutDirection, spacing: number) {
+  const containment = new Map<string, Set<string>>();
+  const boundaryParent = new Map(derived.boundaries.map((b) => [b.id, b.boundaryId]));
+  for (const n of derived.nodes) {
+    const set = new Set<string>();
+    let current = n.boundaryId;
+    while (current && !set.has(current)) {
+      set.add(current);
+      current = boundaryParent.get(current);
+    }
+    containment.set(n.id, set);
+  }
+  return routeEdges({
+    rects: positions,
+    boundaries,
+    containment,
+    edges: derived.edges.map((e) => ({ id: e.id, sourceId: e.sourceId, targetId: e.targetId, label: estimateLabelSize(e.relationship.description, e.relationship.technology) })),
+    direction,
+    spacing,
+  });
+}
+
+/**
+ * Último recurso cuando ELK falla en todos los candidatos: cuadrícula determinista. Los nodos de un
+ * mismo boundary quedan contiguos y cada grupo ocupa su propio bloque, así los boundaries (que se
+ * derivan del rectángulo de sus hijos) no se solapan. No es bonito, pero exportar nunca se rompe.
+ */
+export function gridLayout(derived: DerivedView, params: ResolvedLayoutParams): LayoutResult {
+  const boundaryParent = new Map(derived.boundaries.map((b) => [b.id, b.boundaryId]));
+  const chainKey = (boundaryId?: string): string => {
+    const chain: string[] = [];
+    const seen = new Set<string>();
+    let cur = boundaryId;
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      chain.unshift(cur);
+      cur = boundaryParent.get(cur);
+    }
+    return chain.join('\u0000');
+  };
+  const maxDepth = Math.max(0, ...derived.nodes.map((n) => (chainKey(n.boundaryId) ? chainKey(n.boundaryId).split('\u0000').length : 0)));
+  const pad = BOUNDARY_PADDING;
+  const groups = new Map<string, typeof derived.nodes>();
+  for (const n of [...derived.nodes].sort((a, b) => chainKey(a.boundaryId).localeCompare(chainKey(b.boundaryId)))) {
+    const key = chainKey(n.boundaryId);
+    groups.set(key, [...(groups.get(key) ?? []), n]);
+  }
+  const COLS = 3;
+  const x0 = 20 + maxDepth * pad.left;
+  const gap = (maxDepth + 1) * (pad.top + pad.bottom);
+  let y = 20 + maxDepth * pad.top;
+  const positions: PositionedElement[] = [];
+  for (const members of groups.values()) {
+    for (let i = 0; i < members.length; i += COLS) {
+      const row = members.slice(i, i + COLS);
+      let x = x0;
+      for (const n of row) {
+        positions.push({ id: n.id, x, y, width: n.width, height: n.height });
+        x += n.width + params.spacing;
+      }
+      y += Math.max(...row.map((n) => n.height)) + params.layerSpacing;
+    }
+    y += gap;
+  }
+  const boundaries = boundariesFromPositions(derived, positions);
+  const routes = buildRoutes(derived, positions, boundaries, params.direction, params.spacing);
+  const result: LayoutResult = { viewId: derived.view.id, positions, boundaries, routes, direction: params.direction, distribution: 'elk' };
+  result.quality = { ...measureDerived(derived, positions, boundaries, params.direction, routes), strategy: `${params.direction}/grid` };
+  return result;
+}
+
 function isClean(r: LayoutResult): boolean {
   const q = r.quality;
   return !!q && q.crossings === 0 && q.edgeNodeOverlaps === 0 && q.labelOverlaps === 0;
@@ -88,25 +161,7 @@ export async function runCandidate(derived: DerivedView, params: ResolvedLayoutP
     layerSpacing: Math.round(p.layerSpacing * spacingFactor),
   });
   const boundaries = boundariesFromPositions(derived, distributed.positions);
-  const containment = new Map<string, Set<string>>();
-  const boundaryParent = new Map(derived.boundaries.map((b) => [b.id, b.boundaryId]));
-  for (const n of derived.nodes) {
-    const set = new Set<string>();
-    let current = n.boundaryId;
-    while (current && !set.has(current)) {
-      set.add(current);
-      current = boundaryParent.get(current);
-    }
-    containment.set(n.id, set);
-  }
-  const routes = routeEdges({
-    rects: distributed.positions,
-    boundaries,
-    containment,
-    edges: derived.edges.map((e) => ({ id: e.id, sourceId: e.sourceId, targetId: e.targetId, label: estimateLabelSize(e.relationship.description, e.relationship.technology) })),
-    direction: p.direction,
-    spacing: p.spacing,
-  });
+  const routes = buildRoutes(derived, distributed.positions, boundaries, p.direction, p.spacing);
   const result: LayoutResult = { viewId: derived.view.id, positions: distributed.positions, boundaries, routes, direction: p.direction, distribution: 'centered' };
   result.quality = { ...measureDerived(derived, result.positions, result.boundaries, p.direction, routes), strategy: `${p.direction}/centered/${candidate.variant.name}` };
   return result;
@@ -118,7 +173,14 @@ export async function smartLayout(derived: DerivedView, params: ResolvedLayoutPa
   let tried = 0;
 
   const attempt = async (candidate: LayoutCandidate): Promise<boolean> => {
-    const result = await runCandidate(derived, params, candidate);
+    let result: LayoutResult;
+    try {
+      result = await runCandidate(derived, params, candidate);
+    } catch {
+      // Un candidato puede hacer fallar a ELK (p. ej. UnsupportedGraphException en grafos jerárquicos):
+      // se descarta y se sigue con los demás en vez de abortar todo el layout.
+      return false;
+    }
     tried += 1;
     // Bonus a la clase preferida: entre resultados no limpios, gana el preferido salvo diferencia clara.
     const effective = result.quality!.score * (candidate.preferred ? 0.8 : 1);
@@ -136,7 +198,8 @@ export async function smartLayout(derived: DerivedView, params: ResolvedLayoutPa
     }
   }
 
-  const chosen = best!;
+  // Ningún candidato de ELK funcionó: cuadrícula determinista (mejor eso que dejar el documento sin layout).
+  const chosen: LayoutResult = best ?? gridLayout(derived, params);
   chosen.quality = { ...chosen.quality!, candidates: tried };
   return chosen;
 }

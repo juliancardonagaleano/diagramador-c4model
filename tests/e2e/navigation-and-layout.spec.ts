@@ -74,3 +74,28 @@ test('autolayout, direcciones y navegación C1 → C2 → C3', async ({ page }) 
   await page.waitForTimeout(500);
   await expect(page.locator('.c4-breadcrumb')).toHaveAttribute('data-level', 'C2');
 });
+
+test('volver a añadir a una vista C2 un elemento (botón del ojo) recoloca la vista y la exportación sigue funcionando', async ({ page }) => {
+  // Antes: la vista quedaba con nodos posicionados y uno sin posición, ELK (modo interactivo) lanzaba
+  // UnsupportedGraphException en vistas con boundary, el autolayout fallaba y "Exportar .drawio" también.
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.waitForSelector('.react-flow__node');
+  await page.locator('.react-flow__node', { hasText: 'Sistema de banca en línea' }).dblclick();
+  await page.waitForTimeout(1200);
+  await expect(page.locator('.c4-breadcrumb')).toHaveAttribute('data-level', 'C2');
+  const before = await page.locator('.react-flow__node').count();
+
+  const eye = page.locator('.c4-card[data-element-id="db"] .c4-card-header button');
+  await eye.click(); // quitar "Base de datos" de la vista
+  await page.waitForTimeout(400);
+  await expect(page.locator('.react-flow__node')).toHaveCount(before - 1);
+  await eye.click(); // volver a añadirla, sin posición
+  await page.waitForTimeout(1800);
+  await expect(page.locator('.react-flow__node')).toHaveCount(before);
+  await expect(page.locator('.react-flow__node', { hasText: 'Base de datos' })).toHaveCount(1);
+
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Exportar .drawio' }).click()]);
+  const xml = await (await import('node:fs/promises')).readFile((await download.path())!, 'utf8');
+  expect(xml.startsWith('<mxfile')).toBe(true);
+  expect((xml.match(/<diagram /g) || []).length).toBe(3);
+});

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { sampleDocument } from '../model/sample';
 import { deriveView } from '../model/viewDerivation';
 import { layoutView, resolveLayoutParams } from './elkLayout';
-import { buildCandidates, smartLayout } from './smartLayout';
+import { buildCandidates, gridLayout, smartLayout } from './smartLayout';
 
 describe('smartLayout (autocorrección y prioridad por nivel)', () => {
   it('C1 sale arriba→abajo, centrado y limpio; personas arriba y externos abajo', async () => {
@@ -57,5 +57,38 @@ describe('smartLayout (autocorrección y prioridad por nivel)', () => {
     expect(fast.quality?.candidates).toBeUndefined();
     const smart = await smartLayout(derived, auto);
     expect(smart.quality!.candidates).toBeGreaterThanOrEqual(1);
+  });
+
+  describe('cuadrícula de último recurso (cuando ELK falla en todos los candidatos)', () => {
+    it('sin candidatos usa la cuadrícula en vez de fallar', async () => {
+      const derived = deriveView(sampleDocument, 'contenedores');
+      const r = await smartLayout(derived, resolveLayoutParams(derived, {}), []);
+      expect(r.quality!.strategy).toMatch(/grid$/);
+      expect(r.positions).toHaveLength(derived.nodes.length);
+    });
+
+    for (const id of ['contexto', 'contenedores', 'componentes-api']) {
+      it(`gridLayout (${id}): posiciona todos los nodos sin solapes y los boundaries contienen solo a sus hijos`, () => {
+        const derived = deriveView(sampleDocument, id);
+        const r = gridLayout(derived, resolveLayoutParams(derived, {}));
+        expect(r.positions.map((p) => p.id).sort()).toEqual(derived.nodes.map((n) => n.id).sort());
+        for (let i = 0; i < r.positions.length; i++) {
+          for (let j = i + 1; j < r.positions.length; j++) {
+            const a = r.positions[i], b = r.positions[j];
+            expect(a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height).toBe(false);
+          }
+        }
+        for (const b of r.boundaries) {
+          const boundary = derived.boundaries.find((x) => x.id === b.id)!;
+          const inside = new Set(derived.nodes.filter((n) => n.boundaryId === boundary.id).map((n) => n.id));
+          for (const p of r.positions) {
+            const within = p.x >= b.x && p.y >= b.y && p.x + p.width <= b.x + b.width && p.y + p.height <= b.y + b.height;
+            if (inside.has(p.id)) expect(within).toBe(true);
+            else if (!derived.boundaries.some((o) => o.boundaryId === boundary.id)) expect(within).toBe(false);
+          }
+        }
+        expect(r.routes.length).toBe(derived.edges.length);
+      });
+    }
   });
 });
