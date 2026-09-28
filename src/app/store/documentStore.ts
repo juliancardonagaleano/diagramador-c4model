@@ -379,7 +379,21 @@ export const useDocumentStore = create<DocumentStore>()(
             set({ activeViewId: view.id, selection: { kind: 'none' } });
             return view;
           },
-          updateView: (id, patch) => updateDoc((doc) => ({ ...doc, views: doc.views.map((v) => (v.id === id ? { ...v, ...patch } : v)) })),
+          updateView: (id, patch) =>
+            updateDoc((doc) => ({
+              ...doc,
+              views: doc.views.map((v) => {
+                if (v.id !== id) return v;
+                const next = { ...v, ...patch };
+                // En contexto el alcance es un nodo más: si se fija (o se cambia) el alcance, entra en la vista.
+                const needsScope =
+                  next.type === 'systemContext' &&
+                  next.scopeId &&
+                  !next.elements.some((e) => e.id === next.scopeId) &&
+                  doc.model.elements.some((e) => e.id === next.scopeId);
+                return needsScope ? { ...next, elements: [...next.elements, { id: next.scopeId! }] } : next;
+              }),
+            })),
           removeView: (id) => {
             updateDoc((doc) => ({ ...doc, views: doc.views.filter((v) => v.id !== id) }));
             const s = get();
@@ -398,7 +412,12 @@ export const useDocumentStore = create<DocumentStore>()(
           removeElementFromView: (viewId, elementId) =>
             updateDoc((doc) => ({
               ...doc,
-              views: doc.views.map((v) => (v.id === viewId ? { ...v, elements: v.elements.filter((e) => e.id !== elementId) } : v)),
+              views: doc.views.map((v) => {
+                if (v.id !== viewId) return v;
+                // El sistema de una vista de contexto no se puede quitar: sin él la vista deja de ser válida.
+                if (v.type === 'systemContext' && v.scopeId === elementId) return v;
+                return { ...v, elements: v.elements.filter((e) => e.id !== elementId) };
+              }),
             })),
           moveElements: (viewId, moves, reparent) => {
             if (moves.length === 0 && !reparent) return;

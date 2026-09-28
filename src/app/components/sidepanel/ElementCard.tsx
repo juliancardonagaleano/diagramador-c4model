@@ -29,7 +29,9 @@ export function ElementCard({ element, inActiveView, selected }: { element: C4El
   const [nameDraft, setNameDraft] = useState(element.name);
   useEffect(() => setNameDraft(element.name), [element.id, element.name]);
   const activeView = doc.views.find((v) => v.id === activeViewId);
-  const isScope = activeView?.scopeId === element.id;
+  // Alcance de la vista activa. En contenedores/componentes es el boundary (nunca entra como elemento);
+  // en contexto es un nodo más: solo queda bloqueado mientras esté en la vista (si falta, se puede añadir).
+  const isScope = activeView?.scopeId === element.id && (activeView.type !== 'systemContext' || inActiveView);
   // Motivo (si lo hay) por el que algún otro tipo no se puede elegir: tiene hijos o es alcance de una vista.
   const typeBlockedReason = (Object.keys(ELEMENT_TYPE_LABELS) as ElementType[]).map((t) => typeChangeBlockedReason(doc, element.id, t)).find(Boolean) ?? null;
 

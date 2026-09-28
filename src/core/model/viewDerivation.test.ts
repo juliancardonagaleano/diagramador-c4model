@@ -86,6 +86,26 @@ describe('validateDocument', () => {
     }
   });
 
+  it('rechaza una vista de contexto que no incluye su propio sistema', () => {
+    const doc = structuredClone(sampleDocument);
+    const ctx = doc.views.find((v) => v.id === 'contexto')!;
+    ctx.elements = ctx.elements.filter((e) => e.id !== ctx.scopeId);
+    const r = validateDocument(doc);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.issues).toContainEqual({
+        path: 'views.0.elements',
+        message: expect.stringMatching(/debe incluir su alcance "banca"/),
+      });
+    }
+  });
+
+  it('no exige el alcance entre los elementos de las vistas de contenedores (es su boundary)', () => {
+    const cont = sampleDocument.views.find((v) => v.type === 'container')!;
+    expect(cont.elements.some((e) => e.id === cont.scopeId)).toBe(false);
+    expect(validateDocument(sampleDocument).ok).toBe(true);
+  });
+
   it('aplica valores por defecto', () => {
     const r = validateDocument({ model: { elements: [] } });
     expect(r.ok).toBe(true);

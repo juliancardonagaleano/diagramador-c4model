@@ -91,7 +91,7 @@ Un documento contiene un **modelo** compartido (elementos y relaciones) y N **vi
 | `element.shape` | `default`, `database`, `queue`, `browser`, `mobile` |
 | `element.external` | `true` para sistemas de terceros (se pintan en gris) |
 | `view.type` | `systemContext`, `container`, `component` |
-| `view.scopeId` | sistema (contexto/contenedores) o contenedor (componentes); se dibuja como **boundary** |
+| `view.scopeId` | sistema (contexto/contenedores) o contenedor (componentes). En contenedores y componentes se dibuja como **boundary**; en contexto es un nodo más y **debe estar en `elements`** (el validador lo exige) |
 | `view.layout.direction` | `DOWN`, `RIGHT`, `UP`, `LEFT` |
 | `view.layout.density` | `auto`, `compact`, `spacious` |
 | `view.layout.distribution` | `centered`, `elk` (la elegida por el último autolayout) o `auto` |

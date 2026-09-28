@@ -65,7 +65,11 @@ export function generatedToDocument(gen: GeneratedDocument): ValidationResult {
       id: v.id,
       type: v.type,
       title: v.title ?? undefined,
-      elements: v.elementIds.filter((id, i, arr) => arr.indexOf(id) === i && id !== v.scopeId).map((id) => ({ id })),
+      // El scope solo se descarta en container/component, donde es el boundary de la vista;
+      // en systemContext es un nodo más y tiene que quedarse.
+      elements: v.elementIds
+        .filter((id, i, arr) => arr.indexOf(id) === i && (v.type === 'systemContext' || id !== v.scopeId))
+        .map((id) => ({ id })),
     };
     if (v.scopeId) view.scopeId = v.scopeId;
     return view;

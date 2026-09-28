@@ -194,6 +194,13 @@ export const documentSchema = z
             path: ['views', i, 'scopeId'],
             message: `El alcance de una vista "${view.type}" debe ser de tipo "${expected}", pero "${scope.id}" es "${scope.type}"`,
           });
+        } else if (view.type === 'systemContext' && !view.elements.some((ve) => ve.id === scope.id)) {
+          // En contexto el sistema no es un boundary: es un nodo más y debe estar en la vista.
+          ctx.addIssue({
+            code: 'custom',
+            path: ['views', i, 'elements'],
+            message: `La vista "${view.id}" (systemContext) debe incluir su alcance "${scope.id}" entre sus elementos`,
+          });
         }
       }
       const seen = new Set<string>();
