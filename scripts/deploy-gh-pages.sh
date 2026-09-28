@@ -9,7 +9,7 @@ repo=$(basename "$root")
 cd "$root"
 
 # Pages sirve bajo /<repositorio>/; se puede sobrescribir con BASE_PATH.
-BASE_PATH="${BASE_PATH:-/$repo/}" npm run build:app
+BASE_PATH="${BASE_PATH:-/$repo/}" OUT_DIR=dist/pages npm run build:app
 
 wt=$(mktemp -d)
 git worktree add --detach "$wt" >/dev/null
@@ -17,7 +17,7 @@ git worktree add --detach "$wt" >/dev/null
   cd "$wt"
   git checkout -q --orphan gh-pages
   git rm -rfq .
-  cp -r "$root/dist/app/." .
+  cp -r "$root/dist/pages/." .
   touch .nojekyll
   git add -A
   git commit -qm "Sitio compilado desde $(git -C "$root" rev-parse --short HEAD)"

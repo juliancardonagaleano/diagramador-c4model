@@ -21,7 +21,8 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist/app',
+    // OUT_DIR permite compilar a otra carpeta (p. ej. el despliegue a Pages) sin pisar el dist/app que usan preview y E2E.
+    outDir: process.env.OUT_DIR ?? 'dist/app',
     emptyOutDir: true,
     rollupOptions: {
       input: {
