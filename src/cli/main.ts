@@ -33,7 +33,7 @@ function parseEffort(value: string): Effort {
   return v;
 }
 
-const PROVIDERS = ['auto', 'anthropic', 'foundry'] as const;
+const PROVIDERS = ['auto', 'anthropic', 'foundry', 'openai'] as const;
 
 function parseProvider(value: string): (typeof PROVIDERS)[number] {
   const v = value.toLowerCase() as (typeof PROVIDERS)[number];
@@ -97,13 +97,13 @@ export function buildProgram(): Command {
 
   program
     .command('generate')
-    .description('Genera (o refina con --from) un modelo C4 a partir de una instrucción en lenguaje natural usando Claude')
+    .description('Genera (o refina con --from) un modelo C4 a partir de una instrucción en lenguaje natural usando Claude u otro modelo de Foundry')
     .argument('<instrucción>', 'descripción del sistema o instrucción de refinamiento')
     .option('-o, --out <archivo.drawio>', 'archivo .drawio de salida')
     .option('-j, --json <archivo.json>', 'archivo JSON de salida (documento C4 con coordenadas)')
     .option('-f, --from <archivo.json>', 'documento existente a refinar')
-    .option('-p, --provider <plataforma>', 'plataforma de Claude: auto|anthropic|foundry (auto: Foundry si hay ANTHROPIC_FOUNDRY_*)', parseProvider, 'auto')
-    .option('-m, --model <modelo>', `modelo de Claude (por defecto ${DEFAULT_AI_MODEL}; en Foundry, el nombre de tu despliegue o ANTHROPIC_FOUNDRY_MODEL)`)
+    .option('-p, --provider <plataforma>', 'plataforma: auto|anthropic (API de Anthropic)|foundry (Claude en Foundry)|openai (cualquier modelo de Foundry / API compatible con OpenAI)', parseProvider, 'auto')
+    .option('-m, --model <modelo>', `modelo (por defecto ${DEFAULT_AI_MODEL}; en Foundry, el nombre de tu despliegue o AI_MODEL / ANTHROPIC_FOUNDRY_MODEL)`)
     .option('-e, --effort <nivel>', `esfuerzo de razonamiento (${EFFORTS.join('|')})`, parseEffort)
     .option('-d, --direction <dir>', `dirección del autolayout (${DIRECTIONS.join('|')})`, parseDirection)
     .option('--retries <n>', 'reintentos si el modelo devuelve un documento inválido', parseRetries, 1)

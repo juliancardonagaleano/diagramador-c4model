@@ -184,18 +184,30 @@ npx c4diagram generate "Sistema de banca en línea con app web (React), API (Nod
 
 Flujo: la instrucción se envía a Claude (`claude-opus-5` por defecto) con **salida estructurada** contra el esquema del modelo *sin coordenadas*; el resultado se valida (referencias, jerarquía C4) con un reintento automático si hay errores; después se aplica **autolayout** a todas las vistas y se escriben el JSON y el `.drawio`. Con `--from base.json` la instrucción se trata como un refinamiento del documento existente ("agrega una cola Kafka entre la API y las notificaciones"), conservando los ids y posiciones ya fijados.
 
-#### Con Microsoft (Azure) Foundry
+#### Con Microsoft (Azure) Foundry: Claude u otros modelos
 
-`generate` también funciona con Claude desplegado en Foundry. Basta con definir estas variables de entorno (guárdalas como secretos del entorno, nunca en el repositorio); con ellas la plataforma se detecta sola, o se fuerza con `--provider foundry`:
+`generate` funciona con dos tipos de despliegue de Foundry; la plataforma se detecta por la URL, o se fuerza con `--provider`. Guarda las variables como secretos del entorno, nunca en el repositorio.
+
+**Cualquier modelo de Foundry** (DeepSeek, Llama, Mistral, GPT…, `--provider openai`): usa el endpoint compatible con OpenAI del recurso.
+
+```bash
+export AI_BASE_URL=https://<recurso>.openai.azure.com/openai/v1    # también vale ANTHROPIC_FOUNDRY_BASE_URL
+export AI_API_KEY=…                                                # o ANTHROPIC_FOUNDRY_API_KEY
+export AI_MODEL=<nombre-de-tu-despliegue>                          # o ANTHROPIC_FOUNDRY_MODEL
+npx c4diagram generate "Una tienda en línea con web, API y base de datos" --json tienda.json --out tienda.drawio
+```
+
+No todos los modelos garantizan el esquema, así que el JSON Schema va también en el prompt, se pide `json_schema` (o `json_object`, o nada si el modelo no lo admite) y la respuesta se valida con zod; si es ilegible o incumple el esquema se reintenta con el error. Se descartan los bloques `<think>…</think>` de los modelos de razonamiento. La calidad del diagrama depende del modelo.
+
+**Claude en Foundry** (`--provider foundry`): protocolo de mensajes de Anthropic, con salida estructurada garantizada.
 
 ```bash
 export ANTHROPIC_FOUNDRY_API_KEY=…
 export ANTHROPIC_FOUNDRY_BASE_URL=https://<recurso>.services.ai.azure.com/anthropic/   # o ANTHROPIC_FOUNDRY_RESOURCE=<recurso>
-export ANTHROPIC_FOUNDRY_MODEL=<nombre-de-tu-despliegue>   # en Foundry `model` es el nombre del despliegue
-npx c4diagram generate "Una tienda en línea con web, API y base de datos" --json tienda.json --out tienda.drawio
+export ANTHROPIC_FOUNDRY_MODEL=<nombre-de-tu-despliegue-de-claude>
 ```
 
-En Foundry no se envían los *fallbacks* del servidor (solo existen en la API de Anthropic); el resto del flujo (salida estructurada, validación, reintento, autolayout) es idéntico.
+En Foundry no se envían los *fallbacks* del servidor (solo existen en la API de Anthropic).
 
 ### Sin clave de API: cualquier IA o agente
 

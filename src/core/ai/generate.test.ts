@@ -103,6 +103,63 @@ describe('generateDocument', () => {
   });
 });
 
+describe('generateDocument con un modelo de Foundry compatible con OpenAI', () => {
+  const ALL = ['AI_BASE_URL', 'AI_API_KEY', 'AI_MODEL', 'ANTHROPIC_FOUNDRY_BASE_URL', 'ANTHROPIC_FOUNDRY_API_KEY', 'ANTHROPIC_FOUNDRY_MODEL'];
+  const env: Record<string, string> = { AI_BASE_URL: 'https://r.openai.azure.com/openai/v1', AI_API_KEY: 'k', AI_MODEL: 'DeepSeek-V4-Pro' };
+  // Entorno hermético: solo las variables indicadas, sin las que traiga la sesión.
+  const withEnv = async <T>(fn: () => Promise<T>, vars: Record<string, string> = env): Promise<T> => {
+    const saved = Object.fromEntries(ALL.map((k) => [k, process.env[k]]));
+    for (const k of ALL) delete process.env[k];
+    Object.assign(process.env, vars);
+    try {
+      return await fn();
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  };
+  const answer = (content: string) =>
+    new Response(JSON.stringify({ model: 'DeepSeek-V4-Pro', choices: [{ message: { content }, finish_reason: 'stop' }], usage: { prompt_tokens: 50, completion_tokens: 80 } }), { status: 200 });
+
+  it('genera el documento aunque el modelo envuelva el JSON en texto y razonamiento', async () => {
+    const fetchMock = vi.fn(async () => answer(`<think>voy a pensar</think>Aquí está:\n\`\`\`json\n${JSON.stringify(good)}\n\`\`\``));
+    const r = await withEnv(() => generateDocument({ instruction: 'Una tienda', provider: 'openai', fetch: fetchMock as unknown as typeof fetch }));
+    expect(r.provider).toBe('openai');
+    expect(r.model).toBe('DeepSeek-V4-Pro');
+    expect(r.document.model.elements).toHaveLength(6);
+    expect(r.usage).toEqual({ inputTokens: 50, outputTokens: 80 });
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(body.model).toBe('DeepSeek-V4-Pro');
+    expect(body.messages[0].role).toBe('system');
+    expect(body.messages[0].content).toContain('JSON Schema');
+  });
+
+  it('reintenta cuando el JSON es ilegible o incumple el esquema y luego acepta', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(answer('esto no es JSON'))
+      .mockResolvedValueOnce(answer(JSON.stringify({ workspace: { name: 'x' } })))
+      .mockResolvedValueOnce(answer(JSON.stringify(good)));
+    const r = await withEnv(() => generateDocument({ instruction: 'x', provider: 'openai', maxRetries: 2, skipLayout: true, fetch: fetchMock as unknown as typeof fetch }));
+    expect(r.attempts).toBe(3);
+    const third = JSON.parse((fetchMock.mock.calls[2] as unknown as [string, RequestInit])[1].body as string);
+    expect(third.messages.at(-1).content).toContain('validación');
+  });
+
+  it('sin credenciales da un mensaje claro y con 401 también', async () => {
+    await expect(withEnv(() => generateDocument({ instruction: 'x', provider: 'openai', model: 'm' }), {})).rejects.toThrow(/AI_API_KEY/);
+    const fetchMock = vi.fn(async () => new Response('denied', { status: 401 }));
+    await expect(withEnv(() => generateDocument({ instruction: 'x', provider: 'openai', fetch: fetchMock as unknown as typeof fetch }))).rejects.toThrow(/Credenciales/);
+  });
+
+  it('informa si la respuesta se corta por límite de tokens', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: '{' }, finish_reason: 'length' }] }), { status: 200 }));
+    await expect(withEnv(() => generateDocument({ instruction: 'x', provider: 'openai', fetch: fetchMock as unknown as typeof fetch }))).rejects.toThrow(/límite de tokens/);
+  });
+});
+
 describe('standalonePrompt', () => {
   it('incluye reglas, esquema e instrucción', () => {
     const p = standalonePrompt('Un sistema de reservas');
