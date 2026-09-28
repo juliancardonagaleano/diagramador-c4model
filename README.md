@@ -317,18 +317,23 @@ tests/e2e/    pruebas Playwright
 - **Semi UI + Tailwind 4** son las mismas librerías que usa drawdb, lo que permite reproducir su estética (tabs tipo card, cards colapsables, grid de puntos, tarjetas con franja de color).
 - **Niveles como vistas tipadas sobre un modelo único**, no diagramas independientes: así C1, C2 y C3 se mantienen coherentes entre sí y la navegación (doble clic, breadcrumb, enlaces de página en draw.io) se deriva de la relación vista ↔ alcance sin datos adicionales.
 
-## Pendiente: prueba real de `generate` con la API de Anthropic
+## Pendiente: prueba real de `generate` (Foundry o API de Anthropic)
 
-La generación con Claude está implementada y cubierta por pruebas con cliente simulado (`src/core/ai/generate.test.ts`) y por el test del CLI sin credenciales, pero **todavía no se ha ejecutado contra la API real** porque requiere una clave con créditos en la Consola de Claude (la suscripción de Claude.ai no incluye acceso a la API). Cuando exista la clave:
+La generación con IA está implementada y cubierta por pruebas con clientes simulados (`src/core/ai/*.test.ts`) y por el test del CLI sin credenciales, pero **todavía no se ha ejecutado contra ningún servicio real**. Estado a fecha de hoy:
 
-1. Guardarla fuera del repositorio: como variable de entorno `ANTHROPIC_API_KEY` (en Claude Code web, en los ajustes del entorno → *API credentials*). Nunca en el chat, en el código ni en git (`.gitignore` excluye `.env*`).
-2. Ejecutar:
-   ```bash
-   npm run cli -- generate "Sistema de banca en línea con app web (React), API (Node.js), PostgreSQL y una pasarela de pagos externa" \
-     --json examples/banca-ia.generated.json --out examples/banca-ia.generated.drawio
-   npm run cli -- validate examples/banca-ia.generated.json
-   ```
-3. Comprobar que `validate` no reporta errores, que todas las vistas tienen coordenadas y que el `.drawio` abre en draw.io con una página por vista. Los archivos `*.generated.*` están ignorados por git.
+- **Foundry (cualquier modelo, `--provider openai`)**: el entorno de la sesión ya define `ANTHROPIC_FOUNDRY_BASE_URL` (`https://aif-co-nop-arq.openai.azure.com/openai/v1`) y `ANTHROPIC_FOUNDRY_MODEL` (`DeepSeek-V4-Pro`), pero **falta la clave**: `ANTHROPIC_FOUNDRY_API_KEY` (o `AI_API_KEY`) no llegó a la sesión. Hay que guardarla en los ajustes del entorno (menú del entorno en la barra de título → Edit → *Environment variables* o *API credentials*) y abrir una **sesión nueva** para que la vea. Nunca en el chat, en el código ni en git (`.gitignore` excluye `.env*`). Puede que también haga falta permitir el host `aif-co-nop-arq.openai.azure.com` en *Network access*.
+- **Claude en Foundry (`--provider foundry`)**: requiere un despliegue de Claude en el recurso, URL `https://<recurso>.services.ai.azure.com/anthropic/` y `ANTHROPIC_FOUNDRY_MODEL` con el nombre de ese despliegue. Hoy solo hay un despliegue de DeepSeek.
+- **API de Anthropic**: requiere una clave con créditos (`ANTHROPIC_API_KEY`); la suscripción de Claude.ai no incluye acceso a la API.
+
+Cuando haya credenciales, ejecutar:
+
+```bash
+npm run cli -- generate "Sistema de banca en línea con app web (React), API (Node.js), PostgreSQL y una pasarela de pagos externa" \
+  --json examples/banca-ia.generated.json --out examples/banca-ia.generated.drawio
+npm run cli -- validate examples/banca-ia.generated.json
+```
+
+y comprobar que `validate` no reporta errores, que todas las vistas tienen coordenadas y que el `.drawio` abre en draw.io con una página por vista. Los archivos `*.generated.*` están ignorados por git. Si el endpoint rechaza algo (formato de respuesta, parámetros de tokens, autenticación), el ajuste va en `src/core/ai/openaiCompat.ts`.
 
 ## Fuera de alcance (v1)
 
