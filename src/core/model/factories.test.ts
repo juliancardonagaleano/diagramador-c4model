@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { childViewType, findChildView, findParentView, isValidParentType, relationshipCreationBlocked, viewBreadcrumb, viewLevel } from './factories';
+import { childViewType, findChildView, findParentView, isValidParentType, relationshipCreationBlocked, typeChangeBlockedReason, viewBreadcrumb, viewLevel } from './factories';
 import { sampleDocument } from './sample';
 import type { C4Document } from './types';
 
@@ -40,28 +40,59 @@ describe('niveles C1/C2/C3', () => {
     expect(viewBreadcrumb(sampleDocument, 'nope')).toEqual([]);
   });
 
-  it('findParentView no adivina una vista de un sistema no relacionado cuando hay varios candidatos', () => {
-    const doc: C4Document = {
-      version: '1.0',
-      workspace: { name: 'dos sistemas' },
-      model: {
-        elements: [
-          { id: 'sysA', type: 'softwareSystem', name: 'Sistema A' },
-          { id: 'sysB', type: 'softwareSystem', name: 'Sistema B' },
-          { id: 'contA', type: 'container', name: 'Contenedor A', parentId: 'sysA' },
-        ],
-        relationships: [],
-      },
-      views: [
-        { id: 'ctxB', type: 'systemContext', scopeId: 'sysB', elements: [{ id: 'sysB' }] },
-        { id: 'ctxGeneric', type: 'systemContext', elements: [{ id: 'sysA' }, { id: 'sysB' }] },
-        { id: 'c2A', type: 'container', scopeId: 'sysA', elements: [{ id: 'contA' }] },
+  const twoSystemsDoc = (views: C4Document['views']): C4Document => ({
+    version: '1.0',
+    workspace: { name: 'dos sistemas' },
+    model: {
+      elements: [
+        { id: 'sysA', type: 'softwareSystem', name: 'Sistema A' },
+        { id: 'sysB', type: 'softwareSystem', name: 'Sistema B' },
+        { id: 'contA', type: 'container', name: 'Contenedor A', parentId: 'sysA' },
       ],
-    };
-    const c2A = doc.views.find((v) => v.id === 'c2A')!;
-    // Ninguna vista de contexto tiene scopeId="sysA" exacto, y hay dos vistas de contexto en el
-    // documento: antes caía en la primera (`ctxB`, de otro sistema); ahora no adivina.
-    expect(findParentView(doc, c2A)).toBeUndefined();
+      relationships: [],
+    },
+    views,
+  });
+  const c2A = { id: 'c2A', type: 'container' as const, scopeId: 'sysA', elements: [{ id: 'contA' }] };
+
+  it('findParentView no adivina una vista de un sistema no relacionado cuando hay varios candidatos', () => {
+    const doc = twoSystemsDoc([
+      { id: 'ctxB', type: 'systemContext', scopeId: 'sysB', elements: [{ id: 'sysB' }] },
+      { id: 'ctxOtra', type: 'systemContext', elements: [{ id: 'sysB' }] },
+      c2A,
+    ]);
+    // Ninguna vista de contexto tiene alcance sysA ni muestra a sysA, y hay dos: antes caía en la
+    // primera (`ctxB`, de otro sistema); ahora no adivina.
+    expect(findParentView(doc, doc.views.find((v) => v.id === 'c2A')!)).toBeUndefined();
+  });
+
+  it('findParentView prefiere la vista general que muestra el sistema frente a las de otros sistemas', () => {
+    const doc = twoSystemsDoc([
+      { id: 'ctxB', type: 'systemContext', scopeId: 'sysB', elements: [{ id: 'sysB' }] },
+      { id: 'ctxGeneral', type: 'systemContext', elements: [{ id: 'sysA' }, { id: 'sysB' }] },
+      c2A,
+    ]);
+    expect(findParentView(doc, doc.views.find((v) => v.id === 'c2A')!)?.id).toBe('ctxGeneral');
+  });
+
+  it('findParentView sí usa una vista genérica del nivel superior cuando es la única del documento', () => {
+    const doc = twoSystemsDoc([{ id: 'ctxGeneric', type: 'systemContext', elements: [{ id: 'sysB' }] }, c2A]);
+    expect(findParentView(doc, doc.views.find((v) => v.id === 'c2A')!)?.id).toBe('ctxGeneric');
+  });
+
+  it('typeChangeBlockedReason bloquea cambiar el tipo de un elemento con hijos o que es alcance de una vista', () => {
+    // "banca" (softwareSystem) tiene contenedores hijos y es el alcance de la vista de contenedores.
+    expect(typeChangeBlockedReason(sampleDocument, 'banca', 'container')).toMatch(/hijos/);
+    expect(typeChangeBlockedReason(sampleDocument, 'banca', 'person')).not.toBeNull();
+    // "api" (container) tiene componentes hijos.
+    expect(typeChangeBlockedReason(sampleDocument, 'api', 'softwareSystem')).toMatch(/hijos/);
+    // Un elemento hoja sin vistas asociadas puede cambiar de tipo, y "mismo tipo" nunca se bloquea.
+    expect(typeChangeBlockedReason(sampleDocument, 'db', 'component')).toBeNull();
+    expect(typeChangeBlockedReason(sampleDocument, 'banca', 'softwareSystem')).toBeNull();
+    // Un elemento que solo es alcance de una vista (sin hijos) también queda protegido.
+    const doc = structuredClone(sampleDocument);
+    doc.model.elements = doc.model.elements.filter((e) => e.parentId !== 'banca' && !['signin', 'accounts', 'security', 'mainframe-facade'].includes(e.id));
+    expect(typeChangeBlockedReason(doc, 'banca', 'container')).toMatch(/alcance de la vista/);
   });
 
   it('relationshipCreationBlocked detecta auto-referencia y duplicados', () => {
@@ -84,23 +115,4 @@ describe('niveles C1/C2/C3', () => {
     expect(isValidParentType(undefined, 'container')).toBe(false);
   });
 
-  it('findParentView sí usa una vista genérica del nivel superior cuando es la única del documento', () => {
-    const doc: C4Document = {
-      version: '1.0',
-      workspace: { name: 'un sistema' },
-      model: {
-        elements: [
-          { id: 'sysA', type: 'softwareSystem', name: 'Sistema A' },
-          { id: 'contA', type: 'container', name: 'Contenedor A', parentId: 'sysA' },
-        ],
-        relationships: [],
-      },
-      views: [
-        { id: 'ctxGeneric', type: 'systemContext', elements: [{ id: 'sysA' }] },
-        { id: 'c2A', type: 'container', scopeId: 'sysA', elements: [{ id: 'contA' }] },
-      ],
-    };
-    const c2A = doc.views.find((v) => v.id === 'c2A')!;
-    expect(findParentView(doc, c2A)?.id).toBe('ctxGeneric');
-  });
 });

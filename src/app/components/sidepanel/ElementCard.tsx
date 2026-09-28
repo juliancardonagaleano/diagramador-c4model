@@ -2,7 +2,7 @@ import { Button, Input, Select, Switch, TextArea, Tooltip } from '@douyinfe/semi
 import { IconDelete, IconEyeClosed, IconEyeOpened, IconTreeTriangleDown, IconTreeTriangleRight } from '@douyinfe/semi-icons';
 import { useEffect, useState } from 'react';
 import { C4_COLORS, C4_EXTERNAL_COLOR, ELEMENT_TYPE_LABELS, PARENT_TYPE, type C4Element, type ElementShape, type ElementType } from '../../../core/model/types';
-import { isValidParentType } from '../../../core/model/factories';
+import { isValidParentType, typeChangeBlockedReason } from '../../../core/model/factories';
 import { useDocumentStore } from '../../store/documentStore';
 
 const SHAPES: Array<{ value: ElementShape; label: string }> = [
@@ -30,6 +30,8 @@ export function ElementCard({ element, inActiveView, selected }: { element: C4El
   useEffect(() => setNameDraft(element.name), [element.id, element.name]);
   const activeView = doc.views.find((v) => v.id === activeViewId);
   const isScope = activeView?.scopeId === element.id;
+  // Motivo (si lo hay) por el que algún otro tipo no se puede elegir: tiene hijos o es alcance de una vista.
+  const typeBlockedReason = (Object.keys(ELEMENT_TYPE_LABELS) as ElementType[]).map((t) => typeChangeBlockedReason(doc, element.id, t)).find(Boolean) ?? null;
 
   return (
     <div className={`c4-card ${selected ? 'is-selected' : ''}`} data-element-id={element.id}>
@@ -83,7 +85,7 @@ export function ElementCard({ element, inActiveView, selected }: { element: C4El
               className="w-full"
               value={element.type}
               disabled={readOnly}
-              optionList={(Object.keys(ELEMENT_TYPE_LABELS) as ElementType[]).map((t) => ({ value: t, label: ELEMENT_TYPE_LABELS[t] }))}
+              optionList={(Object.keys(ELEMENT_TYPE_LABELS) as ElementType[]).map((t) => ({ value: t, label: ELEMENT_TYPE_LABELS[t], disabled: !!typeChangeBlockedReason(doc, element.id, t) }))}
               onChange={(v) => {
                 const newType = v as ElementType;
                 const currentParent = element.parentId ? doc.model.elements.find((e) => e.id === element.parentId) : undefined;
@@ -92,6 +94,9 @@ export function ElementCard({ element, inActiveView, selected }: { element: C4El
               }}
             />
           </div>
+          {typeBlockedReason && (
+            <p className="text-xs text-color-3 -mt-1">Otros tipos no están disponibles: este elemento {typeBlockedReason}.</p>
+          )}
           {parentType && (
             <div className="c4-field">
               <label>Pertenece a</label>

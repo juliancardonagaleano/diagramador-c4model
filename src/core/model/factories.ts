@@ -4,6 +4,7 @@ import {
   DOCUMENT_VERSION,
   ELEMENT_TYPE_LABELS,
   PARENT_TYPE,
+  VIEW_SCOPE_TYPE,
   VIEW_TYPE_LABELS,
   type C4Document,
   type C4Element,
@@ -12,6 +13,25 @@ import {
   type ElementType,
   type ViewType,
 } from './types';
+
+/**
+ * Motivo por el que no se puede cambiar el tipo de un elemento a `newType`, o `null` si se puede.
+ * Cambiar el tipo de un elemento que tiene hijos, o que es el alcance de una vista, dejaría un
+ * documento inválido (los hijos exigen un padre de cierto tipo; cada vista exige un alcance de cierto
+ * tipo) que el esquema rechaza al reimportar. Reutilizado por la interfaz (opciones deshabilitadas)
+ * y por el store (ignora el cambio).
+ */
+export function typeChangeBlockedReason(doc: C4Document, elementId: string, newType: ElementType): string | null {
+  const el = doc.model.elements.find((e) => e.id === elementId);
+  if (!el || el.type === newType) return null;
+  // Solo cuentan los hijos cuyo tipo sí exige un padre concreto; uno ya inválido (p. ej. una persona con
+  // parentId) no depende de este cambio.
+  const badChild = doc.model.elements.find((c) => c.parentId === elementId && PARENT_TYPE[c.type] && PARENT_TYPE[c.type] !== newType);
+  if (badChild) return `tiene elementos hijos (p. ej. "${badChild.name}") que solo pueden pertenecer a un elemento de tipo ${ELEMENT_TYPE_LABELS[PARENT_TYPE[badChild.type]!].toLowerCase()}`;
+  const badView = doc.views.find((v) => v.scopeId === elementId && VIEW_SCOPE_TYPE[v.type] !== newType);
+  if (badView) return `es el alcance de la vista "${badView.title ?? badView.id}", que exige un elemento de tipo ${ELEMENT_TYPE_LABELS[VIEW_SCOPE_TYPE[badView.type]].toLowerCase()}`;
+  return null;
+}
 
 /**
  * Por qué no se puede crear una relación entre `source` y `target` con las ya existentes, o
@@ -212,11 +232,12 @@ export function findChildView(doc: C4Document, elementId: string): C4View | unde
 }
 
 /**
- * Vista de nivel superior a la dada (C3 → C2 del contenedor padre, C2 → C1 del sistema), si
- * existe. Sin vista exacta para ese ancestro, solo se usa una vista "genérica" del tipo
- * correspondiente cuando es la única que hay en todo el documento (caso inambiguo); con varias,
- * no se adivina cuál — evita que "Subir nivel"/el breadcrumb aterricen en un sistema no
- * relacionado cuando el documento tiene más de un sistema independiente.
+ * Vista de nivel superior a la dada (C3 → C2 del contenedor padre, C2 → C1 del sistema), si existe.
+ * Orden de preferencia: (1) la vista del nivel superior cuyo alcance es exactamente el ancestro;
+ * (2) la primera vista de ese nivel que muestra el elemento de alcance de esta vista (p. ej. una vista
+ * de contexto general sin alcance donde aparece el sistema); (3) la única vista de ese nivel en todo el
+ * documento. Nunca adivina una vista no relacionada cuando hay varias: así "Subir nivel"/el breadcrumb
+ * no aterrizan en otro sistema.
  */
 export function findParentView(doc: C4Document, view: C4View): C4View | undefined {
   if (view.type === 'systemContext') return undefined;
@@ -225,6 +246,8 @@ export function findParentView(doc: C4Document, view: C4View): C4View | undefine
   const parentScopeId = view.type === 'component' ? scope?.parentId : view.scopeId;
   const exact = doc.views.find((v) => v.type === parentType && v.scopeId === parentScopeId);
   if (exact) return exact;
+  const showing = view.scopeId ? doc.views.find((v) => v.type === parentType && v.elements.some((e) => e.id === view.scopeId)) : undefined;
+  if (showing) return showing;
   const candidates = doc.views.filter((v) => v.type === parentType);
   return candidates.length === 1 ? candidates[0] : undefined;
 }

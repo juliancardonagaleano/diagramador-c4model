@@ -4,11 +4,11 @@ test('cambiar el tipo de un elemento a uno cuyo padre actual ya no es válido li
   await page.goto('/', { waitUntil: 'networkidle' });
   await page.waitForSelector('.react-flow__node');
 
-  // "Aplicación API" es un container con padre "Sistema de banca en línea" (softwareSystem); al
+  // "Base de datos" es un container hoja con padre "Sistema de banca en línea" (softwareSystem); al
   // bajar a C2 y pasarlo a "Componente" (que exige un padre container), ese padre ya no es válido.
   await page.locator('.react-flow__node', { hasText: 'Sistema de banca en línea' }).dblclick();
   await page.waitForTimeout(500);
-  await page.locator('.react-flow__node', { hasText: 'Aplicación API' }).click();
+  await page.locator('.react-flow__node', { hasText: 'Base de datos' }).click();
   await page.waitForTimeout(200);
 
   const tipoField = page.locator('.c4-field', { has: page.locator('label', { hasText: 'Tipo' }) });
@@ -18,6 +18,24 @@ test('cambiar el tipo de un elemento a uno cuyo padre actual ya no es válido li
 
   const parentField = page.locator('.c4-field', { has: page.locator('label', { hasText: 'Pertenece a' }) });
   await expect(parentField.locator('.semi-select-selection-text')).toHaveText('Elige contenedor');
+});
+
+test('un elemento con hijos no permite cambiar su tipo (dejaría el documento inválido)', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.waitForSelector('.react-flow__node');
+
+  // "Aplicación API" es padre de componentes: pasarla a otro tipo dejaría a sus hijos con un padre inválido.
+  await page.locator('.react-flow__node', { hasText: 'Sistema de banca en línea' }).dblclick();
+  await page.waitForTimeout(500);
+  await page.locator('.react-flow__node', { hasText: 'Aplicación API' }).click();
+  await page.waitForTimeout(200);
+
+  await expect(page.getByText(/Otros tipos no están disponibles/)).toBeVisible();
+  const tipoField = page.locator('.c4-field', { has: page.locator('label', { hasText: 'Tipo' }) });
+  await tipoField.getByRole('combobox').click();
+  await expect(page.getByRole('listbox').last().getByRole('option', { name: 'Componente' })).toHaveAttribute('aria-disabled', 'true');
+  await page.keyboard.press('Escape');
+  await expect(tipoField.locator('.semi-select-selection-text')).toHaveText('Contenedor');
 });
 
 test('no se pueden crear relaciones duplicadas ni auto-referenciadas desde el panel', async ({ page }) => {

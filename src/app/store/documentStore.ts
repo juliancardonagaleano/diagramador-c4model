@@ -9,7 +9,9 @@ import {
   createView,
   findChildView,
   findParentView,
+  isValidParentType,
   suggestViewElements,
+  typeChangeBlockedReason,
 } from '../../core/model/factories';
 import { sampleDocument } from '../../core/model/sample';
 import { applyLayoutToView, layoutView, type LayoutOptions } from '../../core/layout/elkLayout';
@@ -248,6 +250,19 @@ export const useDocumentStore = create<DocumentStore>()(
                 elements: doc.model.elements.map((e) => {
                   if (e.id !== id) return e;
                   const next = { ...e, ...patch } as C4Element;
+                  // Cambiar de tipo un elemento con hijos o que es alcance de una vista dejaría un
+                  // documento inválido: se conserva el tipo anterior (la interfaz ya lo deshabilita).
+                  if (patch.type && typeChangeBlockedReason(doc, id, patch.type)) {
+                    next.type = e.type;
+                    if ('parentId' in patch) next.parentId = e.parentId;
+                  }
+                  // Invariante: el padre siempre es del tipo que exige el tipo del elemento. Al cambiar
+                  // el tipo (o asignar un padre) se descarta un padre incompatible en vez de dejar un
+                  // documento que el esquema rechaza al reimportar.
+                  if (next.parentId && ('type' in patch || 'parentId' in patch)) {
+                    const parent = doc.model.elements.find((x) => x.id === next.parentId);
+                    if (!isValidParentType(parent?.type, next.type)) delete next.parentId;
+                  }
                   // `name` es obligatorio: un patch vacío/solo espacios se ignora (conserva el
                   // nombre anterior) en vez de dejar el elemento sin nombre.
                   if (typeof patch.name === 'string' && !patch.name.trim()) next.name = e.name;
@@ -319,10 +334,14 @@ export const useDocumentStore = create<DocumentStore>()(
                 relationships: doc.model.relationships.map((r) => {
                   if (r.id !== id) return r;
                   const next = { ...r, ...patch } as C4Relationship;
-                  // Ignora la edición si dejaría una auto-referencia o duplicaría otra relación ya existente.
-                  if (next.sourceId === next.targetId) return r;
-                  const duplicate = doc.model.relationships.some((o) => o.id !== id && o.sourceId === next.sourceId && o.targetId === next.targetId);
-                  if (duplicate) return r;
+                  // Solo si la edición cambia el par origen→destino: se ignora si dejaría una auto-referencia
+                  // o duplicaría otra relación. Editar descripción/tecnología nunca se bloquea, aunque el
+                  // documento importado ya tuviera relaciones repetidas entre los mismos elementos.
+                  if (next.sourceId !== r.sourceId || next.targetId !== r.targetId) {
+                    if (next.sourceId === next.targetId) return r;
+                    const duplicate = doc.model.relationships.some((o) => o.id !== id && o.sourceId === next.sourceId && o.targetId === next.targetId);
+                    if (duplicate) return r;
+                  }
                   for (const key of Object.keys(next) as Array<keyof C4Relationship>) {
                     if (next[key] === undefined || next[key] === '') delete next[key];
                   }

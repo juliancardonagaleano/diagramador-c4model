@@ -26,6 +26,30 @@ describe('documentStore', () => {
       expect(el.name).toBe('Cliente personal');
     });
 
+    it('no permite cambiar el tipo de un elemento con hijos ni de un alcance de vista (dejaría un documento inválido)', () => {
+      const { updateElement } = useDocumentStore.getState();
+      updateElement('banca', { type: 'container' });
+      expect(useDocumentStore.getState().doc.model.elements.find((e) => e.id === 'banca')!.type).toBe('softwareSystem');
+      // El resto del patch sí se aplica aunque el tipo se ignore.
+      updateElement('banca', { type: 'container', description: 'Nueva' });
+      const banca = useDocumentStore.getState().doc.model.elements.find((e) => e.id === 'banca')!;
+      expect(banca.type).toBe('softwareSystem');
+      expect(banca.description).toBe('Nueva');
+    });
+
+    it('al cambiar el tipo, un padre incompatible se descarta (el documento sigue siendo válido)', () => {
+      // "accounts" es un componente con padre "api" (container); como softwareSystem no admite padre.
+      useDocumentStore.getState().updateElement('accounts', { type: 'softwareSystem' });
+      const accounts = useDocumentStore.getState().doc.model.elements.find((e) => e.id === 'accounts')!;
+      expect(accounts.type).toBe('softwareSystem');
+      expect(accounts.parentId).toBeUndefined();
+    });
+
+    it('un elemento hoja sí puede cambiar de tipo', () => {
+      useDocumentStore.getState().updateElement('db', { type: 'component', parentId: undefined });
+      expect(useDocumentStore.getState().doc.model.elements.find((e) => e.id === 'db')!.type).toBe('component');
+    });
+
     it('un nombre válido sí se aplica', () => {
       const { updateElement } = useDocumentStore.getState();
       updateElement('cliente', { name: 'Cliente premium' });
@@ -100,6 +124,17 @@ describe('documentStore', () => {
       updateRelationship(other.id, { targetId: rel.targetId });
       const after = useDocumentStore.getState().doc.model.relationships.find((r) => r.id === other.id)!;
       expect(after.targetId).toBe('mainframe');
+    });
+
+    it('editar la descripción nunca se bloquea, aunque el documento importado ya tenga el par repetido', () => {
+      const { updateRelationship } = useDocumentStore.getState();
+      useDocumentStore.setState((s) => ({
+        doc: { ...s.doc, model: { ...s.doc.model, relationships: [...s.doc.model.relationships, { id: 'dup', sourceId: 'cliente', targetId: 'banca', description: 'Otra' }] } },
+      }));
+      updateRelationship('dup', { description: 'Editada' });
+      expect(useDocumentStore.getState().doc.model.relationships.find((r) => r.id === 'dup')!.description).toBe('Editada');
+      updateRelationship('r1', { technology: 'HTTPS' });
+      expect(useDocumentStore.getState().doc.model.relationships.find((r) => r.id === 'r1')!.technology).toBe('HTTPS');
     });
 
     it('una edición válida sí se aplica', () => {
