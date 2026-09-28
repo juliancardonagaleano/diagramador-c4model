@@ -1,7 +1,8 @@
-import { Toast } from '@douyinfe/semi-ui';
-import { useCallback } from 'react';
+import { Modal, Toast } from '@douyinfe/semi-ui';
+import { createElement, useCallback } from 'react';
 import { toDrawio, type DrawioNotation } from '../../core/export/drawio/toDrawio';
 import { autoLayoutDocument } from '../../core/layout/elkLayout';
+import { DrawioImportError, fromDrawio } from '../../core/import/drawio/fromDrawio';
 import { validateDocument, formatIssues } from '../../core/model/schema';
 import type { LayoutDirectionOption, LayoutDistribution } from '../../core/model/types';
 import { useDocumentStore } from '../store/documentStore';
@@ -75,6 +76,37 @@ export function useActions() {
     if (importJsonText(file.content)) Toast.success(`"${file.name}" cargado`);
   }, [importJsonText]);
 
+  /**
+   * Importa un `.drawio` (cada página pasa a ser una vista). Lo importado no está guardado como JSON, así que el
+   * documento queda "con cambios sin guardar"; lo que no se pudo importar se lista en un aviso.
+   */
+  const importDrawio = useCallback(async () => {
+    const file = await pickTextFile('.drawio,.xml,application/xml,text/xml');
+    if (!file) return;
+    try {
+      const { document, warnings } = await fromDrawio(file.content, { name: file.name.replace(/\.(drawio|xml)$/i, '') });
+      store.getState().setDocument(document, { markSaved: false });
+      Toast.success(
+        `"${file.name}" importado: ${document.model.elements.length} elementos, ${document.model.relationships.length} relaciones, ${document.views.length} vistas`,
+      );
+      if (warnings.length > 0) {
+        Modal.warning({
+          title: `Importado con ${warnings.length} aviso(s)`,
+          content: createElement(
+            'ul',
+            { className: 'list-disc pl-5 space-y-1 text-sm max-h-72 overflow-auto' },
+            warnings.map((w, i) => createElement('li', { key: i }, w)),
+          ),
+          okText: 'Entendido',
+          hasCancel: false,
+        });
+      }
+    } catch (error) {
+      const reason = error instanceof DrawioImportError ? error.message : `error inesperado (${(error as Error).message})`;
+      Toast.error({ content: `No se pudo importar "${file.name}": ${reason}`, duration: 8 });
+    }
+  }, [store]);
+
   const autoLayout = useCallback(
     async (direction?: LayoutDirectionOption, distribution?: LayoutDistribution) => {
       const s = store.getState();
@@ -114,5 +146,5 @@ export function useActions() {
   const undo = useCallback(() => store.temporal.getState().undo(), [store]);
   const redo = useCallback(() => store.temporal.getState().redo(), [store]);
 
-  return { exportDrawio, saveJson, openJson, importJsonText, autoLayout, deleteSelection, undo, redo };
+  return { exportDrawio, saveJson, openJson, importDrawio, importJsonText, autoLayout, deleteSelection, undo, redo };
 }

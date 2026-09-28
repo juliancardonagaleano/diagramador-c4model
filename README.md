@@ -2,7 +2,7 @@
 
 Editor web de diagramas del **modelo C4** (Contexto, Contenedores y Componentes) con:
 
-- **JSON limpio y estable** como formato nativo, convertible 1‑a‑1 a **`.drawio`** (usa la librería C4 oficial de draw.io, con placeholders `%c4Name%`, `%c4Type%`, `%c4Description%`, `%c4Technology%`).
+- **JSON limpio y estable** como formato nativo, convertible 1‑a‑1 a **`.drawio`** (usa la librería C4 oficial de draw.io, con placeholders `%c4Name%`, `%c4Type%`, `%c4Description%`, `%c4Technology%`) y **importable desde `.drawio`** (web y CLI).
 - **Autolayout jerárquico** (ELK, algoritmo *layered* con boundaries anidados) como característica central: el mismo motor se usa en el navegador y en el CLI.
 - **Editor interactivo** con la estética de [drawdb.app](https://www.drawdb.app/): cabecera con menús, toolbar flotante, panel lateral con pestañas y cards, panel de problemas, tema claro/oscuro, deshacer/rehacer, minimapa.
 - **CLI `c4diagram`** para generar diagramas a partir de **instrucciones en lenguaje natural** (Claude, salida estructurada), aplicar autolayout y convertir a `.drawio` sin abrir un navegador. Se puede usar sin clave de API con cualquier otra IA o agente.
@@ -160,12 +160,41 @@ Dos **notaciones** de figuras (`--notation`, menú Archivo o `toDrawio(doc, { no
 
 Los archivos [`examples/banca-c4.drawio`](examples/banca-c4.drawio) y [`examples/banca-tarjetas.drawio`](examples/banca-tarjetas.drawio) son el ejemplo de banca exportado en cada notación (3 páginas, enlaces entre niveles y waypoints del autolayout).
 
+## Importar un `.drawio`
+
+Un diagrama de draw.io se puede convertir en un documento C4 (cada **página** pasa a ser una **vista**), tanto en la web (**Archivo ▸ Importar .drawio…**, pide confirmación si hay cambios sin guardar) como en el CLI:
+
+```bash
+npx c4diagram import examples/banca-c4.drawio --out banca.json     # el nombre del diagrama sale del archivo (o --name)
+npx c4diagram import diagrama.drawio | npx c4diagram layout --stdin --force > reordenado.json   # descartando las posiciones
+cat diagrama.drawio | npx c4diagram import --stdin
+```
+
+En el CLI lo importado va a stdout (o a `--out`) y el resumen y los avisos a stderr, así que se puede encadenar con `validate`, `layout` y `convert`. Un archivo que no es de draw.io termina con el código 2 y un motivo de una línea.
+
+Qué reconoce, de más a menos fiel:
+
+- **Un `.drawio` exportado por esta herramienta** (ambas notaciones): recupera los ids, tipos, descripciones, tecnologías, `external`, `shape`, `color`, jerarquía (`parentId`), relaciones, vistas (título, tipo, alcance) y las posiciones y tamaños absolutos. Los ids escritos a propósito (kebab-case, como `web-app` o `r1`) se conservan también en `.drawio` de versiones anteriores de la herramienta o hechos a mano; los aleatorios de draw.io se sustituyen por un id derivado del nombre.
+- **La librería C4 de draw.io** (`c4Name`, `c4Type`, `c4Description`, `c4Technology`, en español o inglés): los tipos salen de `c4Type`, "externo" del `c4Type` o del color de relleno, y la jerarquía del boundary que contiene cada forma. Un elemento con el mismo nombre y tipo en varias páginas es un único elemento.
+- **Formas sueltas** (sin metadatos): nombre = primera línea del texto, `[Tipo: tecnología]` en una línea aparte fija el tipo y la tecnología, el resto es la descripción; una persona (`umlActor`) o un cilindro (base de datos, o cola si está girado) se reconocen por su forma; y sin más pistas el tipo lo da el anidamiento: sistema › contenedor › componente. Las flechas toman su descripción del texto y `[tecnología]`.
+- Se leen las páginas **comprimidas** (el formato por defecto de versiones antiguas de draw.io) y un `<mxGraphModel>` suelto (*Extras ▸ Editar diagrama*).
+
+Cómo se decide cada vista: un boundary de sistema (o de contenedor) que envuelve las formas de la página es su alcance y la vista pasa a ser de contenedores (o de componentes); sin boundary, se usa el enlace `data:page/id,…` de un sistema o contenedor que apunte a la página y, si no, el contenido.
+
+Lo que **no** se importa (siempre se avisa, sin detener la importación): notas de texto suelto, formas sin texto, capas y formas ocultas, flechas sin origen o destino conectados, marcos que solo agrupan personas o sistemas (p. ej. "Empresa"), y las jerarquías que C4 no admite (esa forma se importa sin padre). Además:
+
+- Las **rutas de las flechas** (waypoints) no se importan: la app las recalcula al abrir la vista (o con Autolayout).
+- La notación de **tarjetas** no distingue navegador ni móvil (los dibuja como rectángulos), así que esas formas se recuperan sin `shape`.
+- No se importan `tags`, `layout` ni la descripción del espacio de trabajo: `.drawio` no los guarda.
+- Los `.drawio.svg` / `.drawio.png` (con el XML incrustado) no se leen; expórtalos antes como `.drawio`.
+
 ## CLI `c4diagram`
 
 ```
 c4diagram generate "<instrucción>" [--from base.json] [--out d.drawio] [--json d.json] [--model claude-opus-5] [--effort high] [--direction DOWN]
 c4diagram layout   [archivo.json | --stdin] [--out out.json] [--direction auto|down|right|left|up] [--distribution auto|centered|elk] [--density auto|compact|spacious] [--fast] [--force] [--view id]
 c4diagram convert  [archivo.json | --stdin] [--out out.drawio] [--notation c4|card] [--no-waypoints] [--locale es|en] [--view id...]
+c4diagram import   [archivo.drawio | --stdin] [--out out.json] [--name nombre]
 c4diagram validate [archivo.json | --stdin] [--strict]
 c4diagram schema   [--generation]
 c4diagram prompt   "<instrucción>" [--from base.json]
@@ -225,14 +254,15 @@ La pestaña **IA** del editor web hace lo mismo sin llamar a ningún servicio: "
 ### Uso programático
 
 ```ts
-import { generateDocument, autoLayoutDocument, toDrawio, validateDocument, deriveView } from 'diagramador-c4model/core';
+import { generateDocument, autoLayoutDocument, toDrawio, fromDrawio, validateDocument, deriveView } from 'diagramador-c4model/core';
 
 const { document } = await generateDocument({ instruction: 'Un sistema de tickets…' }); // Claude + autolayout
 const laid = await autoLayoutDocument(validateDocument(json).document, { direction: 'RIGHT', force: true });
 const xml = toDrawio(laid, { locale: 'en' });
+const { document: imported, warnings } = await fromDrawio(xml, { name: 'Tickets' }); // .drawio → documento C4 (lanza DrawioImportError si no es utilizable)
 ```
 
-`core` no depende del DOM: funciona en Node y en el navegador.
+`core` no depende del DOM: funciona en Node y en el navegador. `fromDrawio` descomprime las páginas comprimidas con `DecompressionStream` (Node 20.12+ y los navegadores actuales); un archivo sin comprimir no lo necesita.
 
 ## Embebido en otra aplicación (iframe + postMessage)
 
@@ -300,7 +330,7 @@ Demo completa: [`examples/embed-host.html`](examples/embed-host.html) (en desarr
 ## Estructura del proyecto
 
 ```
-src/core/     modelo, esquema zod, derivación de vistas, autolayout ELK, export .drawio, IA (sin DOM)
+src/core/     modelo, esquema zod, derivación de vistas, autolayout ELK, export/import .drawio, IA (sin DOM)
 src/cli/      comandos de c4diagram (commander)
 src/embed/    protocolo postMessage y SDK de anfitrión
 src/app/      editor React (Vite, React Flow, Semi UI, Tailwind)
@@ -337,4 +367,4 @@ y comprobar que `validate` no reporta errores, que todas las vistas tienen coord
 
 ## Fuera de alcance (v1)
 
-Servidor MCP, exportación PNG/SVG desde el modo embebido, vistas de despliegue/código, importar `.drawio` → JSON, colaboración en tiempo real.
+Servidor MCP, exportación PNG/SVG desde el modo embebido, vistas de despliegue/código, colaboración en tiempo real, importar `.drawio` desde el modo embebido (el anfitrión puede usar `fromDrawio` del núcleo).

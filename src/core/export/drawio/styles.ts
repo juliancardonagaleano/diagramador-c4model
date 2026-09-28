@@ -1,4 +1,4 @@
-import type { C4Element, ElementShape, ElementType } from '../../model/types';
+import { C4_COLORS, C4_EXTERNAL_COLOR, type C4Element, type ElementShape, type ElementType } from '../../model/types';
 
 /**
  * Estilos mxGraph de la librería C4 oficial de draw.io (Arrange > Insert > Shape > C4).
@@ -33,6 +33,38 @@ export function c4TypeLabel(locale: DrawioLocale, key: keyof (typeof TYPE_LABELS
   return TYPE_LABELS[locale][key];
 }
 
+/** Clase de celda que expresa un `c4Type`: un tipo de elemento, un boundary, o una relación. */
+export type C4CellKind = ElementType | 'boundary-softwareSystem' | 'boundary-container' | 'boundary-other' | 'relationship';
+
+const stripAccents = (s: string): string =>
+  s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase();
+
+/**
+ * Inverso de `c4TypeLabel`: interpreta el `c4Type` de una celda (o el "[Tipo]" de una etiqueta) sea cual sea
+ * el idioma o la variante que usó draw.io ("Person", "External System", "Container Scope Boundary",
+ * "Límite del contenedor"…). Devuelve `null` si no lo reconoce.
+ */
+export function parseC4TypeLabel(label: string): { kind: C4CellKind; external: boolean } | null {
+  const t = stripAccents(label).replace(/\s+/g, ' ').trim();
+  if (!t) return null;
+  const external = /\b(external|externo|externa)\b/.test(t);
+  // Los boundaries se comprueban primero: "Container Scope Boundary" también contiene "container".
+  if (/boundary|limite|scope/.test(t)) {
+    if (/container|contenedor/.test(t)) return { kind: 'boundary-container', external };
+    if (/system|sistema/.test(t)) return { kind: 'boundary-softwareSystem', external };
+    return { kind: 'boundary-other', external };
+  }
+  if (/relationship|relacion/.test(t)) return { kind: 'relationship', external };
+  if (/person|persona|actor/.test(t)) return { kind: 'person', external };
+  if (/component/.test(t)) return { kind: 'component', external };
+  if (/container|contenedor/.test(t)) return { kind: 'container', external };
+  if (/system|sistema/.test(t)) return { kind: 'softwareSystem', external };
+  return null;
+}
+
 const POINTS_RECT =
   'points=[[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0.25,0],[1,0.5,0],[1,0.75,0],[0.75,1,0],[0.5,1,0],[0.25,1,0],[0,0.75,0],[0,0.5,0],[0,0.25,0]];';
 const POINTS_PERSON =
@@ -63,6 +95,18 @@ const PALETTE: Record<ElementType, { internal: Palette; external: Palette }> = {
     external: { fill: '#8C8496', stroke: '#736782' },
   },
 };
+
+/**
+ * ¿Es `hex` el relleno por defecto (interno o externo) de un elemento de este tipo? Lo usa el importador para
+ * distinguir un elemento "externo" o con color propio de uno con los colores estándar de la notación (tanto los
+ * de esta herramienta y la librería C4 de draw.io como los canónicos de c4model.com).
+ */
+export function classifyFill(type: ElementType, hex: string): 'internal' | 'external' | 'custom' {
+  const h = hex.toLowerCase();
+  if (PALETTE[type].internal.fill.toLowerCase() === h || C4_COLORS[type].toLowerCase() === h) return 'internal';
+  const externals = [C4_EXTERNAL_COLOR, ...Object.values(PALETTE).map((p) => p.external.fill)];
+  return externals.some((c) => c.toLowerCase() === h) ? 'external' : 'custom';
+}
 
 function paletteFor(el: C4Element): Palette {
   const base = el.external ? PALETTE[el.type].external : PALETTE[el.type].internal;
@@ -110,7 +154,8 @@ export function elementLabel(el: C4Element): string {
 
 // ───────────── Notación "tarjeta" (estilo drawdb) ─────────────
 
-const CARD_FILL = '#F4F4F5';
+/** Relleno claro de la notación "tarjeta": el color C4 va en la franja de la etiqueta, no en el relleno. */
+export const CARD_FILL = '#F4F4F5';
 const CARD_STROKE = '#D4D4D8';
 const CARD_TEXT = '#27272A';
 

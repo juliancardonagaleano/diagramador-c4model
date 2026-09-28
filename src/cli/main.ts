@@ -1,8 +1,10 @@
+import { basename } from 'node:path';
 import { Command, InvalidArgumentError } from 'commander';
 import { applyLayoutToView, autoLayoutDocumentWithQuality, layoutView } from '../core/layout/elkLayout';
 import { formatQuality, type LayoutQuality } from '../core/layout/quality';
 import { sampleDocument } from '../core/model/sample';
 import { toDrawio, DrawioExportError, type DrawioNotation } from '../core/export/drawio/toDrawio';
+import { fromDrawio, DrawioImportError } from '../core/import/drawio/fromDrawio';
 import { documentJsonSchema, DocumentValidationError, formatIssues, validateDocument } from '../core/model/schema';
 import type { LayoutDensity, LayoutDirectionOption, LayoutDistribution } from '../core/model/types';
 import { generationJsonSchema } from '../core/ai/generationSchema';
@@ -212,6 +214,26 @@ export function buildProgram(): Command {
     });
 
   program
+    .command('import')
+    .description('Importa un diagrama de draw.io (.drawio) y lo convierte en un documento C4 en JSON')
+    .argument('[archivo.drawio]', 'archivo de entrada (o "-" para stdin)')
+    .option('--stdin', 'leer el archivo de la entrada estándar')
+    .option('-o, --out <archivo.json>', 'archivo de salida (por defecto stdout)')
+    .option('--name <nombre>', 'nombre del diagrama (por defecto, el nombre del archivo)')
+    .action(async (file: string | undefined, opts) => {
+      const raw = readInput(file, opts.stdin);
+      const fallbackName = file && file !== '-' ? basename(file).replace(/\.(drawio|xml)$/i, '') : undefined;
+      const { document, warnings } = await fromDrawio(raw, { name: opts.name ?? fallbackName });
+      for (const warning of warnings) info(`aviso: ${warning}`);
+      info(
+        `Importado "${document.workspace.name}": ${document.model.elements.length} elementos, ${document.model.relationships.length} relaciones, ` +
+          `${document.views.length} vistas${warnings.length > 0 ? `, ${warnings.length} aviso(s)` : ''}.`,
+      );
+      writeOutput(opts.out, jsonOut(document));
+      if (opts.out) info(`Documento C4 escrito en ${opts.out}`);
+    });
+
+  program
     .command('validate')
     .description('Valida un documento C4 y muestra avisos de calidad del modelo')
     .argument('[archivo.json]', 'documento de entrada (o "-" para stdin)')
@@ -281,6 +303,11 @@ export async function run(argv = process.argv): Promise<void> {
     }
     if (error instanceof DocumentValidationError) {
       process.stderr.write(`${error.message}\n`);
+      process.exitCode = 2;
+      return;
+    }
+    if (error instanceof DrawioImportError) {
+      process.stderr.write(`No se pudo importar el .drawio: ${error.message}\n`);
       process.exitCode = 2;
       return;
     }
