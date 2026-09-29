@@ -473,7 +473,7 @@ La pestaña **IA** del editor web hace lo mismo sin llamar a ningún servicio: "
 ### Uso programático
 
 ```ts
-import { generateDocument, autoLayoutDocument, toDrawio, fromDrawio, fromStructurizrDsl, validateDocument, deriveView } from 'diagramador-c4model/core';
+import { generateDocument, autoLayoutDocument, toDrawio, fromDrawio, fromStructurizrDsl, validateDocument, deriveView } from 'iark-diagrams/core';
 
 const { document } = await generateDocument({ instruction: 'Un sistema de tickets…' }); // Claude + autolayout
 const laid = await autoLayoutDocument(validateDocument(json).document, { direction: 'RIGHT', force: true });

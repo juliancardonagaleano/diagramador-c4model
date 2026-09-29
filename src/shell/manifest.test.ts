@@ -7,14 +7,14 @@ const respond = (body: string, status = 200): typeof fetch => (async () => new R
 
 describe('descubrimiento de módulos por manifiesto', () => {
   it('resuelve los endpoints relativos al manifiesto, bajo cualquier ruta base', async () => {
-    const manifest = await loadManifest('https://juliancardonagaleano.github.io/diagramador-c4model/.well-known/iark.json', respond(published));
+    const manifest = await loadManifest('https://juliancardonagaleano.github.io/iark-diagrams/.well-known/iark.json', respond(published));
     expect(manifest.name).toBe('IArk - DIAgrams');
     expect(manifest.modules.map((m) => m.id)).toEqual(['c4', 'integration', 'data', 'enterprise', 'platform', 'security']);
     const c4 = manifest.modules.find((m) => m.id === 'c4')!;
-    expect(c4.embedUrl).toBe('https://juliancardonagaleano.github.io/diagramador-c4model/');
+    expect(c4.embedUrl).toBe('https://juliancardonagaleano.github.io/iark-diagrams/');
     const security = manifest.modules.find((m) => m.id === 'security')!;
-    expect(security.embedUrl).toBe('https://juliancardonagaleano.github.io/diagramador-c4model/modulos.html?module=security');
-    expect(security.schemaUrl).toBe('https://juliancardonagaleano.github.io/diagramador-c4model/schema/security-document.schema.json');
+    expect(security.embedUrl).toBe('https://juliancardonagaleano.github.io/iark-diagrams/modulos.html?module=security');
+    expect(security.schemaUrl).toBe('https://juliancardonagaleano.github.io/iark-diagrams/schema/security-document.schema.json');
     expect(security.apiUrl).toBeUndefined();
   });
 
