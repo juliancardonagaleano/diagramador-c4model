@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { buildManifest, ModuleError, ModuleRegistry } from '@iark/kernel';
+import { buildManifest, carryRefs, ModuleError, ModuleRegistry } from '@iark/kernel';
 import { XMLParser } from 'fast-xml-parser';
 import { describe, expect, it } from 'vitest';
 import { generatedToPlatform, platformAiSpec, toGenerated } from './ai/generation';
@@ -705,7 +705,8 @@ describe('generación con IA', () => {
     const generated = toGenerated(doc);
     const result = generatedToPlatform(generated);
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.document).toEqual(doc);
+    // La generación no incluye los `ref` (enlaces por URN a otros módulos): al refinar se recuperan del documento base.
+    if (result.ok) expect(carryRefs(doc, result.document)).toEqual(doc);
     const broken = { ...generated, deployments: [{ ...generated.deployments[0], hostId: 'pedidos-db-prod' }] };
     const failed = generatedToPlatform(broken);
     expect(failed.ok).toBe(false);

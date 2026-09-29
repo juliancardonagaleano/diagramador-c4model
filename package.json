@@ -22,6 +22,10 @@
     "./embed": {
       "types": "./dist/embed/iark-embed.d.ts",
       "import": "./dist/embed/iark-embed.js"
+    },
+    "./element": {
+      "types": "./dist/embed/iark-module-element.d.ts",
+      "import": "./dist/embed/iark-module-element.js"
     }
   },
   "workspaces": [
@@ -42,6 +46,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "schema": "tsx scripts/generate-schema.ts",
+    "manifest": "tsx scripts/generate-manifest.ts",
     "cli": "tsx src/cli/index.ts",
     "e2e": "playwright test",
     "deploy:pages": "bash scripts/deploy-gh-pages.sh",

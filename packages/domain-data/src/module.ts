@@ -1,4 +1,4 @@
-import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue } from '@iark/kernel';
+import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue, ViewRef } from '@iark/kernel';
 import { looksLikeMermaid } from '@iark/kernel';
 import { dataAiSpec } from './ai/generation';
 import { dataCommands } from './commands';
@@ -9,6 +9,7 @@ import { fromMermaid } from './import/fromMermaid';
 import { analyzeData } from './issues';
 import { dataDocumentSchema, dataJsonSchema } from './schema';
 import { DATA_DOCUMENT_VERSION, type DataDocument } from './types';
+import { listViews } from './views';
 
 const mermaidImporter: Importer<DataDocument> = {
   id: 'mermaid',
@@ -64,6 +65,12 @@ export const dataModule: DomainModule<DataDocument> = {
     ...doc.domains.map((d) => ({ id: d.id, name: d.name, kind: 'domain' })),
     ...doc.assets.map((a) => ({ id: a.id, name: a.name, kind: a.kind })),
     ...doc.pipelines.map((p) => ({ id: p.id, name: p.name, kind: 'pipeline' })),
+  ],
+  views: (doc): ViewRef[] => listViews(doc).map((v) => ({ id: v.id, title: v.title })),
+  traceViews: [
+    { prefix: 'lineage', label: 'Linaje completo', applies: (e) => e.kind !== 'domain' && e.kind !== 'pipeline' },
+    { prefix: 'upstream', label: 'Origen (aguas arriba)', applies: (e) => e.kind !== 'domain' && e.kind !== 'pipeline' },
+    { prefix: 'downstream', label: 'Impacto (aguas abajo)', applies: (e) => e.kind !== 'domain' && e.kind !== 'pipeline' },
   ],
   cliCommands: dataCommands,
 };

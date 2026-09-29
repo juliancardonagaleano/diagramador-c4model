@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
+import { carryRefs } from '../module/refs';
 import type { AiSpec } from '../module/types';
 import { extractJson } from '../util/extractJson';
 import { createAiClient, credentialsHint, openaiSettings, resolveModel, resolveProvider, type AiProvider } from './client';
@@ -192,7 +193,9 @@ export async function generateStructured<TDoc>(spec: AiSpec<TDoc>, options: Stru
     const result = spec.toDocument(turn.generated);
     if (result.ok) {
       progress('Modelo válido.');
-      return { document: result.document, model: servedModel, provider, attempts, usage: { inputTokens, outputTokens } };
+      // Al refinar, los enlaces por URN (`ref`) del documento base sobreviven: el modelo no los conoce.
+      const document = options.base === undefined ? result.document : carryRefs(options.base, result.document);
+      return { document, model: servedModel, provider, attempts, usage: { inputTokens, outputTokens } };
     }
     lastIssues = result.issues;
     conversation.feedback(spec.retry(lastIssues));

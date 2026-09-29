@@ -422,6 +422,22 @@ describe('fromStructurizrDsl: vistas', () => {
     expect(ids(viewOf(document, 'raras'))).toEqual(['api', 'b', 'u', 'web']);
   });
 
+  it('un contexto de sistema cuyo include o exclude deja fuera su propio sistema lo recupera, con aviso', () => {
+    const { document, warnings } = views(`
+    systemContext a "solo-otros" { include u }
+    systemContext a "sin-alcance" {
+      include *
+      exclude a
+    }
+    systemContext a "completo" { include * }`);
+    expect(ids(viewOf(document, 'solo-otros'))).toEqual(['a', 'u']);
+    expect(viewOf(document, 'solo-otros').elements[0].id).toBe('a');
+    expect(ids(viewOf(document, 'sin-alcance'))).toContain('a');
+    expect(viewOf(document, 'completo').elements.filter((e) => e.id === 'a')).toHaveLength(1);
+    expect(warnings.filter((w) => /no incluía su alcance «A»/.test(w))).toHaveLength(2);
+    expect(validateDocument(document).ok).toBe(true);
+  });
+
   it('sin vistas en el DSL se crean las de por defecto (contexto, contenedores y componentes)', () => {
     const { document, warnings } = fromStructurizrDsl(
       wrap(`

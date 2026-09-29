@@ -1,4 +1,4 @@
-import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue } from '@iark/kernel';
+import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue, ViewRef } from '@iark/kernel';
 import { looksLikeMermaid } from '@iark/kernel';
 import { platformAiSpec } from './ai/generation';
 import { platformCommands } from './commands';
@@ -9,6 +9,7 @@ import { fromMermaid } from './import/fromMermaid';
 import { analyzePlatform } from './issues';
 import { platformDocumentSchema, platformJsonSchema } from './schema';
 import { PLATFORM_DOCUMENT_VERSION, type PlatformDocument } from './types';
+import { listViews } from './views';
 
 const mermaidImporter: Importer<PlatformDocument> = {
   id: 'mermaid',
@@ -67,6 +68,12 @@ export const platformModule: DomainModule<PlatformDocument> = {
     ...doc.resources.map((r) => ({ id: r.id, name: r.name, kind: 'resource' })),
     ...doc.services.map((s) => ({ id: s.id, name: s.name, kind: 'service' })),
     ...doc.pipelines.map((p) => ({ id: p.id, name: p.name, kind: 'pipeline' })),
+  ],
+  views: (doc): ViewRef[] => listViews(doc).map((v) => ({ id: v.id, title: v.title })),
+  traceViews: [
+    { prefix: 'impact', label: 'Impacto', applies: (e) => e.kind === 'service' || e.kind === 'resource' },
+    { prefix: 'depends', label: 'Dependencias', applies: (e) => e.kind === 'service' || e.kind === 'resource' },
+    { prefix: 'focus', label: 'Entorno', applies: (e) => e.kind === 'service' || e.kind === 'resource' },
   ],
   cliCommands: platformCommands,
 };

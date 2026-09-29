@@ -1,0 +1,306 @@
+import type {
+  ModuleAction,
+  ModuleCapabilitiesInfo,
+  ModuleEvent,
+  ModuleExportEvent,
+  ModuleIssueInfo,
+  ModuleIssuesEvent,
+  ModuleLoadEvent,
+  ModuleResultEvent,
+  SuiteCapabilitiesInfo,
+} from './moduleProtocol';
+
+export type { ModuleAction, ModuleCapabilitiesInfo, ModuleEvent, ModuleIssueInfo, SuiteCapabilitiesInfo };
+
+/**
+ * SDK de anfitrión para los módulos de la suite (integración, datos, empresarial, plataforma, seguridad…): crea un iframe
+ * con el banco de trabajo del módulo y gestiona el protocolo postMessage (`init` con las capacidades → `load`, eventos y
+ * acciones con respuesta por `requestId`). Es el hermano de `createIarkEmbed` (editor C4).
+ *
+ *   const embed = createIarkModuleEmbed({ container: '#panel', url: 'https://mi-host/diagramador/modulos.html', module: 'security',
+ *     document, onChange: ({ document }) => guardar(document) });
+ *   const svg = await embed.export('svg', 'blast:pedidos');
+ *   const { output } = await embed.run('risks', { options: { status: 'open' } });
+ */
+export interface IarkModuleEmbedOptions<TDoc = unknown> {
+  /** Elemento (o selector) donde insertar el iframe. */
+  container: HTMLElement | string;
+  /** URL del banco de trabajo (`modulos.html`), o el `endpoints.embed` de un manifiesto. */
+  url: string;
+  /** Módulo que se abre. Si se omite, se indica en `load({ module })`. */
+  module?: string;
+  /** Documento inicial (objeto o JSON). Con `importer`, el texto en ese otro formato. Si se omite, se abre en blanco. */
+  document?: TDoc | string;
+  importer?: string;
+  autosave?: boolean;
+  readOnly?: boolean;
+  theme?: 'light' | 'dark';
+  ui?: 'full' | 'min';
+  viewId?: string;
+  /** Origen esperado del iframe (targetOrigin). Por defecto se deduce de `url`. */
+  origin?: string;
+  /** Título accesible del iframe. */
+  title?: string;
+  iframeAttributes?: Record<string, string>;
+  /** Tiempo máximo (ms) que esperan las acciones con respuesta antes de rechazar. Por defecto 15000. */
+  responseTimeout?: number;
+  onInit?: (capabilities: SuiteCapabilitiesInfo) => void;
+  onLoad?: (payload: { module: string; document: TDoc | null; viewId?: string; issues: ModuleIssueInfo[]; warnings?: string[] }) => void;
+  /** El documento cambió (válido): edición de la persona o `merge`; llega tras una pausa de 500 ms. */
+  onChange?: (payload: { module: string; document: TDoc; issues: ModuleIssueInfo[] }) => void;
+  onViewChange?: (payload: { module: string; viewId: string; title?: string }) => void;
+  onSave?: (payload: { module: string; document: TDoc; exit: boolean }) => void;
+  onExit?: (payload: { modified: boolean }) => void;
+  onExport?: (payload: { module: string; format: string; data: string; mime: string; extension: string; viewId?: string }) => void;
+  onResult?: (payload: { module: string; command: string; kind: 'report' | 'convert'; output: string; warnings: string[] }) => void;
+  onError?: (payload: { message: string; issues?: Array<{ path: string; message: string }> }) => void;
+  /** Recibe todos los eventos del iframe. */
+  onEvent?: (event: ModuleEvent) => void;
+}
+
+export interface IarkModuleEmbed<TDoc = unknown> {
+  iframe: HTMLIFrameElement;
+  /** Se resuelve con las capacidades de la instancia en cuanto el banco de trabajo responde al handshake. */
+  initialized: Promise<SuiteCapabilitiesInfo>;
+  /** Se resuelve cuando se ha cargado el documento inicial. */
+  ready: Promise<void>;
+  /** Abre un documento (y, si hace falta, el módulo). Resuelve con lo que devolvió el banco de trabajo. */
+  load(document?: TDoc | string, options?: { module?: string; importer?: string; viewId?: string; autosave?: boolean; readOnly?: boolean }): Promise<ModuleLoadEvent>;
+  /** Exporta a `json` o a un formato del módulo (`capabilities`): `mermaid`, `svg`, `drawio`… */
+  export(format: string, viewId?: string): Promise<string>;
+  /** Problemas del documento abierto: esquema y reglas del dominio. */
+  validate(): Promise<Omit<ModuleIssuesEvent, 'event' | 'requestId'>>;
+  /** Informe o conversión del módulo (los de `iark <módulo> <comando>`). */
+  run(command: string, options?: { args?: string[]; options?: Record<string, string | boolean>; input?: TDoc | string }): Promise<Omit<ModuleResultEvent, 'event' | 'requestId'>>;
+  /** Capacidades de los módulos pedidos (por defecto, todos los de la instancia). */
+  capabilities(modules?: string[]): Promise<SuiteCapabilitiesInfo>;
+  setView(viewId: string): void;
+  status(message: string, modified?: boolean): void;
+  dialog(title: string, message: string, button?: string): void;
+  /** Pide al banco de trabajo que emita `save` (y `exit` si se indica). */
+  save(exit?: boolean): void;
+  send(action: ModuleAction): void;
+  destroy(): void;
+}
+
+type Pending = { resolve: (value: any) => void; reject: (error: Error) => void };
+
+export function createIarkModuleEmbed<TDoc = unknown>(options: IarkModuleEmbedOptions<TDoc>): IarkModuleEmbed<TDoc> {
+  const container = typeof options.container === 'string' ? document.querySelector<HTMLElement>(options.container) : options.container;
+  if (!container) throw new Error('createIarkModuleEmbed: no se encontró el contenedor');
+
+  const url = new URL(options.url, window.location.href);
+  url.searchParams.set('embed', '1');
+  url.searchParams.set('proto', 'json');
+  url.searchParams.set('origin', window.location.origin);
+  if (options.module) url.searchParams.set('module', options.module);
+  if (options.ui) url.searchParams.set('ui', options.ui);
+  if (options.theme) url.searchParams.set('theme', options.theme);
+  const targetOrigin = options.origin ?? url.origin;
+
+  const iframe = document.createElement('iframe');
+  iframe.src = url.toString();
+  iframe.style.border = '0';
+  iframe.style.width = '100%';
+  iframe.style.height = '100%';
+  iframe.setAttribute('title', options.title ?? 'IArk - DIAgrams');
+  for (const [k, v] of Object.entries(options.iframeAttributes ?? {})) iframe.setAttribute(k, v);
+  container.appendChild(iframe);
+
+  const responseTimeout = options.responseTimeout ?? 15000;
+  const pending = new Map<string, Pending>();
+  const loads: Pending[] = [];
+  let counter = 0;
+  let initialised = false;
+  let queue: ModuleAction[] = [];
+
+  let resolveInit!: (c: SuiteCapabilitiesInfo) => void;
+  const initialized = new Promise<SuiteCapabilitiesInfo>((resolve) => (resolveInit = resolve));
+  let resolveReady!: () => void;
+  const ready = new Promise<void>((resolve) => (resolveReady = resolve));
+
+  const post = (action: ModuleAction): void => iframe.contentWindow?.postMessage(JSON.stringify(action), targetOrigin);
+  /** Las acciones anteriores al `init` esperan: el iframe aún no escucha. */
+  const send = (action: ModuleAction): void => (initialised ? post(action) : void queue.push(action));
+
+  function withTimeout<T>(promise: Promise<T>, onTimeout: () => void): Promise<T> {
+    let timer: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        onTimeout();
+        reject(new Error(`El módulo embebido no respondió en ${responseTimeout}ms`));
+      }, responseTimeout);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  }
+
+  /** Acción con respuesta correlacionada por `requestId`. */
+  function request<R>(build: (requestId: string) => ModuleAction): Promise<R> {
+    const requestId = `req-${++counter}`;
+    const promise = new Promise<R>((resolve, reject) => {
+      pending.set(requestId, { resolve, reject });
+      send(build(requestId));
+    });
+    return withTimeout(promise, () => pending.delete(requestId));
+  }
+
+  const settle = (requestId: string | undefined, value: unknown): void => {
+    const entry = requestId ? pending.get(requestId) : undefined;
+    if (entry && requestId) {
+      pending.delete(requestId);
+      entry.resolve(value);
+    }
+  };
+
+  const listener = (event: MessageEvent): void => {
+    if (event.source !== iframe.contentWindow) return;
+    if (targetOrigin !== '*' && event.origin !== targetOrigin) return;
+    let data: unknown = event.data;
+    let parseFailed = false;
+    if (typeof data === 'string') {
+      try {
+        data = JSON.parse(data);
+      } catch {
+        parseFailed = true;
+      }
+    }
+    if (parseFailed || !data || typeof data !== 'object' || !('event' in data)) {
+      const looksAddressedToUs = parseFailed ? (event.data as string).trim().startsWith('{') : !!data && typeof data === 'object';
+      if (looksAddressedToUs) options.onError?.({ message: 'Mensaje recibido del módulo embebido no reconocido' });
+      return;
+    }
+    const msg = data as ModuleEvent;
+    options.onEvent?.(msg);
+    switch (msg.event) {
+      case 'init': {
+        initialised = true;
+        resolveInit(msg.capabilities);
+        options.onInit?.(msg.capabilities);
+        const moduleId = options.module ?? msg.module;
+        if (moduleId) {
+          post({
+            action: 'load',
+            module: moduleId,
+            document: options.document as Record<string, unknown> | string | undefined,
+            importer: options.importer,
+            autosave: options.autosave,
+            readOnly: options.readOnly,
+            theme: options.theme,
+            viewId: options.viewId,
+          });
+        }
+        const queued = queue;
+        queue = [];
+        for (const action of queued) post(action);
+        break;
+      }
+      case 'load':
+        resolveReady();
+        loads.splice(0).forEach((p) => p.resolve(msg));
+        options.onLoad?.({ module: msg.module, document: msg.document as TDoc | null, viewId: msg.viewId, issues: msg.issues, warnings: msg.warnings });
+        break;
+      case 'change':
+      case 'autosave':
+        options.onChange?.({ module: msg.module, document: msg.document as TDoc, issues: msg.issues });
+        break;
+      case 'viewChange':
+        options.onViewChange?.({ module: msg.module, viewId: msg.viewId, title: msg.title });
+        break;
+      case 'save':
+        options.onSave?.({ module: msg.module, document: msg.document as TDoc, exit: msg.exit });
+        break;
+      case 'exit':
+        options.onExit?.({ modified: msg.modified });
+        break;
+      case 'export': {
+        settle(msg.requestId, msg satisfies ModuleExportEvent);
+        options.onExport?.({ module: msg.module, format: msg.format, data: msg.data, mime: msg.mime, extension: msg.extension, viewId: msg.viewId });
+        break;
+      }
+      case 'issues':
+        settle(msg.requestId, msg);
+        break;
+      case 'result':
+        settle(msg.requestId, msg);
+        options.onResult?.({ module: msg.module, command: msg.command, kind: msg.kind, output: msg.output, warnings: msg.warnings });
+        break;
+      case 'capabilities':
+        settle(msg.requestId, msg.capabilities);
+        break;
+      case 'error': {
+        const entry = msg.requestId ? pending.get(msg.requestId) : undefined;
+        if (entry && msg.requestId) {
+          pending.delete(msg.requestId);
+          entry.reject(new Error(msg.message));
+        } else {
+          loads.splice(0).forEach((l) => l.reject(new Error(msg.message)));
+        }
+        options.onError?.({ message: msg.message, issues: msg.issues });
+        break;
+      }
+      default:
+        break;
+    }
+  };
+  window.addEventListener('message', listener);
+
+  return {
+    iframe,
+    initialized,
+    ready,
+    load(doc, opts = {}) {
+      const entry: Pending = { resolve: () => {}, reject: () => {} };
+      const promise = new Promise<ModuleLoadEvent>((resolve, reject) => {
+        entry.resolve = resolve;
+        entry.reject = reject;
+        loads.push(entry);
+        send({ action: 'load', document: doc as Record<string, unknown> | string | undefined, ...opts });
+      });
+      return withTimeout(promise, () => {
+        const i = loads.indexOf(entry);
+        if (i >= 0) loads.splice(i, 1);
+      });
+    },
+    async export(format, viewId) {
+      const event = await request<ModuleExportEvent>((requestId) => ({ action: 'export', format, viewId, requestId }));
+      return event.data;
+    },
+    async validate() {
+      const { event: _event, requestId: _requestId, ...rest } = await request<ModuleIssuesEvent>((requestId) => ({ action: 'validate', requestId }));
+      return rest;
+    },
+    async run(command, opts = {}) {
+      const { event: _event, requestId: _requestId, ...rest } = await request<ModuleResultEvent>((requestId) => ({
+        action: 'run',
+        command,
+        args: opts.args,
+        options: opts.options,
+        input: opts.input as Record<string, unknown> | string | undefined,
+        requestId,
+      }));
+      return rest;
+    },
+    capabilities(modules) {
+      return request<SuiteCapabilitiesInfo>((requestId) => ({ action: 'capabilities', modules, requestId }));
+    },
+    setView(viewId) {
+      send({ action: 'setView', viewId });
+    },
+    status(message, modified) {
+      send({ action: 'status', message, modified });
+    },
+    dialog(title, message, button) {
+      send({ action: 'dialog', title, message, button });
+    },
+    save(exit = false) {
+      send({ action: 'save', exit });
+    },
+    send,
+    destroy() {
+      window.removeEventListener('message', listener);
+      iframe.remove();
+    },
+  };
+}
+
+export default createIarkModuleEmbed;

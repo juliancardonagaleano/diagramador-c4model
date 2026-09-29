@@ -29,7 +29,8 @@ export interface SvgOptions {
   title?: string;
   node(id: string): SvgNodeStyle;
   edge(id: string): SvgEdgeStyle;
-  group?(id: string): { label: string };
+  /** Etiqueta del grupo y, opcionalmente, su relleno y su borde (por defecto gris claro). */
+  group?(id: string): { label: string; fill?: string; stroke?: string };
 }
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -54,8 +55,9 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
   out.push(`<g transform="translate(${pad} ${top})">`);
 
   for (const g of layout.groups) {
-    const label = options.group?.(g.id).label ?? g.id;
-    out.push(`<rect x="${g.x}" y="${g.y}" width="${g.width}" height="${g.height}" rx="8" fill="#f8fafc" stroke="#94a3b8" stroke-dasharray="6 4"/>`);
+    const style = options.group?.(g.id);
+    const label = style?.label ?? g.id;
+    out.push(`<rect x="${g.x}" y="${g.y}" width="${g.width}" height="${g.height}" rx="8" fill="${style?.fill ?? '#f8fafc'}" stroke="${style?.stroke ?? '#94a3b8'}" stroke-dasharray="6 4"/>`);
     out.push(`<text x="${g.x + 12}" y="${g.y + 22}" font-weight="700" fill="#475569">${esc(fit(label, g.width))}</text>`);
   }
 

@@ -545,6 +545,11 @@ class Interpreter {
 
     const key = def.key && def.key.length <= 120 ? def.key : undefined;
     const elements = included.filter((id) => type === 'systemContext' || id !== scope?.id).map((id) => ({ id }));
+    // El modelo exige que un contexto de sistema muestre su propio sistema (`include *` lo incluye, pero un `include` selectivo o un `exclude` no).
+    if (type === 'systemContext' && scope && !elements.some((e) => e.id === scope.id)) {
+      this.warnings.add(`${st.loc}: la vista systemContext no incluía su alcance «${scope.name}»; se añade.`);
+      elements.unshift({ id: scope.id });
+    }
     const view = createView(
       type,
       {

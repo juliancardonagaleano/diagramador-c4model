@@ -90,6 +90,20 @@ export interface EntityRef {
   kind: string;
 }
 
+/** Vista que un módulo deriva de un documento: su `id` es el que se pasa como `viewId` al exportar. */
+export interface ViewRef {
+  id: string;
+  title: string;
+}
+
+/** Vista bajo demanda de un elemento del documento (`<prefix>:<id>`), como el impacto, el linaje o el alcance. */
+export interface TraceViewSpec {
+  prefix: string;
+  label: string;
+  /** Qué elementos admiten la vista (por defecto, todos). */
+  applies?(entity: EntityRef): boolean;
+}
+
 export interface CommandOption {
   /** Como en commander: `-o, --out <archivo>`. */
   flags: string;
@@ -102,12 +116,19 @@ export interface CommandContext {
   options: Record<string, unknown>;
   /** Contenido del archivo o de la entrada estándar, si el comando declara `input`. */
   input?: string;
+  /** Emite un aviso sin mezclarlo con el resultado (stderr en el CLI, la lista de avisos en la interfaz web). */
+  warn?(message: string): void;
 }
 
 /** Subcomando que el módulo aporta al CLI (`iark <módulo> <nombre>`). Devuelve el texto que se escribe en stdout. */
 export interface CommandSpec {
   name: string;
   description: string;
+  /**
+   * `report` (por defecto): el resultado es un informe en texto (Markdown). `convert`: el resultado es un documento JSON de
+   * ESTE módulo construido a partir del documento de otro (`from-integration`, `from-platform`…).
+   */
+  kind?: 'report' | 'convert';
   /** Si el comando lee un documento: el CLI añade `[archivo]`, `--stdin` y `--out`, lee la entrada y la pasa en `context.input`. */
   input?: { description: string };
   args?: Array<{ name: string; description: string; required?: boolean }>;
@@ -134,5 +155,9 @@ export interface DomainModule<TDoc = unknown> {
   ai?: AiSpec<TDoc>;
   /** Elementos referenciables desde otros módulos por URN. */
   entities?(document: TDoc): EntityRef[];
+  /** Vistas que el módulo deriva del documento (las que exportan sus exportadores de diagramas). */
+  views?(document: TDoc): ViewRef[];
+  /** Vistas bajo demanda de un elemento. */
+  traceViews?: TraceViewSpec[];
   cliCommands?: CommandSpec[];
 }
