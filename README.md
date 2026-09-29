@@ -1,6 +1,6 @@
 # IArk - DIAgrams
 
-> Antes «Diagramador C4». IArk - DIAgrams evoluciona hacia una suite de diagramación de arquitectura (integraciones, datos, empresarial, plataforma…); hoy incluye el editor del **modelo C4**. El comando `c4diagram` se mantiene como alias de `iark`. Hoja de ruta: [`docs/roadmap.md`](docs/roadmap.md).
+> Antes «Diagramador C4». IArk - DIAgrams evoluciona hacia una suite de diagramación de arquitectura (integraciones, datos, empresarial, plataforma, seguridad…); hoy incluye el editor del **modelo C4**. El comando `c4diagram` se mantiene como alias de `iark`. Hoja de ruta: [`docs/roadmap.md`](docs/roadmap.md).
 
 Editor web de diagramas del **modelo C4** (Contexto, Contenedores y Componentes) con:
 
@@ -96,7 +96,7 @@ Reglas que se derivan automáticamente (no se almacenan):
 - **Boundaries**: el `scopeId` de una vista de contenedores/componentes y cualquier elemento visible con hijos visibles.
 - **Relaciones**: se dibujan las que unen dos elementos visibles; si un extremo no está visible pero sí su ancestro, se dibuja una relación *implícita* (una por par).
 
-El JSON Schema está en [`schema/c4-document.schema.json`](schema/c4-document.schema.json) (`npm run schema` lo regenera; `iark schema` lo imprime). Los módulos de integraciones, datos, empresarial y plataforma tienen los suyos en `schema/integration-*.schema.json`, `schema/data-*.schema.json`, `schema/enterprise-*.schema.json` y `schema/platform-*.schema.json`.
+El JSON Schema está en [`schema/c4-document.schema.json`](schema/c4-document.schema.json) (`npm run schema` lo regenera; `iark schema` lo imprime). Los módulos de integraciones, datos, empresarial, plataforma y seguridad tienen los suyos en `schema/integration-*.schema.json`, `schema/data-*.schema.json`, `schema/enterprise-*.schema.json`, `schema/platform-*.schema.json` y `schema/security-*.schema.json`.
 
 ## Notación del lienzo
 
@@ -349,6 +349,40 @@ iark platform from-integration mapa.json                                        
 
 Al importar un `flowchart`, los `subgraph` con el prefijo que pone el exportador se reconocen como `Entorno: …`, `Red pública|privada|aislada: … (cidr)` y `Clúster: …` / `Máquina virtual: …`; un servicio dentro de un clúster queda desplegado en él (con `3 réplicas · v1.4.2` al final del texto) y los servicios con el mismo nombre en varios entornos son uno solo con varios despliegues. El tipo de cada nodo sale de su clase (`:::database`, `:::worker`, `:::external`; también en español) y, si no, de su forma (`[( )]` = base de datos, `([ ])` = cola); `class X planned|decommissioned` da el estado del recurso. Las flechas son dependencias: continua = llama, punteada = mensajes, gruesa = datos, con la etiqueta `protocolo · descripción`. Los pasos de la vista de entrega continua no se importan. La interfaz web todavía no edita este módulo.
 
+## Módulo de seguridad
+
+Sexta especialidad de la suite (`--module security`; la quinta de las que pidió el plan, tras integraciones, datos, empresarial y plataforma): modela **qué hay que proteger, de quién y con qué**, con el enfoque clásico de un análisis de amenazas sobre un diagrama de flujo de datos. Vive en `packages/domain-security`, sin depender del código de los demás módulos; se enlaza con ellos por URN (`urn:iark:integration:<id>`, `urn:iark:platform:<id>`).
+
+Documento JSON (ejemplo completo en [`examples/seguridad-ejemplo.json`](examples/seguridad-ejemplo.json), esquema con `iark schema --module security`):
+
+| Parte | Contenido |
+|---|---|
+| `zones` | zonas de confianza, anidables (`parentId`): `untrusted`, `dmz`, `internal` (por defecto) o `restricted`; cruzar de una a otra es cruzar una **frontera de confianza** |
+| `assets` | `actor` (persona), `external` (sistema de un tercero), `process` (ejecuta código) o `datastore` (guarda datos), cada uno en una zona; con `classification` (`public`, `internal`, `confidential`, `restricted`), `encryptedAtRest` (almacenes), `owner` y `ref` |
+| `flows` | datos que viajan de un activo a otro: `protocol`, `classification`, `encrypted` y `authentication` (`none`, `password`, `token`, `mtls`, `sso`); lo que no se indica, se considera desconocido |
+| `threats` | amenaza clasificada con **STRIDE** (`spoofing`, `tampering`, `repudiation`, `information-disclosure`, `denial-of-service`, `elevation-of-privilege`) sobre un activo o un flujo, con `likelihood`, `impact` y `status` (`open`, `mitigated`, `accepted`); el riesgo es probabilidad (1-3) × impacto (1-4) |
+| `controls` | lo que mitiga las amenazas (`authentication`, `authorization`, `encryption`, `logging`, `validation`, `network`, `rate-limit`, `backup`, `secrets`), `implemented` o `planned`; cada amenaza cita los suyos en `controlIds` |
+
+No se guardan coordenadas. `dfd` es el **diagrama de flujo de datos** (cada zona es un recuadro del color de su nivel de confianza, anidado en su padre; la flecha es verde si el flujo va cifrado, roja discontinua si no y gris si no se sabe, y más gruesa si lleva datos sensibles; los activos con amenazas graves abiertas se marcan en rojo) y `threats` el **modelo de amenazas** (controles → amenazas → activos y flujos amenazados). Desde un activo se piden `blast:<id>` (hasta dónde llegan los datos si se compromete), `exposure:<id>` (quién puede llegar hasta él) y `focus:<id>` (ambos).
+
+`validate` comprueba la estructura (ids únicos entre tipos, zonas sin ciclos, flujos entre activos, amenazas sobre activos o flujos, controles existentes) y aplica reglas de **gobierno**: flujos que cruzan una frontera sin cifrar (aviso si tocan una zona no confiable o llevan datos sensibles), entradas a una zona más confiable sin autenticación o que saltan una zona intermedia, datos sensibles en almacenes sin cifrar en reposo o en zonas poco confiables, datos sensibles que salen a un tercero o de un almacén a un actor, clasificaciones incoherentes con los flujos, amenazas abiertas de riesgo alto o crítico, «mitigadas» sin un control implementado, riesgos críticos aceptados, categorías STRIDE que no aplican al elemento, controles sin uso y lo que cruza fronteras sin amenazas analizadas.
+
+```bash
+iark validate  seguridad.json --module security
+iark convert   seguridad.json --module security --out flujos.svg                      # diagrama de flujo de datos; también .mmd y .drawio (una página por vista)
+iark convert   seguridad.json --module security --out amenazas.svg --view threats
+iark convert   seguridad.json --module security --out alcance.svg --view blast:pedidos
+iark import    flujos.mmd --module security --out seguridad.json                       # flowchart → documento
+iark generate  "Tienda con WAF, API, base de datos y pasarela de pagos" --module security --json seguridad.json
+iark security risks    seguridad.json [--status open]                                  # registro de riesgos ordenado por riesgo, con estado y controles
+iark security stride   seguridad.json [--gaps]                                         # cobertura STRIDE: qué categorías aplican a cada activo y flujo y cuáles siguen sin analizar
+iark security exposure seguridad.json                                                  # superficie de ataque: entradas desde zonas no confiables y caminos hasta lo que interesa proteger
+iark security from-integration mapa.json                                               # mapa de integración → activos y flujos con URN (zonas por heurística)
+iark security from-platform plataforma.json [--env prod]                               # entorno de una plataforma → zonas por red, activos y flujos con URN
+```
+
+Al importar un `flowchart`, cada `subgraph` es una zona (con el prefijo `Zona no confiable|DMZ|interna|restringida: …` que pone el exportador se conoce su nivel; sin él se importa como interna y se avisa) y cada nodo, un activo cuyo tipo sale de su clase (`:::actor`, `:::external`, `:::process`, `:::datastore`; también en español) o, si no, de su forma (`[( )]` = almacén, `([ ])` = actor). Al final del texto del nodo se leen `datos confidenciales` y `cifrado en reposo` / `sin cifrar en reposo`. Las flechas son flujos: gruesa `==>` = cifrado, punteada `-.->` = sin cifrar, continua = no se sabe; la etiqueta es `protocolo · descripción · datos … · autenticación …`. Las amenazas y los controles se describen en el JSON, no en Mermaid. La interfaz web todavía no edita este módulo.
+
 ## CLI `iark`
 
 ```
@@ -504,6 +538,7 @@ packages/domain-integration/  @iark/domain-integration: módulo `integration` (n
 packages/domain-data/  @iark/domain-data: módulo `data` (activos, dominios, pipelines y linaje, modelo entidad-relación y gobierno del dato; import Mermaid, export Mermaid/SVG/draw.io, IA)
 packages/domain-enterprise/  @iark/domain-enterprise: módulo `enterprise` (capacidades, procesos, aplicaciones y tecnología con ciclo de vida; mapa de capacidades, paisaje, impacto y obsolescencia; import Mermaid, export Mermaid/SVG/draw.io, IA)
 packages/domain-platform/  @iark/domain-platform: módulo `platform` (entornos, redes, recursos, servicios, despliegues, dependencias y pipelines; topología, despliegue por entorno, entrega continua e impacto; import Mermaid, export Mermaid/SVG/draw.io, IA)
+packages/domain-security/  @iark/domain-security: módulo `security` (zonas de confianza, activos, flujos de datos, amenazas STRIDE y controles; diagrama de flujo de datos, modelo de amenazas, riesgos y superficie de ataque; import Mermaid, export Mermaid/SVG/draw.io, IA)
 src/cli/               comandos de iark (commander); carga los módulos del registro
 src/embed/             protocolo postMessage y SDK de anfitrión
 src/app/               editor React (Vite, React Flow, Semi UI, Tailwind)

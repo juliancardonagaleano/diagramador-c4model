@@ -377,7 +377,7 @@ describe('iark: módulos de la suite', () => {
   it('--module desconocido falla con la lista de módulos disponibles', () => {
     const r = run(['import', 'examples/banca.mmd', '--module', 'datos']);
     expect(r.status).toBe(2);
-    expect(r.stderr).toMatch(/No existe el módulo «datos»\. Módulos disponibles: c4, integration, data, enterprise, platform\./);
+    expect(r.stderr).toMatch(/No existe el módulo «datos»\. Módulos disponibles: c4, integration, data, enterprise, platform, security\./);
   });
 
   it('modules lista también el módulo de integraciones con sus formatos', () => {
@@ -385,7 +385,7 @@ describe('iark: módulos de la suite', () => {
     expect(list.stdout).toMatch(/^integration {2}Arquitectura de integraciones {2}v0\.1\.0/m);
     expect(list.stdout).toMatch(/importa: mermaid {2}· {2}exporta: mermaid, svg, drawio/);
     const manifest = JSON.parse(run(['modules', '--json']).stdout);
-    expect(manifest.modules.map((m: { id: string }) => m.id)).toEqual(['c4', 'integration', 'data', 'enterprise', 'platform']);
+    expect(manifest.modules.map((m: { id: string }) => m.id)).toEqual(['c4', 'integration', 'data', 'enterprise', 'platform', 'security']);
     expect(manifest.modules[1]).toMatchObject({ exportFormats: ['mermaid', 'svg', 'drawio'], importFormats: ['mermaid'] });
   });
 
@@ -889,6 +889,141 @@ describe('iark: módulo de plataforma', () => {
 
   it('generate --module platform falla con un mensaje claro sin credenciales', () => {
     const r = spawnSync(cli[0], [cli[1], 'generate', 'Una tienda', '--module', 'platform', '--provider', 'anthropic'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        ANTHROPIC_API_KEY: '',
+        ANTHROPIC_AUTH_TOKEN: '',
+        ANTHROPIC_PROFILE: 'inexistente-c4-test',
+        ANTHROPIC_BASE_URL: '',
+        ANTHROPIC_FOUNDRY_API_KEY: '',
+        ANTHROPIC_FOUNDRY_BASE_URL: '',
+        ANTHROPIC_FOUNDRY_RESOURCE: '',
+        ANTHROPIC_FOUNDRY_MODEL: '',
+        AI_API_KEY: '',
+        AI_BASE_URL: '',
+        AI_MODEL: '',
+        HOME: dir,
+      },
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/Error generando el modelo/);
+  });
+});
+
+describe('iark: módulo de seguridad', () => {
+  const sec = 'examples/seguridad-ejemplo.json';
+  const dir = mkdtempSync(join(tmpdir(), 'iarksec-'));
+
+  it('modules lista el módulo de seguridad con sus formatos', () => {
+    expect(run(['modules']).stdout).toMatch(/^security {2}Arquitectura de seguridad {2}v0\.1\.0\n {4}importa: mermaid {2}· {2}exporta: mermaid, svg, drawio/m);
+  });
+
+  it('validate --module security valida el documento, muestra los avisos de gobierno y devuelve 2 con errores de estructura', () => {
+    const ok = run(['validate', sec, '--module', 'security']);
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toMatch(/Documento válido \(módulo security\)\. 0 error\(es\), 5 aviso\(s\)/);
+    expect(ok.stdout).toMatch(/Flujo «Confirmación del pedido» cruza la frontera de «Red interna» a «Internet» sin cifrar/);
+    expect(run(['validate', sec, '--module', 'security', '--strict']).status).toBe(3);
+
+    const bad = join(dir, 'bad.json');
+    writeFileSync(bad, JSON.stringify({ zones: [{ id: 'z', name: 'Z' }], assets: [{ id: 'a', name: 'A', kind: 'process', zoneId: 'z' }], flows: [{ id: 'f', sourceId: 'a', targetId: 'z' }] }));
+    const r = run(['validate', bad, '--module', 'security']);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/Documento inválido para el módulo «security»/);
+    expect(r.stderr).toMatch(/Un flujo une activos, pero "z" es zona/);
+  });
+
+  it('schema y prompt --module security usan el contrato del módulo', () => {
+    expect(JSON.parse(run(['schema', '--module', 'security']).stdout).properties.zones).toBeDefined();
+    expect(JSON.parse(run(['schema', '--module', 'security', '--generation']).stdout).properties.threats).toBeDefined();
+    const prompt = run(['prompt', 'Una tienda', '--module', 'security', '--from', sec]);
+    expect(prompt.status).toBe(0);
+    expect(prompt.stdout).toContain('arquitecto de seguridad');
+    expect(prompt.stdout).toContain('Una tienda');
+    expect(prompt.stdout).toContain('pedidos-db');
+  });
+
+  it('convert --module security exporta Mermaid, SVG y draw.io, y elige las vistas por nombre', () => {
+    const mmd = run(['convert', sec, '--module', 'security', '--to', 'mermaid']);
+    expect(mmd.status).toBe(0);
+    expect(mmd.stdout).toMatch(/^flowchart LR/);
+    expect(mmd.stdout).toContain('subgraph internet["Zona no confiable: Internet"]');
+    expect(run(['convert', sec, '--module', 'security', '--to', 'mermaid', '--view', 'threats']).stdout).toContain(':::threat');
+    expect(run(['convert', sec, '--module', 'security', '--to', 'mermaid', '--view', 'blast:pedidos']).stdout).toContain('pedidos ==>|"Kafka sobre TLS');
+
+    const svg = join(dir, 'flujos.svg');
+    expect(run(['convert', sec, '--module', 'security', '--out', svg]).status).toBe(0);
+    expect(readFileSync(svg, 'utf8')).toContain('Flujos de datos y fronteras de confianza');
+
+    const drawio = join(dir, 'seguridad.drawio');
+    expect(run(['convert', sec, '--module', 'security', '--out', drawio]).status).toBe(0);
+    expect([].concat(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram)).toHaveLength(2);
+
+    const missing = run(['convert', sec, '--module', 'security', '--to', 'mermaid', '--view', 'nada']);
+    expect(missing.status).not.toBe(0);
+    expect(missing.stderr).toMatch(/No existe la vista «nada»/);
+  });
+
+  it('import --module security recupera zonas, activos y flujos desde su Mermaid (ida y vuelta)', () => {
+    const mmd = join(dir, 'flujos.mmd');
+    const json = join(dir, 'flujos.json');
+    run(['convert', sec, '--module', 'security', '--to', 'mermaid', '--out', mmd]);
+    const r = run(['import', mmd, '--module', 'security', '--out', json]);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toMatch(/Importado "flujos" en el módulo security: 15 elementos/);
+    const doc = JSON.parse(readFileSync(json, 'utf8'));
+    expect(doc.zones).toHaveLength(4);
+    expect(doc.assets).toHaveLength(11);
+    expect(doc.flows).toHaveLength(10);
+    expect(run(['validate', json, '--module', 'security']).status).toBe(0);
+  });
+
+  it('un Mermaid que no se puede importar termina en un mensaje de una línea con código 2, sin stack', () => {
+    const r = run(['import', '--stdin', '--module', 'security'], 'sequenceDiagram\n  A->>B: hola');
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/no se puede importar como seguridad/);
+    expect(r.stderr).not.toMatch(/Error inesperado|\n\s+at /);
+  });
+
+  it('security risks, stride y exposure', () => {
+    const risks = run(['security', 'risks', sec]);
+    expect(risks.status).toBe(0);
+    expect(risks.stdout).toContain('| crítico (9) | Robo de credenciales de clientes (credential stuffing) |');
+    expect(run(['security', 'risks', sec, '--status', 'accepted']).stdout).toContain('Denegación de servicio distribuida');
+    expect(run(['security', 'risks', sec, '--status', 'cerrada']).status).toBe(2);
+
+    const stride = run(['security', 'stride', sec]);
+    expect(stride.stdout).toContain('| Servicio de pedidos | Proceso | ○ | ✓1 | ✓1 | ○ | ○ | ●1 |');
+    expect(stride.stdout).toContain('Analizadas: 10 · Sin analizar: 70');
+
+    const exposure = run(['security', 'exposure', sec]);
+    expect(exposure.stdout).toContain('Puntos de entrada desde zonas no confiables: 1');
+    expect(exposure.stdout).toContain('Caminos hasta los activos que interesa proteger: 6');
+  });
+
+  it('security from-integration y from-platform crean el modelo con referencias URN', () => {
+    const fromIntegration = run(['security', 'from-integration', 'examples/pedidos-integracion.json']);
+    expect(fromIntegration.status).toBe(0);
+    const integ = JSON.parse(fromIntegration.stdout);
+    expect(integ.assets[0].ref).toMatch(/^urn:iark:integration:/);
+    expect(integ.zones.map((z: { id: string }) => z.id)).toEqual(['red-interna', 'perimetro', 'externo']);
+    expect(fromIntegration.stderr).toMatch(/Las zonas de confianza se proponen por heurística/);
+    expect(run(['validate', '--stdin', '--module', 'security'], fromIntegration.stdout).status).toBe(0);
+
+    const fromPlatform = run(['security', 'from-platform', 'examples/plataforma-ejemplo.json', '--env', 'prod']);
+    expect(fromPlatform.status).toBe(0);
+    const plat = JSON.parse(fromPlatform.stdout);
+    expect(plat.assets.find((a: { id: string }) => a.id === 'pedidos').ref).toBe('urn:iark:platform:pedidos');
+    expect(plat.zones.find((z: { id: string }) => z.id === 'subred-datos').trust).toBe('restricted');
+    expect(run(['validate', '--stdin', '--module', 'security'], fromPlatform.stdout).status).toBe(0);
+    const unknown = run(['security', 'from-platform', 'examples/plataforma-ejemplo.json', '--env', 'qa']);
+    expect(unknown.status).toBe(2);
+    expect(unknown.stderr).toMatch(/No existe el entorno «qa»/);
+  });
+
+  it('generate --module security falla con un mensaje claro sin credenciales', () => {
+    const r = spawnSync(cli[0], [cli[1], 'generate', 'Una tienda', '--module', 'security', '--provider', 'anthropic'], {
       encoding: 'utf8',
       env: {
         ...process.env,
