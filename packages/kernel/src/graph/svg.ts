@@ -10,6 +10,12 @@ export interface SvgNodeStyle {
   badge?: string;
   shape?: 'rect' | 'cylinder' | 'pill';
   dashed?: boolean;
+  /** Color del texto (por defecto blanco, para fondos oscuros). */
+  textColor?: string;
+  /** Alineación del texto: centrado (por defecto) o a la izquierda con el título separado, como una ficha de tabla. */
+  align?: 'center' | 'left';
+  /** Máximo de líneas de texto que se dibujan (por defecto 3). */
+  maxLines?: number;
 }
 
 export interface SvgEdgeStyle {
@@ -75,16 +81,34 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
       const rx = s.shape === 'pill' ? Math.min(n.height / 2, 28) : 8;
       out.push(`<rect x="${n.x}" y="${n.y}" width="${n.width}" height="${n.height}" rx="${rx}" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1.5"${dash}/>`);
     }
+    const ink = s.textColor ?? '#ffffff';
+    const lines = s.lines.slice(0, s.maxLines ?? 3);
+    if (s.align === 'left') {
+      // Ficha: insignia y título arriba, una línea de separación y el resto a la izquierda.
+      let y = n.y + 20;
+      if (s.badge) {
+        out.push(`<text x="${n.x + 10}" y="${y - 6}" font-size="9" fill="${ink}" fill-opacity="0.7" letter-spacing="0.5">${esc(fit(s.badge.toUpperCase(), n.width))}</text>`);
+        y += 8;
+      }
+      lines.forEach((line, i) => {
+        out.push(`<text x="${n.x + 10}" y="${y}" fill="${ink}"${i === 0 ? ' font-weight="700"' : ' font-size="11"'}>${esc(fit(line, n.width))}</text>`);
+        if (i === 0) {
+          out.push(`<line x1="${n.x}" y1="${y + 6}" x2="${n.x + n.width}" y2="${y + 6}" stroke="${s.stroke}" stroke-opacity="0.6"/>`);
+          y += 8;
+        }
+        y += 15;
+      });
+      continue;
+    }
     const cx = n.x + n.width / 2;
-    const lines = s.lines.slice(0, 3);
     const total = lines.length + (s.badge ? 1 : 0);
     let y = n.y + n.height / 2 - ((total - 1) * 15) / 2 + 4;
     if (s.badge) {
-      out.push(`<text x="${cx}" y="${y}" text-anchor="middle" font-size="10" fill="#ffffffcc" letter-spacing="0.5">${esc(fit(s.badge.toUpperCase(), n.width))}</text>`);
+      out.push(`<text x="${cx}" y="${y}" text-anchor="middle" font-size="10" fill="${ink}" fill-opacity="0.8" letter-spacing="0.5">${esc(fit(s.badge.toUpperCase(), n.width))}</text>`);
       y += 15;
     }
     lines.forEach((line, i) => {
-      out.push(`<text x="${cx}" y="${y}" text-anchor="middle" fill="#ffffff"${i === 0 ? ' font-weight="700"' : ' font-size="11"'}>${esc(fit(line, n.width))}</text>`);
+      out.push(`<text x="${cx}" y="${y}" text-anchor="middle" fill="${ink}"${i === 0 ? ' font-weight="700"' : ' font-size="11"'}>${esc(fit(line, n.width))}</text>`);
       y += 15;
     });
   }

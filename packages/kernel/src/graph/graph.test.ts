@@ -64,4 +64,19 @@ describe('renderGraphSvg', () => {
     expect(svg).toContain('Grupo');
     expect(svg).not.toMatch(/<script|href=|@import/);
   });
+
+  it('dibuja fichas (texto a la izquierda, color propio, más líneas y separador bajo el título)', async () => {
+    const layout = await layoutGraph([{ id: 'a', width: 200, height: 140 }], []);
+    const lines = ['Tabla', 'PK id: int', 'nombre: text', 'email: text', 'pais: text', 'fecha: date'];
+    const card = renderGraphSvg(layout, { node: () => ({ fill: '#ffffff', stroke: '#2f9e44', lines, badge: 'Tabla', align: 'left', textColor: '#0f172a', maxLines: 6 }), edge: () => ({ stroke: '#000' }) });
+    for (const line of lines.slice(1)) expect(card).toContain(`>${line}</text>`);
+    expect(card).toContain('fill="#0f172a"');
+    expect(card).not.toContain('text-anchor="middle" fill="#ffffff"');
+    expect(card).toMatch(/<line x1="[\d.]+" y1="[\d.]+" x2="[\d.]+" y2="[\d.]+" stroke="#2f9e44"/);
+    // Sin `maxLines` solo se dibujan tres líneas, y centradas y en blanco por defecto.
+    const plain = renderGraphSvg(layout, { node: () => ({ fill: '#123456', stroke: '#000', lines }), edge: () => ({ stroke: '#000' }) });
+    expect(plain).toContain('>nombre: text</text>');
+    expect(plain).not.toContain('>email: text</text>');
+    expect(plain).toContain('text-anchor="middle" fill="#ffffff"');
+  });
 });

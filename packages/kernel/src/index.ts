@@ -1,5 +1,6 @@
 export * from './module/types';
 export { ModuleRegistry, UnknownModuleError } from './module/registry';
+export { ModuleError } from './module/errors';
 export { formatUrn, parseUrn, type ParsedUrn } from './module/urn';
 export {
   buildManifest,

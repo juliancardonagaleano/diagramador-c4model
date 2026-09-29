@@ -1,5 +1,6 @@
 import {
   detectMermaidKind,
+  ModuleError,
   parseFlowchart,
   parseSequence,
   pickId,
@@ -13,7 +14,7 @@ import {
 import { formatIntegrationIssues, validateIntegrationDocument } from '../schema';
 import { INTEGRATION_DOCUMENT_VERSION, KIND_LABELS, type Flow, type IntegrationDocument, type IntegrationNode, type Interaction, type InteractionStyle } from '../types';
 
-export class IntegrationImportError extends Error {
+export class IntegrationImportError extends ModuleError {
   constructor(message: string) {
     super(message);
     this.name = 'IntegrationImportError';

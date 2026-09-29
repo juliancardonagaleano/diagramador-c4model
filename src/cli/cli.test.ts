@@ -377,7 +377,7 @@ describe('iark: módulos de la suite', () => {
   it('--module desconocido falla con la lista de módulos disponibles', () => {
     const r = run(['import', 'examples/banca.mmd', '--module', 'datos']);
     expect(r.status).toBe(2);
-    expect(r.stderr).toMatch(/No existe el módulo «datos»\. Módulos disponibles: c4, integration\./);
+    expect(r.stderr).toMatch(/No existe el módulo «datos»\. Módulos disponibles: c4, integration, data\./);
   });
 
   it('modules lista también el módulo de integraciones con sus formatos', () => {
@@ -385,7 +385,7 @@ describe('iark: módulos de la suite', () => {
     expect(list.stdout).toMatch(/^integration {2}Arquitectura de integraciones {2}v0\.1\.0/m);
     expect(list.stdout).toMatch(/importa: mermaid {2}· {2}exporta: mermaid, svg, drawio/);
     const manifest = JSON.parse(run(['modules', '--json']).stdout);
-    expect(manifest.modules.map((m: { id: string }) => m.id)).toEqual(['c4', 'integration']);
+    expect(manifest.modules.map((m: { id: string }) => m.id)).toEqual(['c4', 'integration', 'data']);
     expect(manifest.modules[1]).toMatchObject({ exportFormats: ['mermaid', 'svg', 'drawio'], importFormats: ['mermaid'] });
   });
 
@@ -499,5 +499,138 @@ describe('iark: módulo de integraciones', () => {
     expect(r.status).not.toBe(0);
     expect(r.stderr).toMatch(/Error generando el modelo/);
     expect(r.stderr).not.toMatch(/\n\s+at /);
+  });
+});
+
+describe('iark: módulo de datos', () => {
+  const data = 'examples/ventas-datos.json';
+  const dir = mkdtempSync(join(tmpdir(), 'iarkdata-'));
+
+  it('modules lista el módulo de datos con sus formatos', () => {
+    expect(run(['modules']).stdout).toMatch(/^data {2}Arquitectura de datos {2}v0\.1\.0\n {4}importa: mermaid {2}· {2}exporta: mermaid, svg, drawio/m);
+  });
+
+  it('validate --module data valida el documento y devuelve 2 con errores de estructura', () => {
+    const ok = run(['validate', data, '--module', 'data']);
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toMatch(/Documento válido \(módulo data\)\. 0 error\(es\), 0 aviso\(s\)/);
+
+    const bad = join(dir, 'bad.json');
+    writeFileSync(bad, JSON.stringify({ assets: [{ id: 'a', kind: 'table', name: 'A' }], pipelines: [{ id: 'p', name: 'P', kind: 'batch', inputs: ['a'], outputs: ['fantasma'] }] }));
+    const r = run(['validate', bad, '--module', 'data']);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/Documento inválido para el módulo «data»/);
+    expect(r.stderr).toMatch(/escribe un activo inexistente/);
+  });
+
+  it('validate muestra avisos de gobierno y --strict los convierte en fallo', () => {
+    const risky = join(dir, 'risky.json');
+    writeFileSync(risky, JSON.stringify({ assets: [{ id: 'clientes', kind: 'table', name: 'Clientes', owner: 'CRM', pii: true }] }));
+    const r = run(['validate', risky, '--module', 'data']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/contiene datos personales pero no tiene clasificación/);
+    expect(run(['validate', risky, '--module', 'data', '--strict']).status).toBe(3);
+  });
+
+  it('schema y prompt --module data usan el contrato del módulo', () => {
+    expect(JSON.parse(run(['schema', '--module', 'data']).stdout).properties.pipelines).toBeDefined();
+    expect(JSON.parse(run(['schema', '--module', 'data', '--generation']).stdout).properties.relations).toBeDefined();
+    const prompt = run(['prompt', 'Un lago con clientes', '--module', 'data', '--from', data]);
+    expect(prompt.status).toBe(0);
+    expect(prompt.stdout).toContain('arquitecto de datos');
+    expect(prompt.stdout).toContain('Un lago con clientes');
+    expect(prompt.stdout).toContain('dwh-dim-cliente');
+  });
+
+  it('convert --module data exporta Mermaid, SVG y draw.io, y elige las vistas por nombre', () => {
+    const mmd = run(['convert', data, '--module', 'data', '--to', 'mermaid']);
+    expect(mmd.status).toBe(0);
+    expect(mmd.stdout).toMatch(/^flowchart LR/);
+    expect(run(['convert', data, '--module', 'data', '--to', 'mermaid', '--view', 'erd']).stdout).toMatch(/erDiagram/);
+    expect(run(['convert', data, '--module', 'data', '--to', 'mermaid', '--view', 'downstream:silver-ventas']).stdout).toMatch(/Carga de hechos/);
+
+    const svg = join(dir, 'linaje.svg');
+    expect(run(['convert', data, '--module', 'data', '--out', svg, '--view', 'domain:clientes']).status).toBe(0);
+    expect(readFileSync(svg, 'utf8')).toContain('Dominio - Clientes');
+
+    const drawio = join(dir, 'datos.drawio');
+    expect(run(['convert', data, '--module', 'data', '--out', drawio]).status).toBe(0);
+    expect([].concat(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram)).toHaveLength(5);
+
+    const missing = run(['convert', data, '--module', 'data', '--to', 'mermaid', '--view', 'nada']);
+    expect(missing.status).not.toBe(0);
+    expect(missing.stderr).toMatch(/No existe la vista «nada»/);
+  });
+
+  it('import --module data recupera el linaje desde su Mermaid (ida y vuelta) y un erDiagram', () => {
+    const mmd = join(dir, 'linaje.mmd');
+    const json = join(dir, 'linaje.json');
+    run(['convert', data, '--module', 'data', '--to', 'mermaid', '--out', mmd]);
+    const r = run(['import', mmd, '--module', 'data', '--out', json]);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toMatch(/Importado "linaje" en el módulo data: 21 elementos/);
+    const doc = JSON.parse(readFileSync(json, 'utf8'));
+    expect(doc.pipelines).toHaveLength(7);
+    expect(run(['validate', json, '--module', 'data']).status).toBe(0);
+
+    const er = run(['import', '--stdin', '--module', 'data'], 'erDiagram\n  CLIENTE ||--o{ PEDIDO : realiza\n  CLIENTE {\n    int id PK\n  }');
+    expect(er.status).toBe(0);
+    expect(JSON.parse(er.stdout).relations[0]).toMatchObject({ cardinality: '1:N', description: 'realiza' });
+  });
+
+  it('un Mermaid que no se puede importar termina en un mensaje de una línea con código 2, sin stack', () => {
+    const r = run(['import', '--stdin', '--module', 'data'], 'sequenceDiagram\n  A->>B: hola');
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/no se puede importar como datos/);
+    expect(r.stderr).not.toMatch(/Error inesperado|\n\s+at /);
+  });
+
+  it('data lineage, catalog y pii', () => {
+    const lineage = run(['data', 'lineage', 'dwh-dim-cliente', data]);
+    expect(lineage.status).toBe(0);
+    expect(lineage.stdout).toContain('Aguas arriba (de dónde vienen sus datos): 6 activo(s)');
+    expect(lineage.stdout).toContain('Responsables a avisar: Equipo Plataforma, Ciencia de datos');
+    expect(run(['data', 'lineage', 'dwh-dim-cliente', data, '--direction', 'upstream']).stdout).not.toContain('Aguas abajo');
+
+    const unknown = run(['data', 'lineage', 'nada', data]);
+    expect(unknown.status).toBe(2);
+    expect(unknown.stderr).toMatch(/No existe el activo «nada»/);
+
+    expect(run(['data', 'catalog', data]).stdout).toContain('| Panel de ventas | Informe | — | Ventas | Equipo BI | interna | No | Actualiza el panel |');
+    const pii = run(['data', 'pii', '--stdin'], readFileSync(data, 'utf8'));
+    expect(pii.status).toBe(0);
+    expect(pii.stdout).toContain('**Adónde llegan sin anonimizarse (linaje aguas abajo)**');
+  });
+
+  it('data from-integration crea el inventario con referencias URN', () => {
+    const r = run(['data', 'from-integration', 'examples/pedidos-integracion.json']);
+    expect(r.status).toBe(0);
+    const doc = JSON.parse(r.stdout);
+    expect(doc.assets.find((a: { id: string }) => a.id === 'pedidos-db')).toMatchObject({ kind: 'database', ref: 'urn:iark:integration:pedidos-db' });
+    expect(doc.assets.find((a: { id: string }) => a.id === 'pedido-creado').kind).toBe('stream');
+    expect(r.stderr).toMatch(/No se crean pipelines/);
+  });
+
+  it('generate --module data falla con un mensaje claro sin credenciales', () => {
+    const r = spawnSync(cli[0], [cli[1], 'generate', 'Un lago de datos', '--module', 'data', '--provider', 'anthropic'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        ANTHROPIC_API_KEY: '',
+        ANTHROPIC_AUTH_TOKEN: '',
+        ANTHROPIC_PROFILE: 'inexistente-c4-test',
+        ANTHROPIC_BASE_URL: '',
+        ANTHROPIC_FOUNDRY_API_KEY: '',
+        ANTHROPIC_FOUNDRY_BASE_URL: '',
+        ANTHROPIC_FOUNDRY_RESOURCE: '',
+        ANTHROPIC_FOUNDRY_MODEL: '',
+        AI_API_KEY: '',
+        AI_BASE_URL: '',
+        AI_MODEL: '',
+        HOME: dir,
+      },
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/Error generando el modelo/);
   });
 });

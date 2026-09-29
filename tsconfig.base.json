@@ -19,6 +19,7 @@
       "@iark/kernel": ["packages/kernel/src/index.ts"],
       "@iark/domain-c4": ["packages/domain-c4/src/index.ts"],
       "@iark/domain-integration": ["packages/domain-integration/src/index.ts"],
+      "@iark/domain-data": ["packages/domain-data/src/index.ts"],
       "@core/*": ["packages/domain-c4/src/*"],
       "@app/*": ["src/app/*"],
       "@embed/*": ["src/embed/*"]

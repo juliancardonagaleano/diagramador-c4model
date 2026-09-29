@@ -14,7 +14,7 @@ import { generationJsonSchema } from '@core/ai/generationSchema';
 import { standalonePrompt } from '@core/ai/prompt';
 import { DEFAULT_AI_MODEL, generateDocument, GenerationError, type Effort } from '@core/ai/generate';
 import { analyzeDocument } from '@core/model/issues';
-import { buildManifest, type ModuleRegistry, UnknownModuleError } from '@iark/kernel';
+import { buildManifest, ModuleError, type ModuleRegistry, UnknownModuleError } from '@iark/kernel';
 import { createDefaultRegistry, DEFAULT_MODULE } from './registry';
 import { genericExport, genericGenerate, genericPrompt, genericSchema, genericValidate, readModuleDocument } from './generic';
 import { CliError, dslIncludeOptions, extractJson, info, readDocument, readInput, writeOutput } from './io';
@@ -453,6 +453,11 @@ export async function run(argv = process.argv): Promise<void> {
     if (error instanceof CliError) {
       process.stderr.write(`${error.message}\n`);
       process.exitCode = error.exitCode;
+      return;
+    }
+    if (error instanceof ModuleError) {
+      process.stderr.write(`${error.message}\n`);
+      process.exitCode = 2;
       return;
     }
     if (error instanceof UnknownModuleError) {

@@ -6,6 +6,7 @@ import {
   detectMermaidKind,
   looksLikeMermaid,
   MERMAID_DIAGRAM_KINDS,
+  parseEr,
   parseFlowchart,
   parseSequence,
   pickId,
@@ -65,7 +66,7 @@ export function fromMermaid(source: string, options: MermaidImportOptions = {}):
   if (kind === 'c4') declaredTitle = parseC4(body, builder) ?? declaredTitle;
   else if (kind === 'flowchart') parseFlowchartInto(body, builder);
   else if (kind === 'sequence') declaredTitle = parseSequenceInto(body, builder) ?? declaredTitle;
-  else parseEr(body, builder);
+  else parseErInto(body, builder);
 
   if (builder.elements.length === 0) throw new MermaidImportError('El diagrama de Mermaid no define ningún elemento que se pueda importar.');
   const name = options.name?.trim() || declaredTitle?.trim() || options.fallbackName?.trim() || 'Diagrama Mermaid';
@@ -362,51 +363,22 @@ function parseSequenceInto(lines: Line[], b: Builder): string | undefined {
 
 // ───────────────────────── erDiagram ─────────────────────────
 
-const ER_REL = /^(\S+)\s+(\S+?)(--|\.\.)(\S+?)\s+(\S+)\s*(?::\s*(.*))?$/;
-
 const ER_LEFT: Record<string, string> = { '||': '1', '|o': '0..1', '}o': '0..*', '}|': '1..*' };
 const ER_RIGHT: Record<string, string> = { '||': '1', 'o|': '0..1', 'o{': '0..*', '|{': '1..*' };
 
-function parseEr(lines: Line[], b: Builder): void {
+function parseErInto(lines: Line[], b: Builder): void {
   const attributes = new Map<string, string[]>();
-  let current: string | undefined;
   const ensure = (alias: string): void => {
-    if (!b.aliases.has(alias)) b.addElement(alias, 'softwareSystem', alias.replace(/^"|"$/g, ''), { shape: 'database' });
+    if (!b.aliases.has(alias)) b.addElement(alias, 'softwareSystem', alias, { shape: 'database' });
   };
-  for (const { no, text } of lines) {
-    const where = `línea ${no}`;
-    if (current) {
-      if (text === '}') {
-        current = undefined;
-        continue;
-      }
-      attributes.get(current)!.push(text.replace(/\s+/g, ' '));
-      continue;
+  for (const ev of parseEr(lines)) {
+    if (ev.type === 'warning') b.warnings.add(ev.message);
+    else if (ev.type === 'entity') ensure(ev.entity.alias);
+    else if (ev.type === 'attribute') attributes.set(ev.entity, [...(attributes.get(ev.entity) ?? []), ev.raw]);
+    else {
+      const cardinality = `${ER_LEFT[ev.left] ?? '?'} → ${ER_RIGHT[ev.right] ?? '?'}`;
+      b.addRelationship(ev.from.alias, ev.to.alias, ev.label ? `${ev.label} (${cardinality})` : cardinality, undefined, ev.where);
     }
-    const block = /^(\S+)\s*\{$/.exec(text);
-    if (block) {
-      current = block[1];
-      ensure(current);
-      attributes.set(current, []);
-      continue;
-    }
-    if (/^(title|accTitle|accDescr|direction)\b/i.test(text)) continue;
-    const rel = ER_REL.exec(text);
-    if (rel) {
-      const [, left, lCard, , rCard, right, label] = rel;
-      ensure(left);
-      ensure(right);
-      const cardinality = `${ER_LEFT[lCard] ?? '?'} → ${ER_RIGHT[rCard] ?? '?'}`;
-      const verb = label?.replace(/^"|"$/g, '').trim();
-      b.addRelationship(left, right, verb ? `${verb} (${cardinality})` : cardinality, undefined, where);
-      continue;
-    }
-    const lone = /^(\S+)$/.exec(text);
-    if (lone) {
-      ensure(lone[1]);
-      continue;
-    }
-    b.warnings.add(`${where}: no se entiende «${truncate(text)}»; se omite.`);
   }
   for (const [alias, attrs] of attributes) {
     if (attrs.length === 0) continue;
