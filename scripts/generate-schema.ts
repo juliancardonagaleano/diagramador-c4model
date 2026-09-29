@@ -3,6 +3,7 @@ import { documentJsonSchema } from '@core/model/schema';
 import { generationJsonSchema } from '@core/ai/generationSchema';
 import { dataModule } from '@iark/domain-data';
 import { enterpriseModule } from '@iark/domain-enterprise';
+import { platformModule } from '@iark/domain-platform';
 import { integrationModule } from '@iark/domain-integration';
 
 mkdirSync('schema', { recursive: true });
@@ -25,4 +26,9 @@ const enterpriseDoc = { $id: `${base}/enterprise-document.schema.json`, title: '
 writeFileSync('schema/enterprise-document.schema.json', JSON.stringify(enterpriseDoc, null, 2) + '\n');
 const enterpriseGen = { $id: `${base}/enterprise-generation.schema.json`, title: 'Modelo empresarial (salida de IA)', ...(enterpriseModule.ai!.generationJsonSchema() as object) };
 writeFileSync('schema/enterprise-generation.schema.json', JSON.stringify(enterpriseGen, null, 2) + '\n');
+
+const platformDoc = { $id: `${base}/platform-document.schema.json`, title: 'Documento de plataforma (IArk - DIAgrams)', ...(platformModule.jsonSchema() as object) };
+writeFileSync('schema/platform-document.schema.json', JSON.stringify(platformDoc, null, 2) + '\n');
+const platformGen = { $id: `${base}/platform-generation.schema.json`, title: 'Modelo de plataforma (salida de IA)', ...(platformModule.ai!.generationJsonSchema() as object) };
+writeFileSync('schema/platform-generation.schema.json', JSON.stringify(platformGen, null, 2) + '\n');
 console.log('Esquemas escritos en schema/');

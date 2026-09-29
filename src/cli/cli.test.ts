@@ -377,7 +377,7 @@ describe('iark: módulos de la suite', () => {
   it('--module desconocido falla con la lista de módulos disponibles', () => {
     const r = run(['import', 'examples/banca.mmd', '--module', 'datos']);
     expect(r.status).toBe(2);
-    expect(r.stderr).toMatch(/No existe el módulo «datos»\. Módulos disponibles: c4, integration, data, enterprise\./);
+    expect(r.stderr).toMatch(/No existe el módulo «datos»\. Módulos disponibles: c4, integration, data, enterprise, platform\./);
   });
 
   it('modules lista también el módulo de integraciones con sus formatos', () => {
@@ -385,7 +385,7 @@ describe('iark: módulos de la suite', () => {
     expect(list.stdout).toMatch(/^integration {2}Arquitectura de integraciones {2}v0\.1\.0/m);
     expect(list.stdout).toMatch(/importa: mermaid {2}· {2}exporta: mermaid, svg, drawio/);
     const manifest = JSON.parse(run(['modules', '--json']).stdout);
-    expect(manifest.modules.map((m: { id: string }) => m.id)).toEqual(['c4', 'integration', 'data', 'enterprise']);
+    expect(manifest.modules.map((m: { id: string }) => m.id)).toEqual(['c4', 'integration', 'data', 'enterprise', 'platform']);
     expect(manifest.modules[1]).toMatchObject({ exportFormats: ['mermaid', 'svg', 'drawio'], importFormats: ['mermaid'] });
   });
 
@@ -748,6 +748,147 @@ describe('iark: módulo empresarial', () => {
 
   it('generate --module enterprise falla con un mensaje claro sin credenciales', () => {
     const r = spawnSync(cli[0], [cli[1], 'generate', 'Un banco', '--module', 'enterprise', '--provider', 'anthropic'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        ANTHROPIC_API_KEY: '',
+        ANTHROPIC_AUTH_TOKEN: '',
+        ANTHROPIC_PROFILE: 'inexistente-c4-test',
+        ANTHROPIC_BASE_URL: '',
+        ANTHROPIC_FOUNDRY_API_KEY: '',
+        ANTHROPIC_FOUNDRY_BASE_URL: '',
+        ANTHROPIC_FOUNDRY_RESOURCE: '',
+        ANTHROPIC_FOUNDRY_MODEL: '',
+        AI_API_KEY: '',
+        AI_BASE_URL: '',
+        AI_MODEL: '',
+        HOME: dir,
+      },
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/Error generando el modelo/);
+  });
+});
+
+describe('iark: módulo de plataforma', () => {
+  const plat = 'examples/plataforma-ejemplo.json';
+  const dir = mkdtempSync(join(tmpdir(), 'iarkplat-'));
+
+  it('modules lista el módulo de plataforma con sus formatos', () => {
+    expect(run(['modules']).stdout).toMatch(/^platform {2}Arquitectura de plataforma {2}v0\.1\.0\n {4}importa: mermaid {2}· {2}exporta: mermaid, svg, drawio/m);
+  });
+
+  it('validate --module platform valida el documento y devuelve 2 con errores de estructura', () => {
+    const ok = run(['validate', plat, '--module', 'platform']);
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toMatch(/Documento válido \(módulo platform\)\. 0 error\(es\), 0 aviso\(s\)/);
+
+    const bad = join(dir, 'bad.json');
+    writeFileSync(
+      bad,
+      JSON.stringify({
+        environments: [{ id: 'prod', name: 'Prod' }],
+        resources: [{ id: 'db', name: 'db', kind: 'database', environmentId: 'prod' }],
+        services: [{ id: 'api', name: 'API' }],
+        deployments: [{ id: 'd', serviceId: 'api', environmentId: 'prod', hostId: 'db' }],
+      }),
+    );
+    const r = run(['validate', bad, '--module', 'platform']);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/Documento inválido para el módulo «platform»/);
+    expect(r.stderr).toMatch(/un servicio solo se despliega en un clúster o una máquina virtual/);
+  });
+
+  it('validate muestra avisos de gobierno y --strict los convierte en fallo', () => {
+    const risky = join(dir, 'risky.json');
+    writeFileSync(risky, JSON.stringify({ services: [{ id: 'api', name: 'API', criticality: 'critical', owner: 'Equipo' }] }));
+    const r = run(['validate', risky, '--module', 'platform']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/Servicio «API» no se despliega en ningún entorno/);
+    expect(run(['validate', risky, '--module', 'platform', '--strict']).status).toBe(3);
+  });
+
+  it('schema y prompt --module platform usan el contrato del módulo', () => {
+    expect(JSON.parse(run(['schema', '--module', 'platform']).stdout).properties.deployments).toBeDefined();
+    expect(JSON.parse(run(['schema', '--module', 'platform', '--generation']).stdout).properties.pipelines).toBeDefined();
+    const prompt = run(['prompt', 'Una tienda', '--module', 'platform', '--from', plat]);
+    expect(prompt.status).toBe(0);
+    expect(prompt.stdout).toContain('arquitecto de plataforma');
+    expect(prompt.stdout).toContain('Una tienda');
+    expect(prompt.stdout).toContain('pedidos-db-prod');
+  });
+
+  it('convert --module platform exporta Mermaid, SVG y draw.io, y elige las vistas por nombre', () => {
+    const mmd = run(['convert', plat, '--module', 'platform', '--to', 'mermaid']);
+    expect(mmd.status).toBe(0);
+    expect(mmd.stdout).toMatch(/^flowchart LR/);
+    expect(mmd.stdout).toContain('pedidos_db_dev[("Base de pedidos (dev)');
+    const prod = run(['convert', plat, '--module', 'platform', '--to', 'mermaid', '--view', 'env:prod']);
+    expect(prod.stdout).toContain('subgraph env_prod["Entorno: Producción"]');
+    expect(run(['convert', plat, '--module', 'platform', '--to', 'mermaid', '--view', 'impact:kafka-prod']).stdout).toMatch(/facturacion -\.->\|"Kafka · Consume PedidoCreado"\| kafka_prod/);
+
+    const svg = join(dir, 'topologia.svg');
+    expect(run(['convert', plat, '--module', 'platform', '--out', svg]).status).toBe(0);
+    expect(readFileSync(svg, 'utf8')).toContain('Topología');
+
+    const drawio = join(dir, 'plataforma.drawio');
+    expect(run(['convert', plat, '--module', 'platform', '--out', drawio]).status).toBe(0);
+    expect([].concat(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram)).toHaveLength(4);
+
+    const missing = run(['convert', plat, '--module', 'platform', '--to', 'mermaid', '--view', 'nada']);
+    expect(missing.status).not.toBe(0);
+    expect(missing.stderr).toMatch(/No existe la vista «nada»/);
+  });
+
+  it('import --module platform recupera un entorno desde su Mermaid (ida y vuelta)', () => {
+    const mmd = join(dir, 'produccion.mmd');
+    const json = join(dir, 'produccion.json');
+    run(['convert', plat, '--module', 'platform', '--to', 'mermaid', '--view', 'env:prod', '--out', mmd]);
+    const r = run(['import', mmd, '--module', 'platform', '--out', json]);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toMatch(/Importado "produccion" en el módulo platform: 15 elementos/);
+    const doc = JSON.parse(readFileSync(json, 'utf8'));
+    expect(doc.deployments).toHaveLength(5);
+    expect(doc.dependencies).toHaveLength(8);
+    expect(run(['validate', json, '--module', 'platform']).status).toBe(0);
+  });
+
+  it('un Mermaid que no se puede importar termina en un mensaje de una línea con código 2, sin stack', () => {
+    const r = run(['import', '--stdin', '--module', 'platform'], 'sequenceDiagram\n  A->>B: hola');
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/no se puede importar como plataforma/);
+    expect(r.stderr).not.toMatch(/Error inesperado|\n\s+at /);
+  });
+
+  it('platform deployments e impact', () => {
+    const deployments = run(['platform', 'deployments', plat]);
+    expect(deployments.status).toBe(0);
+    expect(deployments.stdout).toContain('| Servicio de pedidos | crítica | k8s-dev ×1 v3.1.0 | k8s-prod ×3 v3.0.2 |');
+
+    const impact = run(['platform', 'impact', 'k8s-prod', plat]);
+    expect(impact.status).toBe(0);
+    expect(impact.stdout).toContain('Impacto de «k8s-prod» (Clúster) en el entorno «Producción»');
+    expect(impact.stdout).toContain('Responsables a avisar: Plataforma, Equipo Web');
+    expect(run(['platform', 'impact', 'pedidos', plat, '--env', 'dev', '--direction', 'dependencies']).stdout).toContain('- k8s-dev (Clúster) · Plataforma');
+
+    const unknown = run(['platform', 'impact', 'nada', plat]);
+    expect(unknown.status).toBe(2);
+    expect(unknown.stderr).toMatch(/No existe el servicio ni el recurso «nada»/);
+  });
+
+  it('platform from-integration crea el inventario de la plataforma con referencias URN', () => {
+    const r = run(['platform', 'from-integration', 'examples/pedidos-integracion.json']);
+    expect(r.status).toBe(0);
+    const doc = JSON.parse(r.stdout);
+    expect(doc.services.length).toBeGreaterThan(0);
+    expect(doc.services[0].ref).toMatch(/^urn:iark:integration:/);
+    expect(doc.resources.map((x: { kind: string }) => x.kind)).toEqual(['gateway', 'queue', 'database']);
+    expect(r.stderr).toMatch(/No se crean redes, anfitriones ni despliegues/);
+    expect(run(['validate', '--stdin', '--module', 'platform'], r.stdout).status).toBe(0);
+  });
+
+  it('generate --module platform falla con un mensaje claro sin credenciales', () => {
+    const r = spawnSync(cli[0], [cli[1], 'generate', 'Una tienda', '--module', 'platform', '--provider', 'anthropic'], {
       encoding: 'utf8',
       env: {
         ...process.env,

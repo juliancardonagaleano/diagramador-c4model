@@ -21,6 +21,7 @@
       "@iark/domain-integration": ["packages/domain-integration/src/index.ts"],
       "@iark/domain-data": ["packages/domain-data/src/index.ts"],
       "@iark/domain-enterprise": ["packages/domain-enterprise/src/index.ts"],
+      "@iark/domain-platform": ["packages/domain-platform/src/index.ts"],
       "@core/*": ["packages/domain-c4/src/*"],
       "@app/*": ["src/app/*"],
       "@embed/*": ["src/embed/*"]
