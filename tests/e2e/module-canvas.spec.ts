@@ -104,3 +104,57 @@ test.describe('lienzo empresarial', () => {
     expect(await docText(page)).toContain('"maturity": 5');
   });
 });
+
+test.describe('lienzo de plataforma', () => {
+  test('la vista del entorno anida redes y clústeres con las instancias dentro, y la topología usa figuras por clase de recurso', async ({ page }) => {
+    const errors = await open(page, 'platform');
+    await page.getByTestId('canvas-view').selectOption('env:prod');
+    await expect(page.locator('[data-testid="node-vpc-prod"].cv-group')).toBeVisible();
+    await expect(page.locator('[data-testid="node-k8s-prod"].cv-group')).toBeVisible();
+    await expect(page.locator('[data-testid="node-i:pedidos-prod"]')).toBeVisible();
+    await expect(page.locator('[data-shape="cylinder"]').first()).toBeVisible();
+    await page.screenshot({ path: 'test-results/canvas-platform-prod.png' });
+    await page.getByTestId('canvas-view').selectOption('delivery');
+    await expect(page.locator('[data-testid="node-p:infraestructura"].cv-group')).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
+  test('un servicio añadido en un entorno aparece dentro del clúster y se edita como instancia', async ({ page }) => {
+    await open(page, 'platform');
+    await page.getByTestId('canvas-view').selectOption('env:prod');
+    await page.locator('[data-testid="node-k8s-prod"] .cv-group-title').click();
+    await page.getByTestId('add-worker').click();
+    const instance = page.locator('.react-flow__node', { hasText: 'Worker nuevo' });
+    await expect(instance).toBeVisible();
+    await instance.click();
+    await page.getByTestId('inspector').getByLabel('Réplicas').fill('3');
+    await page.getByTestId('inspector').getByLabel('Réplicas').blur();
+    expect(await docText(page)).toContain('"replicas": 3');
+  });
+});
+
+test.describe('lienzo de seguridad', () => {
+  test('el DFD dibuja procesos como círculos y almacenes como tubos dentro de zonas de confianza, y el modelo de amenazas usa hexágonos', async ({ page }) => {
+    const errors = await open(page, 'security');
+    await expect(page.locator('[data-testid="node-interna"].cv-group')).toBeVisible();
+    await expect(page.locator('[data-testid="node-pedidos"][data-shape="circle"]')).toBeVisible();
+    await expect(page.locator('[data-testid="node-pedidos-db"][data-shape="pipe"]')).toBeVisible();
+    await expect(page.locator('[data-testid="node-cliente"][data-shape="actor"]')).toBeVisible();
+    await page.screenshot({ path: 'test-results/canvas-security-dfd.png' });
+    await page.getByTestId('canvas-view').selectOption('threats');
+    await expect(page.locator('[data-testid="node-exfiltracion-db"][data-shape="hexagon"]')).toBeVisible();
+    await page.screenshot({ path: 'test-results/canvas-security-threats.png' });
+    expect(errors).toEqual([]);
+  });
+
+  test('una amenaza añadida con un activo seleccionado recae sobre él y su categoría STRIDE se elige en las propiedades', async ({ page }) => {
+    await open(page, 'security');
+    await page.getByTestId('canvas-view').selectOption('threats');
+    await page.locator('[data-testid="node-pedidos-db"]').click();
+    await page.getByTestId('add-threat').click();
+    const inspector = page.getByTestId('inspector');
+    await expect(inspector.getByLabel('Recae sobre')).toHaveValue('pedidos-db');
+    await inspector.getByLabel('Categoría STRIDE').selectOption('information-disclosure');
+    expect(await docText(page)).toContain('"category": "information-disclosure"');
+  });
+});

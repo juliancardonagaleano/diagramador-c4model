@@ -167,7 +167,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     if (readOnly || document === undefined) return;
     const label = spec.nodeKinds.find((k) => k.kind === kind)?.label ?? kind;
     const parentNode = selected ? graph?.nodes.find((n) => n.id === selected) : undefined;
-    const id = commit(spec.addNode(document, kind, `${label} nuevo`, parentNode?.id));
+    const id = commit(spec.addNode(document, kind, `${label} nuevo`, parentNode?.id, viewId));
     if (!id) return;
     const rect = wrapper.current?.getBoundingClientRect();
     const center = flow.screenToFlowPosition({ x: (rect?.left ?? 0) + (rect?.width ?? 400) / 2 + Math.random() * 60 - 30, y: (rect?.top ?? 0) + (rect?.height ?? 300) / 2 + Math.random() * 60 - 30 });

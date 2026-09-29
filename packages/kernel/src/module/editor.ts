@@ -103,7 +103,8 @@ export interface EditorSpec<TDoc> {
   fields(target: EditorTarget, document: TDoc): FieldSpec[];
   /** Valores actuales de un nodo o relación, para el formulario. */
   read(document: TDoc, id: string): { type: 'node' | 'edge'; kind: string; values: Record<string, unknown> } | undefined;
-  addNode(document: TDoc, kind: string, name: string, parentId?: string): EditResult<TDoc>;
+  /** `parentId` es el contenedor seleccionado (si encaja); `viewId`, la vista abierta (p. ej. para crear el recurso en el entorno que se está viendo). */
+  addNode(document: TDoc, kind: string, name: string, parentId?: string, viewId?: string): EditResult<TDoc>;
   addEdge(document: TDoc, kind: string, sourceId: string, targetId: string): EditResult<TDoc>;
   update(document: TDoc, id: string, patch: Record<string, unknown>): EditResult<TDoc>;
   /** Borra un nodo o relación y lo que dependa de él. */

@@ -89,14 +89,18 @@ export function ShapeSvg({ shape, width: w, height: h, fill, stroke, dashed }: P
         </>
       );
       break;
-    case 'actor':
+    case 'actor': {
+      // Figura humana que llena la caja: cabeza arriba y cuerpo redondeado debajo (el texto va sobre el cuerpo).
+      const r = Math.max(3, Math.min(h * 0.14, 16));
+      const top = 2 * r + 4;
       body = (
         <>
-          <circle cx={w / 2} cy={16} r={11} {...common} />
-          <path d={`M${w / 2 - 22} ${h - 2} v-10 a22 18 0 0 1 44 0 v10 z`} {...common} />
+          <circle cx={w / 2} cy={r + 1} r={r} {...common} />
+          <rect x={inset} y={top} width={w - 2} height={h - top - 1} rx={Math.min(16, (h - top) / 2)} {...common} />
         </>
       );
       break;
+    }
     case 'document':
       body = <path d={`M1 1 H${w - 1} V${h - 10} q${-w / 4} 14 ${-w / 2} 0 t${-w / 2} 0 z`} {...common} />;
       break;

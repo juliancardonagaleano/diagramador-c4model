@@ -11,4 +11,5 @@ export { fromIntegrationJson } from './import/fromIntegration';
 export { fromPlatformJson } from './import/fromPlatform';
 export { securityAiSpec, generatedSecuritySchema, type GeneratedSecurity } from './ai/generation';
 export { securityCommands } from './commands';
+export { securityEditor } from './editor';
 export { securityModule } from './module';

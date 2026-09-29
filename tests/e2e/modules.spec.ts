@@ -184,7 +184,7 @@ test.describe('widget embebible de módulos', () => {
     const frame = page.frames().find((f) => f.url().includes('embed=1'));
     expect(frame, 'el iframe se abrió con ?embed=1').toBeTruthy();
     expect(frame!.url()).toContain('module=security');
-    await expect(frame!.locator('[data-testid="diagram-stage"] img')).toBeVisible({ timeout: 20000 });
+    await expect(frame!.getByTestId('module-canvas')).toBeVisible({ timeout: 20000 });
     await expect(frame!.getByRole('button', { name: 'Guardar y salir' })).toHaveCount(1);
     await expect(frame!.getByLabel('Documento JSON')).toHaveValue(/Tienda en línea/);
 
@@ -202,6 +202,7 @@ test.describe('widget embebible de módulos', () => {
     expect(caps.modules[0].id).toBe('data');
 
     await page.click('#btn-view');
+    await frame!.getByRole('tab', { name: 'Vista SVG' }).click();
     await expect(frame!.locator('[data-testid="diagram-stage"] img')).toHaveAttribute('data-view', 'blast:pedidos');
     await expect.poll(log).toMatch(/viewChange.*blast:pedidos/);
 

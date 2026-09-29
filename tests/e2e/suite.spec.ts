@@ -82,7 +82,7 @@ test.describe('Web Component <iark-module>', () => {
     // widget 1: el documento asignado a la propiedad llegó al banco de trabajo del iframe
     const security = frameOf('security')!;
     await expect(security.getByLabel('Documento JSON')).toHaveValue(/Fuerza bruta contra la API/, { timeout: 20000 });
-    await expect(security.locator('[data-testid="diagram-stage"] img')).toBeVisible({ timeout: 20000 });
+    await expect(security.getByTestId('module-canvas')).toBeVisible({ timeout: 20000 });
     await expect(security.getByRole('tab', { name: 'Integración' })).toHaveCount(0); // ui="min"
     await expect(page.locator('#log')).toContainText('w1 iark-load');
 
@@ -96,6 +96,7 @@ test.describe('Web Component <iark-module>', () => {
     await page.click('#btn-risks');
     await expect(page.locator('#log')).toContainText('informe risks');
     await page.click('#btn-view');
+    await security.getByRole('tab', { name: 'Vista SVG' }).click();
     await expect(security.locator('[data-testid="diagram-stage"] img')).toHaveAttribute('data-view', 'threats');
     await page.click('#btn-theme');
     await expect.poll(() => security.evaluate(() => document.documentElement.dataset.theme)).toBe('dark');
