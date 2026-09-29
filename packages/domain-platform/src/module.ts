@@ -1,0 +1,72 @@
+import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue } from '@iark/kernel';
+import { looksLikeMermaid } from '@iark/kernel';
+import { platformAiSpec } from './ai/generation';
+import { platformCommands } from './commands';
+import { toDrawio } from './export/drawio';
+import { toMermaid } from './export/mermaid';
+import { toSvg } from './export/render';
+import { fromMermaid } from './import/fromMermaid';
+import { analyzePlatform } from './issues';
+import { platformDocumentSchema, platformJsonSchema } from './schema';
+import { PLATFORM_DOCUMENT_VERSION, type PlatformDocument } from './types';
+
+const mermaidImporter: Importer<PlatformDocument> = {
+  id: 'mermaid',
+  label: 'Mermaid',
+  extensions: ['.mmd', '.mermaid', '.md'],
+  detect: looksLikeMermaid,
+  import: (text, ctx) => fromMermaid(text, { name: ctx.name, fallbackName: ctx.fallbackName }),
+};
+
+const mermaidExporter: Exporter<PlatformDocument> = {
+  id: 'mermaid',
+  label: 'Mermaid',
+  extension: '.mmd',
+  mime: 'text/plain',
+  export: (doc, ctx) => toMermaid(doc, { viewId: ctx.viewId }),
+};
+
+const svgExporter: Exporter<PlatformDocument> = {
+  id: 'svg',
+  label: 'SVG',
+  extension: '.svg',
+  mime: 'image/svg+xml',
+  export: (doc, ctx) => toSvg(doc, ctx.viewId),
+};
+
+const drawioExporter: Exporter<PlatformDocument> = {
+  id: 'drawio',
+  label: 'draw.io',
+  extension: '.drawio',
+  mime: 'application/xml',
+  export: (doc) => toDrawio(doc),
+};
+
+/**
+ * Módulo de arquitectura de plataforma: entornos, redes, recursos aprovisionados (clústeres, bases de datos, colas…),
+ * servicios, dónde se despliega cada uno, de quién depende y los pipelines de CI/CD que los construyen y promueven.
+ * Ofrece la topología, una vista de despliegue por entorno (redes y anfitriones anidados), la entrega continua y el
+ * análisis de impacto. Sus servicios y recursos pueden apuntar a elementos de otros módulos por URN (`ref`), p. ej. un
+ * sistema del mapa de integración.
+ */
+export const platformModule: DomainModule<PlatformDocument> = {
+  id: 'platform',
+  name: 'Arquitectura de plataforma',
+  version: '0.1.0',
+  description: 'Entornos, redes, recursos, servicios, despliegues y pipelines, con topología, despliegue por entorno e impacto; exporta a Mermaid, SVG y draw.io.',
+  documentVersion: PLATFORM_DOCUMENT_VERSION,
+  schema: platformDocumentSchema as unknown as DomainModule<PlatformDocument>['schema'],
+  jsonSchema: platformJsonSchema,
+  validate: (doc): ModuleIssue[] => analyzePlatform(doc),
+  importers: [mermaidImporter],
+  exporters: [mermaidExporter, svgExporter, drawioExporter],
+  ai: platformAiSpec,
+  entities: (doc): EntityRef[] => [
+    ...doc.environments.map((e) => ({ id: e.id, name: e.name, kind: 'environment' })),
+    ...doc.networks.map((n) => ({ id: n.id, name: n.name, kind: 'network' })),
+    ...doc.resources.map((r) => ({ id: r.id, name: r.name, kind: 'resource' })),
+    ...doc.services.map((s) => ({ id: s.id, name: s.name, kind: 'service' })),
+    ...doc.pipelines.map((p) => ({ id: p.id, name: p.name, kind: 'pipeline' })),
+  ],
+  cliCommands: platformCommands,
+};
