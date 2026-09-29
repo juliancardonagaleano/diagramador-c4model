@@ -9,13 +9,14 @@ import { DslImportError } from '@core/import/structurizr/fromStructurizrDsl';
 import { MermaidImportError } from '@core/import/mermaid/fromMermaid';
 import { toMermaid, MermaidExportError, type MermaidFormat } from '@core/export/mermaid/toMermaid';
 import { documentJsonSchema, DocumentValidationError, formatIssues, validateDocument } from '@core/model/schema';
-import type { C4Document, LayoutDensity, LayoutDirectionOption, LayoutDistribution } from '@core/model/types';
+import type { LayoutDensity, LayoutDirectionOption, LayoutDistribution } from '@core/model/types';
 import { generationJsonSchema } from '@core/ai/generationSchema';
 import { standalonePrompt } from '@core/ai/prompt';
 import { DEFAULT_AI_MODEL, generateDocument, GenerationError, type Effort } from '@core/ai/generate';
 import { analyzeDocument } from '@core/model/issues';
 import { buildManifest, type ModuleRegistry, UnknownModuleError } from '@iark/kernel';
 import { createDefaultRegistry, DEFAULT_MODULE } from './registry';
+import { genericExport, genericGenerate, genericPrompt, genericSchema, genericValidate, readModuleDocument } from './generic';
 import { CliError, dslIncludeOptions, extractJson, info, readDocument, readInput, writeOutput } from './io';
 
 const CLI_VERSION = '0.1.0';
@@ -66,7 +67,7 @@ async function importSource(
   registry: ModuleRegistry,
   moduleId: string,
   input: { file?: string; raw: string; format?: string; name?: string; fromFile: boolean },
-): Promise<{ format: string; document: C4Document; warnings: string[] }> {
+): Promise<{ format: string; document: any; warnings: string[] }> {
   const module = registry.require(moduleId);
   const ids = module.importers.map((i) => i.id).sort();
   const requested = (input.format ?? 'auto').toLowerCase();
@@ -75,7 +76,7 @@ async function importSource(
   }
   const importer =
     requested === 'auto'
-      ? registry.detectImporter<C4Document>(moduleId, input.fromFile ? input.file : undefined, input.raw)
+      ? registry.detectImporter<unknown>(moduleId, input.fromFile ? input.file : undefined, input.raw)
       : module.importers.find((i) => i.id === requested);
   if (!importer) {
     const list = ids.length > 1 ? `${ids.slice(0, -1).join(', ')} o ${ids[ids.length - 1]}` : ids.join(', ');
@@ -89,16 +90,18 @@ async function importSource(
     // Solo el DSL de Structurizr lo usa (resolver `!include` sin salir de la carpeta del archivo).
     extra: input.fromFile && input.file ? dslIncludeOptions(input.file) : undefined,
   });
-  return { format: importer.id, document: outcome.document as C4Document, warnings: outcome.warnings };
+  return { format: importer.id, document: outcome.document, warnings: outcome.warnings };
 }
 
 /** Documento base de `generate`/`prompt --from`: un JSON del modelo o cualquier fuente importable (.drawio, .dsl, .mmd). */
-async function readBaseDocument(registry: ModuleRegistry, file: string): Promise<C4Document> {
+async function readBaseDocument(registry: ModuleRegistry, file: string, moduleId = DEFAULT_MODULE): Promise<any> {
   const raw = readInput(file, false);
-  if (extname(file).toLowerCase() === '.json' || raw.trimStart().startsWith('{')) return readDocument(file, false);
-  const imported = await importSource(registry, DEFAULT_MODULE, { file, raw, fromFile: true });
+  if (extname(file).toLowerCase() === '.json' || raw.trimStart().startsWith('{')) {
+    return moduleId === DEFAULT_MODULE ? readDocument(file, false) : readModuleDocument(registry.require(moduleId), file, false);
+  }
+  const imported = await importSource(registry, moduleId, { file, raw, fromFile: true });
   for (const warning of imported.warnings) info(`aviso: ${warning}`);
-  info(`Documento base importado de ${imported.format}: ${imported.document.model.elements.length} elementos, ${imported.document.model.relationships.length} relaciones.`);
+  info(`Documento base importado de ${imported.format}.`);
   return imported.document;
 }
 
@@ -176,8 +179,13 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
     .option('--density <auto|compact|spacious>', 'densidad del autolayout', parseDensity)
     .option('--distribution <auto|centered|elk>', 'distribución del autolayout', parseDistribution)
     .option('--notation <c4|card>', 'notación de las figuras en el .drawio', parseNotation, 'c4')
+    .option('--module <id>', 'módulo de la suite (ver `iark modules`); con otro que no sea c4, --out exporta según la extensión (.svg, .mmd, .drawio…)', DEFAULT_MODULE)
     .action(async (instruction: string, opts) => {
-      const base = opts.from ? await readBaseDocument(registry, opts.from) : undefined;
+      const base = opts.from ? await readBaseDocument(registry, opts.from, opts.module) : undefined;
+      if (opts.module !== DEFAULT_MODULE) {
+        await genericGenerate(registry.require(opts.module), instruction, { base, provider: opts.provider, model: opts.model, effort: opts.effort, retries: opts.retries, json: opts.json, out: opts.out });
+        return;
+      }
       const result = await generateDocument({
         instruction,
         base,
@@ -261,12 +269,19 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
     .option('--notation <c4|card>', 'notación de las figuras: librería C4 de draw.io o tarjetas', parseNotation, 'c4')
     .option('--no-waypoints', 'no incluir los quiebres de ruta del autolayout')
     .option('--view <id...>', 'solo estas vistas')
-    .option('--to <formato>', 'formato de salida: drawio|mermaid (mermaid exporta una vista por ejecución, la primera de --view)', parseTarget, 'drawio')
-    .option('--mermaid-format <c4|flowchart>', 'con --to mermaid: diagrama C4 nativo de Mermaid o diagrama de flujo con subgraph', parseMermaidFormat, 'c4')
+    .option('--to <formato>', 'formato de salida: drawio|mermaid (c4); con otro módulo, cualquiera de sus exportadores (ver `iark modules`)')
+    .option('--module <id>', 'módulo de la suite (ver `iark modules`)', DEFAULT_MODULE)
+    .option('--mermaid-format <formato>', 'con --to mermaid: c4|flowchart (módulo c4) o auto|flowchart|sequence (integración)')
     .action(async (file: string | undefined, opts) => {
+      if (opts.module !== DEFAULT_MODULE) {
+        const module = registry.require(opts.module);
+        await genericExport(module, readModuleDocument(module, file, opts.stdin), opts.to, opts.out, opts.view?.[0], { format: opts.mermaidFormat });
+        return;
+      }
+      const target = parseTarget(opts.to ?? 'drawio');
       const doc = readDocument(file, opts.stdin);
-      if (opts.to === 'mermaid') {
-        writeOutput(opts.out, toMermaid(doc, { viewId: opts.view?.[0], format: opts.mermaidFormat }));
+      if (target === 'mermaid') {
+        writeOutput(opts.out, toMermaid(doc, { viewId: opts.view?.[0], format: parseMermaidFormat(opts.mermaidFormat ?? 'c4') }));
         if (opts.out) info(`Diagrama Mermaid escrito en ${opts.out}`);
         return;
       }
@@ -300,17 +315,26 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
       let { document } = imported;
       for (const warning of imported.warnings) info(`aviso: ${warning}`);
 
-      if (opts.layout) {
+      const generic = opts.module !== DEFAULT_MODULE;
+      if (opts.layout && !generic) {
         const laid = await autoLayoutDocumentWithQuality(document, {});
         document = laid.document;
         reportQuality(laid.qualities);
       }
-      info(
-        `Importado "${document.workspace.name}": ${document.model.elements.length} elementos, ${document.model.relationships.length} relaciones, ` +
-          `${document.views.length} vistas${imported.warnings.length > 0 ? `, ${imported.warnings.length} aviso(s)` : ''}.`,
-      );
+      const warned = imported.warnings.length > 0 ? `, ${imported.warnings.length} aviso(s)` : '';
+      if (generic) {
+        // Los módulos que no son C4 derivan sus vistas del modelo (no guardan coordenadas): --layout no aplica.
+        if (opts.layout) info('aviso: --layout solo se aplica al módulo c4; las vistas de este módulo se colocan al exportar.');
+        const entities = registry.require(opts.module).entities?.(document).length;
+        info(`Importado "${document.workspace?.name ?? opts.name ?? 'sin nombre'}" en el módulo ${opts.module}${entities === undefined ? '' : `: ${entities} elementos`}${warned}.`);
+      } else {
+        info(
+          `Importado "${document.workspace.name}": ${document.model.elements.length} elementos, ${document.model.relationships.length} relaciones, ` +
+            `${document.views.length} vistas${warned}.`,
+        );
+      }
       writeOutput(opts.out, jsonOut(document));
-      if (opts.out) info(`Documento C4 escrito en ${opts.out}`);
+      if (opts.out) info(`Documento ${generic ? `del módulo ${opts.module}` : 'C4'} escrito en ${opts.out}`);
     });
 
   program
@@ -319,7 +343,9 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
     .argument('[archivo.json]', 'documento de entrada (o "-" para stdin)')
     .option('--stdin', 'leer el documento de la entrada estándar')
     .option('--strict', 'fallar también con avisos (warnings)', false)
+    .option('--module <id>', 'módulo de la suite (ver `iark modules`)', DEFAULT_MODULE)
     .action((file: string | undefined, opts) => {
+      if (opts.module !== DEFAULT_MODULE) return genericValidate(registry.require(opts.module), file, opts);
       const raw = readInput(file, opts.stdin);
       let json: unknown;
       try {
@@ -347,7 +373,9 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
     .command('schema')
     .description('Imprime el JSON Schema del documento (o del formato de generación de IA con --generation)')
     .option('--generation', 'esquema del modelo sin coordenadas que produce la IA', false)
+    .option('--module <id>', 'módulo de la suite (ver `iark modules`)', DEFAULT_MODULE)
     .action((opts) => {
+      if (opts.module !== DEFAULT_MODULE) return genericSchema(registry.require(opts.module), opts.generation);
       process.stdout.write(jsonOut(opts.generation ? generationJsonSchema() : documentJsonSchema()));
     });
 
@@ -356,8 +384,10 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
     .description('Imprime un prompt autocontenido para generar el modelo con cualquier IA/agente (sin clave de API)')
     .argument('<instrucción>', 'descripción del sistema o instrucción de refinamiento')
     .option('-f, --from <archivo>', 'documento existente a refinar: JSON, .drawio, .dsl (Structurizr) o .mmd (Mermaid)')
+    .option('--module <id>', 'módulo de la suite (ver `iark modules`)', DEFAULT_MODULE)
     .action(async (instruction: string, opts) => {
-      const base = opts.from ? await readBaseDocument(registry, opts.from) : undefined;
+      const base = opts.from ? await readBaseDocument(registry, opts.from, opts.module) : undefined;
+      if (opts.module !== DEFAULT_MODULE) return genericPrompt(registry.require(opts.module), instruction, base);
       process.stdout.write(standalonePrompt(instruction, base));
     });
 
@@ -397,14 +427,19 @@ function registerModuleCommands(program: Command, registry: ModuleRegistry): voi
       const cmd = group.command(spec.name).description(spec.description);
       for (const arg of spec.args ?? []) cmd.argument(arg.required ? `<${arg.name}>` : `[${arg.name}]`, arg.description);
       for (const opt of spec.options ?? []) cmd.option(opt.flags, opt.description, opt.default as string | boolean | undefined);
-      cmd.option('--stdin', 'leer la entrada estándar', false);
+      if (spec.input) {
+        cmd.argument('[archivo]', `${spec.input.description} (o "-" para stdin)`);
+        cmd.option('--stdin', 'leer la entrada estándar', false);
+        cmd.option('-o, --out <archivo>', 'archivo de salida (por defecto stdout)');
+      }
       cmd.action(async (...actionArgs: unknown[]) => {
         const command = actionArgs[actionArgs.length - 1] as Command;
         const options = command.opts();
-        const args = actionArgs.slice(0, (spec.args ?? []).length).map((a) => String(a ?? ''));
-        const stdin = options.stdin ? readInput(undefined, true) : undefined;
-        const out = await spec.run({ args, options, stdin });
-        if (out) process.stdout.write(out.endsWith('\n') ? out : `${out}\n`);
+        const declared = (spec.args ?? []).length;
+        const args = actionArgs.slice(0, declared).map((a) => String(a ?? ''));
+        const input = spec.input ? readInput(actionArgs[declared] as string | undefined, Boolean(options.stdin)) : undefined;
+        const out = await spec.run({ args, options, input });
+        if (out) writeOutput(spec.input ? (options.out as string | undefined) : undefined, out.endsWith('\n') ? out : `${out}\n`);
       });
     }
   }

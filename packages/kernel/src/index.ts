@@ -14,6 +14,8 @@ export {
 export { extractJson } from './util/extractJson';
 export { MAX_ID_LENGTH, pickId } from './import/ids';
 export { Warnings } from './import/warnings';
+export { standalonePrompt as moduleStandalonePrompt } from './ai/standalone';
+export { generateStructured, GenerationError, type Effort, type StructuredOptions, type StructuredResult } from './ai/structured';
 export { createAiClient, credentialsHint, openaiSettings, resolveModel, resolveProvider, type AiProvider, type Env } from './ai/client';
 export {
   chatCompletion,
@@ -26,3 +28,6 @@ export {
   type CompatState,
   type ResponseFormatMode,
 } from './ai/openaiCompat';
+
+export * from './mermaid';
+export * from './graph';

@@ -2,7 +2,20 @@ import { slugify } from '../../model/factories';
 import { formatIssues, validateDocument } from '../../model/schema';
 import { DOCUMENT_VERSION, PARENT_TYPE, type C4Document, type C4Element, type C4Relationship, type ElementShape, type ElementType } from '../../model/types';
 import { defaultViews } from '../defaultViews';
-import { pickId, Warnings } from '@iark/kernel';
+import {
+  detectMermaidKind,
+  looksLikeMermaid,
+  MERMAID_DIAGRAM_KINDS,
+  parseFlowchart,
+  parseSequence,
+  pickId,
+  preprocessMermaid,
+  splitLabel,
+  truncate,
+  Warnings,
+  type FlowNodeRef,
+  type MermaidLine,
+} from '@iark/kernel';
 
 export class MermaidImportError extends Error {
   constructor(message: string) {
@@ -24,15 +37,9 @@ export interface MermaidImportResult {
   warnings: string[];
 }
 
-/** Tipos de diagrama de Mermaid que se saben importar. */
-export const MERMAID_DIAGRAM_KINDS = ['C4Context', 'C4Container', 'C4Component', 'C4Dynamic', 'flowchart / graph', 'sequenceDiagram', 'erDiagram'] as const;
+export { looksLikeMermaid, MERMAID_DIAGRAM_KINDS };
 
-type Kind = 'c4' | 'flowchart' | 'sequence' | 'er';
-
-interface Line {
-  no: number;
-  text: string;
-}
+type Line = MermaidLine;
 
 /**
  * Importa un diagrama de Mermaid como documento del modelo. Se admiten:
@@ -43,10 +50,10 @@ interface Line {
  * Mermaid no guarda coordenadas ni vistas propias: se crean las vistas por defecto y el autolayout hace el resto.
  */
 export function fromMermaid(source: string, options: MermaidImportOptions = {}): MermaidImportResult {
-  const { lines, title } = preprocess(source);
+  const { lines, title } = preprocessMermaid(source);
   if (lines.length === 0) throw new MermaidImportError('El texto de Mermaid está vacío.');
   const header = lines[0];
-  const kind = detectKind(header.text);
+  const kind = detectMermaidKind(header.text);
   if (!kind) {
     throw new MermaidImportError(
       `No se reconoce el tipo de diagrama de Mermaid («${header.text.split(/\s+/)[0]}»). Se admiten: ${MERMAID_DIAGRAM_KINDS.join(', ')}.`,
@@ -56,8 +63,8 @@ export function fromMermaid(source: string, options: MermaidImportOptions = {}):
   const body = lines.slice(1);
   let declaredTitle = title;
   if (kind === 'c4') declaredTitle = parseC4(body, builder) ?? declaredTitle;
-  else if (kind === 'flowchart') parseFlowchart(body, builder);
-  else if (kind === 'sequence') declaredTitle = parseSequence(body, builder) ?? declaredTitle;
+  else if (kind === 'flowchart') parseFlowchartInto(body, builder);
+  else if (kind === 'sequence') declaredTitle = parseSequenceInto(body, builder) ?? declaredTitle;
   else parseEr(body, builder);
 
   if (builder.elements.length === 0) throw new MermaidImportError('El diagrama de Mermaid no define ningún elemento que se pueda importar.');
@@ -71,50 +78,6 @@ export function fromMermaid(source: string, options: MermaidImportOptions = {}):
   const result = validateDocument(document);
   if (!result.ok) throw new MermaidImportError(`No se pudo construir un documento válido a partir de Mermaid:\n${formatIssues(result.issues)}`);
   return { document: result.document, warnings: builder.warnings.result() };
-}
-
-/** ¿Parece texto de Mermaid? (para autodetectar el formato de un archivo sin extensión conocida). */
-export function looksLikeMermaid(source: string): boolean {
-  try {
-    const { lines } = preprocess(source);
-    return lines.length > 0 && detectKind(lines[0].text) !== undefined;
-  } catch {
-    return false;
-  }
-}
-
-// ───────────────────────── Preprocesado ─────────────────────────
-
-function preprocess(source: string): { lines: Line[]; title?: string } {
-  let text = source.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
-  // Bloque de código Markdown (```mermaid … ```).
-  const fence = /```\s*mermaid[^\n]*\n([\s\S]*?)```/i.exec(text);
-  if (fence) text = fence[1];
-  let title: string | undefined;
-  // Frontmatter YAML (`--- title: X ---`).
-  const fm = /^\s*---\n([\s\S]*?)\n---\s*(?:\n|$)/.exec(text);
-  if (fm) {
-    const t = /^\s*title:\s*(.+?)\s*$/m.exec(fm[1]);
-    if (t) title = t[1].replace(/^["']|["']$/g, '');
-    text = text.slice(fm[0].length);
-  }
-  const lines: Line[] = [];
-  text.split('\n').forEach((raw, i) => {
-    let t = raw.trim();
-    if (!t || t.startsWith('%%')) return; // comentarios y directivas %%{init: …}%%
-    t = t.replace(/\s%%[^"']*$/, '').trim();
-    if (t) lines.push({ no: i + 1, text: t });
-  });
-  return { lines, title };
-}
-
-function detectKind(header: string): Kind | undefined {
-  const word = header.split(/\s+/)[0];
-  if (/^C4(Context|Container|Component|Dynamic|Deployment)$/.test(word)) return 'c4';
-  if (word === 'flowchart' || word === 'flowchart-elk' || word === 'graph') return 'flowchart';
-  if (word === 'sequenceDiagram') return 'sequence';
-  if (word === 'erDiagram') return 'er';
-  return undefined;
 }
 
 // ───────────────────────── Modelo en construcción ─────────────────────────
@@ -162,14 +125,6 @@ class Builder {
 
 function stripUndefined<T extends object>(o: T): T {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== '')) as T;
-}
-
-/** Texto de un nodo de Mermaid: sin comillas/backticks y con `<br/>` como salto (primer tramo = nombre, resto = descripción). */
-function splitLabel(raw: string): { name: string; description?: string } {
-  const text = raw.replace(/^"|"$/g, '').replace(/^`|`$/g, '').trim();
-  const parts = text.split(/<br\s*\/?>|\\n/i).map((p) => p.replace(/<[^>]+>/g, '').trim()).filter(Boolean);
-  const [name = '', ...rest] = parts;
-  return { name, description: rest.length > 0 ? rest.join(' ') : undefined };
 }
 
 // ───────────────────────── Diagramas C4 nativos ─────────────────────────
@@ -311,113 +266,9 @@ function parseC4(lines: Line[], b: Builder): string | undefined {
 
 // ───────────────────────── flowchart / graph ─────────────────────────
 
-const FLOW_SILENT = /^(classDef|class|style|linkStyle|click|direction|accTitle|accDescr|%%)\b/;
-
-interface Opener {
-  open: string;
-  close: string[];
-  shape?: ElementShape;
-}
-
-// De la apertura más larga a la más corta, para que `(((` gane a `((` y `(`.
-const OPENERS: Opener[] = [
-  { open: '(((', close: [')))'] },
-  { open: '((', close: ['))'] },
-  { open: '([', close: ['])'], shape: 'queue' },
-  { open: '[(', close: [')]'], shape: 'database' },
-  { open: '[[', close: [']]'] },
-  { open: '[/', close: ['/]', '\\]'] },
-  { open: '[\\', close: ['\\]', '/]'] },
-  { open: '{{', close: ['}}'] },
-  { open: '(', close: [')'] },
-  { open: '[', close: [']'] },
-  { open: '{', close: ['}'] },
-  { open: '>', close: [']'] },
-];
-
-interface NodeRef {
-  alias: string;
-  label?: string;
-  shape?: ElementShape;
-}
-
-const NODE_ID = /^[^\s\-=.&|"'()[\]{}<>;:,]+/u;
-const LABELED_EDGE = /^(--|==|-\.)\s+(.+?)\s+(-{2,}|={2,}|\.-)(>|[xo](?=\s|$))?/;
-const SIMPLE_EDGE = /^(<|[xo](?=-|=))?(-\.+-|={2,}|-{2,})(>|[xo](?=\s|$))?/;
-
-/** Lee un nodo (`A`, `A[Texto]`, `A(("Texto"))`…) al inicio de `s`; devuelve el nodo y lo que sobra. */
-function readNode(s: string): { node: NodeRef; rest: string } | undefined {
-  const idm = NODE_ID.exec(s);
-  if (!idm) return undefined;
-  const alias = idm[0];
-  let rest = s.slice(alias.length);
-  let label: string | undefined;
-  let shape: ElementShape | undefined;
-  const opener = OPENERS.find((o) => rest.startsWith(o.open));
-  if (opener) {
-    const inner = rest.slice(opener.open.length);
-    let body: string;
-    let after: string;
-    if (inner.startsWith('"')) {
-      const end = inner.indexOf('"', 1);
-      if (end < 0) return undefined;
-      body = inner.slice(1, end);
-      const closer = opener.close.find((c) => inner.slice(end + 1).trimStart().startsWith(c));
-      if (!closer) return undefined;
-      after = inner.slice(end + 1).trimStart().slice(closer.length);
-    } else {
-      const found = opener.close.map((c) => ({ c, i: inner.indexOf(c) })).filter((x) => x.i >= 0).sort((a, z) => a.i - z.i)[0];
-      if (!found) return undefined;
-      body = inner.slice(0, found.i);
-      after = inner.slice(found.i + found.c.length);
-    }
-    label = body;
-    shape = opener.shape;
-    rest = after;
-  }
-  rest = rest.replace(/^:::[\w-]+/, '');
-  return { node: { alias, label, shape }, rest };
-}
-
-/** Lee `A & B & C` y devuelve los nodos y lo que sobra. */
-function readNodeGroup(s: string): { nodes: NodeRef[]; rest: string } | undefined {
-  const nodes: NodeRef[] = [];
-  let rest = s.trimStart();
-  for (;;) {
-    const r = readNode(rest);
-    if (!r) return nodes.length > 0 ? { nodes, rest } : undefined;
-    nodes.push(r.node);
-    rest = r.rest.trimStart();
-    if (rest.startsWith('&')) rest = rest.slice(1).trimStart();
-    else return { nodes, rest };
-  }
-}
-
-interface EdgeOp {
-  label?: string;
-  bidirectional: boolean;
-  rest: string;
-}
-
-function readEdge(s: string): EdgeOp | undefined {
-  const rest = s.trimStart();
-  const labeled = LABELED_EDGE.exec(rest);
-  if (labeled) return { label: labeled[2].trim(), bidirectional: false, rest: rest.slice(labeled[0].length) };
-  const m = SIMPLE_EDGE.exec(rest);
-  if (!m) return undefined;
-  let after = rest.slice(m[0].length);
-  let label: string | undefined;
-  const lm = /^\|([^|]*)\|/.exec(after);
-  if (lm) {
-    label = lm[1].trim();
-    after = after.slice(lm[0].length);
-  }
-  return { label, bidirectional: m[1] === '<' && m[3] === '>', rest: after };
-}
-
 const LEVEL_TYPES: ElementType[] = ['softwareSystem', 'container', 'component'];
 
-function parseFlowchart(lines: Line[], b: Builder): void {
+function parseFlowchartInto(lines: Line[], b: Builder): void {
   // Pila de subgraph que son elementos del modelo (los más profundos que un componente se aplanan).
   const stack: Array<{ alias: string; elementId?: string }> = [];
   let flattened = false;
@@ -429,83 +280,50 @@ function parseFlowchart(lines: Line[], b: Builder): void {
     return stack.filter((f) => f.elementId).map((f) => f.elementId as string)[level];
   };
 
-  const ensureNode = (node: NodeRef): void => {
+  const ensureNode = (node: FlowNodeRef): void => {
+    const shape: ElementShape | undefined = node.shape === 'cylinder' ? 'database' : node.shape === 'stadium' ? 'queue' : undefined;
     const known = b.aliases.get(node.alias);
     if (known) {
       // Definición posterior con texto: actualiza el nombre si el elemento se creó solo con su id.
       if (node.label !== undefined) {
         const el = b.elements.find((e) => e.id === known);
-        if (el && el.name === node.alias) Object.assign(el, splitFor(node.label));
-        if (el && node.shape && !el.shape) el.shape = node.shape;
+        if (el && el.name === node.alias) {
+          const l = splitLabel(node.label);
+          el.name = l.name;
+          if (l.description) el.description = l.description;
+        }
+        if (el && shape && !el.shape) el.shape = shape;
       }
       return;
     }
     const depth = stack.filter((f) => f.elementId).length;
     const type = LEVEL_TYPES[Math.min(depth, 2)];
     const label = splitLabel(node.label ?? node.alias);
-    b.addElement(node.alias, type, label.name || node.alias, { description: label.description, shape: node.shape, parentId: parentFor(type) });
+    b.addElement(node.alias, type, label.name || node.alias, { description: label.description, shape, parentId: parentFor(type) });
   };
 
-  const splitFor = (raw: string): { name: string; description?: string } => {
-    const l = splitLabel(raw);
-    return l.description ? { name: l.name, description: l.description } : { name: l.name };
-  };
-
-  for (const { no, text } of lines) {
-    const where = `línea ${no}`;
-    for (const stmt of splitStatements(text)) {
-      if (stmt === 'end') {
-        stack.pop();
-        continue;
+  for (const ev of parseFlowchart(lines)) {
+    if (ev.type === 'warning') b.warnings.add(ev.message);
+    else if (ev.type === 'subgraph-end') stack.pop();
+    else if (ev.type === 'subgraph-start') {
+      const depth = stack.filter((f) => f.elementId).length;
+      if (depth >= 3) {
+        if (!flattened) b.warnings.add(`${ev.where}: los subgraph anidados a más de tres niveles se aplanan (el modelo llega hasta sistema › contenedor › componente).`);
+        flattened = true;
+        stack.push({ alias: ev.alias });
+      } else {
+        const type = LEVEL_TYPES[depth];
+        const el = b.addElement(ev.alias, type, splitLabel(ev.label).name || ev.alias, { parentId: parentFor(type) });
+        stack.push({ alias: ev.alias, elementId: el.id });
       }
-      const sg = /^subgraph\s+(.+)$/.exec(stmt);
-      if (sg) {
-        const m = /^([^\s[]+)\s*\[\s*"?([^\]"]*)"?\s*\]$/.exec(sg[1]) ?? /^"?(.+?)"?$/.exec(sg[1]);
-        const alias = m?.[1] ?? sg[1];
-        const label = m?.[2] ?? alias;
-        const depth = stack.filter((f) => f.elementId).length;
-        if (depth >= 3) {
-          if (!flattened) b.warnings.add(`${where}: los subgraph anidados a más de tres niveles se aplanan (el modelo llega hasta sistema › contenedor › componente).`);
-          flattened = true;
-          stack.push({ alias });
-        } else {
-          const type = LEVEL_TYPES[depth];
-          const el = b.addElement(alias, type, splitLabel(label).name || alias, { parentId: parentFor(type) });
-          stack.push({ alias, elementId: el.id });
+    } else if (ev.type === 'node') ensureNode(ev.node);
+    else {
+      const label = ev.label ? splitLabel(ev.label).name : undefined;
+      for (const from of ev.from) {
+        for (const to of ev.to) {
+          b.addRelationship(from.alias, to.alias, label, undefined, ev.where);
+          if (ev.bidirectional) b.addRelationship(to.alias, from.alias, label, undefined, ev.where);
         }
-        continue;
-      }
-      if (FLOW_SILENT.test(stmt)) continue;
-      if (/^(flowchart|graph)\b/.test(stmt)) continue;
-
-      // Sentencia de nodos y aristas: grupo (edge grupo)*.
-      let group = readNodeGroup(stmt);
-      if (!group) {
-        b.warnings.add(`${where}: no se entiende «${truncate(stmt)}»; se omite.`);
-        continue;
-      }
-      group.nodes.forEach(ensureNode);
-      let rest = group.rest;
-      while (rest.trim() !== '') {
-        const edge = readEdge(rest);
-        if (!edge) {
-          b.warnings.add(`${where}: no se entiende «${truncate(rest.trim())}»; se omite.`);
-          break;
-        }
-        const next = readNodeGroup(edge.rest);
-        if (!next) {
-          b.warnings.add(`${where}: falta el nodo de destino después de la flecha; se omite.`);
-          break;
-        }
-        next.nodes.forEach(ensureNode);
-        for (const from of group.nodes) {
-          for (const to of next.nodes) {
-            b.addRelationship(from.alias, to.alias, edge.label ? splitLabel(edge.label).name : undefined, undefined, where);
-            if (edge.bidirectional) b.addRelationship(to.alias, from.alias, edge.label ? splitLabel(edge.label).name : undefined, undefined, where);
-          }
-        }
-        group = next;
-        rest = next.rest;
       }
     }
   }
@@ -513,47 +331,31 @@ function parseFlowchart(lines: Line[], b: Builder): void {
 
 // ───────────────────────── sequenceDiagram ─────────────────────────
 
-const SEQ_SILENT = /^(autonumber|activate|deactivate|note|loop|alt|else|opt|par|and|end|rect|critical|option|break|box|link|links|properties|details|destroy)\b/i;
-const SEQ_ARROW = /^(\S+?)\s*(--?>>|--?>|--?x|--?\)|<<--?>>)\s*([+-])?\s*([^:\s][^:]*?)\s*:\s*(.*)$/;
-
-function parseSequence(lines: Line[], b: Builder): string | undefined {
+function parseSequenceInto(lines: Line[], b: Builder): string | undefined {
   let title: string | undefined;
   const declare = (alias: string, type: ElementType, name?: string): void => {
     if (b.aliases.has(alias)) return;
     b.addElement(alias, type, name?.trim() || alias);
   };
-  for (const { no, text } of lines) {
-    const where = `línea ${no}`;
-    const t = /^title:?\s+(.+)$/i.exec(text);
-    if (t) {
-      title = t[1].trim();
-      continue;
-    }
-    const decl = /^(?:create\s+)?(participant|actor)\s+(\S+?)(?:\s+as\s+(.+))?$/i.exec(text);
-    if (decl) {
-      const type: ElementType = decl[1].toLowerCase() === 'actor' ? 'person' : 'softwareSystem';
-      const existing = b.aliases.get(decl[2]);
+  for (const ev of parseSequence(lines)) {
+    if (ev.type === 'warning') b.warnings.add(ev.message);
+    else if (ev.type === 'title') title = ev.text;
+    else if (ev.type === 'participant') {
+      const type: ElementType = ev.actor ? 'person' : 'softwareSystem';
+      const existing = b.aliases.get(ev.alias);
       if (existing) {
         // Mensajes anteriores ya lo crearon como sistema: se corrige el tipo y el nombre.
         const el = b.elements.find((e) => e.id === existing);
         if (el) {
           el.type = type;
-          if (decl[3]) el.name = decl[3].trim();
+          if (ev.label) el.name = ev.label;
         }
-      } else declare(decl[2], type, decl[3]);
-      continue;
+      } else declare(ev.alias, type, ev.label);
+    } else {
+      declare(ev.from, 'softwareSystem');
+      declare(ev.to, 'softwareSystem');
+      b.addRelationship(ev.from, ev.to, splitLabel(ev.text).name || undefined, undefined, ev.where, true);
     }
-    if (SEQ_SILENT.test(text) || /^sequenceDiagram/.test(text)) continue;
-    const m = SEQ_ARROW.exec(text);
-    if (!m) {
-      b.warnings.add(`${where}: no se entiende «${truncate(text)}»; se omite.`);
-      continue;
-    }
-    const from = m[1].trim();
-    const to = m[4].trim();
-    declare(from, 'softwareSystem');
-    declare(to, 'softwareSystem');
-    b.addRelationship(from, to, splitLabel(m[5]).name || undefined, undefined, where, true);
   }
   return title;
 }
@@ -611,24 +413,4 @@ function parseEr(lines: Line[], b: Builder): void {
     const el = b.elements.find((e) => e.id === b.aliases.get(alias));
     if (el) el.description = attrs.length > 12 ? `${attrs.slice(0, 12).join('; ')}; … (+${attrs.length - 12})` : attrs.join('; ');
   }
-}
-
-/** Separa las sentencias de una línea por `;`, sin cortar los `;` que estén entre comillas. */
-function splitStatements(text: string): string[] {
-  const out: string[] = [];
-  let current = '';
-  let quoted = false;
-  for (const ch of text) {
-    if (ch === '"') quoted = !quoted;
-    if (ch === ';' && !quoted) {
-      out.push(current);
-      current = '';
-    } else current += ch;
-  }
-  out.push(current);
-  return out.map((x) => x.trim()).filter(Boolean);
-}
-
-function truncate(s: string, max = 60): string {
-  return s.length > max ? `${s.slice(0, max)}…` : s;
 }

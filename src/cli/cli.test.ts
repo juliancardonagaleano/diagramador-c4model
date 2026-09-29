@@ -377,12 +377,127 @@ describe('iark: módulos de la suite', () => {
   it('--module desconocido falla con la lista de módulos disponibles', () => {
     const r = run(['import', 'examples/banca.mmd', '--module', 'datos']);
     expect(r.status).toBe(2);
-    expect(r.stderr).toMatch(/No existe el módulo «datos»\. Módulos disponibles: c4\./);
+    expect(r.stderr).toMatch(/No existe el módulo «datos»\. Módulos disponibles: c4, integration\./);
+  });
+
+  it('modules lista también el módulo de integraciones con sus formatos', () => {
+    const list = run(['modules']);
+    expect(list.stdout).toMatch(/^integration {2}Arquitectura de integraciones {2}v0\.1\.0/m);
+    expect(list.stdout).toMatch(/importa: mermaid {2}· {2}exporta: mermaid, svg, drawio/);
+    const manifest = JSON.parse(run(['modules', '--json']).stdout);
+    expect(manifest.modules.map((m: { id: string }) => m.id)).toEqual(['c4', 'integration']);
+    expect(manifest.modules[1]).toMatchObject({ exportFormats: ['mermaid', 'svg', 'drawio'], importFormats: ['mermaid'] });
   });
 
   it('--format inválido lista los formatos del módulo', () => {
     const r = run(['import', 'examples/banca.mmd', '--format', 'visio']);
     expect(r.status).toBe(2);
     expect(r.stderr).toMatch(/Formato inválido «visio»\. Use: auto, drawio, dsl, mermaid\./);
+  });
+});
+
+describe('iark: módulo de integraciones', () => {
+  const integ = 'examples/pedidos-integracion.json';
+  const dir = mkdtempSync(join(tmpdir(), 'iarkint-'));
+
+  it('validate --module integration valida el documento y devuelve 3 con errores semánticos', () => {
+    const ok = run(['validate', integ, '--module', 'integration']);
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toMatch(/Documento válido \(módulo integration\)\. 0 error\(es\)/);
+
+    const bad = join(dir, 'bad.json');
+    writeFileSync(bad, JSON.stringify({ nodes: [{ id: 'a', kind: 'system', name: 'A' }], interactions: [{ id: 'i', sourceId: 'a', targetId: 'fantasma', style: 'event' }] }));
+    const r = run(['validate', bad, '--module', 'integration']);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/Documento inválido para el módulo «integration»/);
+    expect(r.stderr).toMatch(/destino inexistente/);
+  });
+
+  it('schema y prompt --module integration usan el contrato del módulo', () => {
+    expect(JSON.parse(run(['schema', '--module', 'integration']).stdout).properties.nodes).toBeDefined();
+    expect(JSON.parse(run(['schema', '--module', 'integration', '--generation']).stdout).properties.interactions).toBeDefined();
+    const prompt = run(['prompt', 'Pagos con eventos', '--module', 'integration', '--from', integ]);
+    expect(prompt.status).toBe(0);
+    expect(prompt.stdout).toContain('arquitecto de integraciones');
+    expect(prompt.stdout).toContain('Pagos con eventos');
+    expect(prompt.stdout).toContain('tienda-web');
+  });
+
+  it('convert --module integration exporta Mermaid (flujo secuencial incluido), SVG y draw.io según --to o la extensión', () => {
+    const mmd = run(['convert', integ, '--module', 'integration', '--to', 'mermaid']);
+    expect(mmd.status).toBe(0);
+    expect(mmd.stdout).toMatch(/^flowchart LR/);
+    const seq = run(['convert', integ, '--module', 'integration', '--to', 'mermaid', '--view', 'flow:crear-pedido']);
+    expect(seq.stdout).toMatch(/^sequenceDiagram/);
+
+    const svg = join(dir, 'mapa.svg');
+    expect(run(['convert', integ, '--module', 'integration', '--out', svg]).status).toBe(0);
+    expect(readFileSync(svg, 'utf8')).toMatch(/^<svg /);
+
+    const drawio = join(dir, 'mapa.drawio');
+    expect(run(['convert', integ, '--module', 'integration', '--out', drawio]).status).toBe(0);
+    expect(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram).toBeDefined();
+
+    const bad = run(['convert', integ, '--module', 'integration', '--to', 'visio']);
+    expect(bad.status).toBe(2);
+    expect(bad.stderr).toMatch(/Formato de salida inválido «visio» para el módulo «integration»\. Use: mermaid, svg, drawio\./);
+  });
+
+  it('import --module integration recupera el mapa desde su Mermaid (ida y vuelta)', () => {
+    const mmd = join(dir, 'ida.mmd');
+    const json = join(dir, 'vuelta.json');
+    run(['convert', integ, '--module', 'integration', '--to', 'mermaid', '--out', mmd]);
+    const r = run(['import', mmd, '--module', 'integration', '--out', json]);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toMatch(/Importado "ida" en el módulo integration: 9 elementos/);
+    const doc = JSON.parse(readFileSync(json, 'utf8'));
+    const names = Object.fromEntries(doc.nodes.map((n: { id: string; name: string }) => [n.id, n.name]));
+    expect(names).toMatchObject({ pedidos: 'Servicio de pedidos', kafka: 'Kafka', 'pedidos-api': 'API de pedidos' });
+    expect(run(['validate', json, '--module', 'integration']).status).toBe(0);
+  });
+
+  it('integration from-c4 convierte un documento C4 y deja la referencia urn:iark:c4', () => {
+    const r = run(['integration', 'from-c4', example]);
+    expect(r.status).toBe(0);
+    const doc = JSON.parse(r.stdout);
+    expect(doc.nodes.find((n: { id: string }) => n.id === 'banca').ref).toBe('urn:iark:c4:banca');
+    expect(r.stderr).toMatch(/Convertido "Integración - Banca en línea"/);
+    const out = join(dir, 'de-c4.json');
+    expect(run(['integration', 'from-c4', example, '--out', out, '--name', 'Mi mapa']).status).toBe(0);
+    expect(JSON.parse(readFileSync(out, 'utf8')).workspace.name).toBe('Mi mapa');
+  });
+
+  it('integration catalog y matrix emiten tablas Markdown (también desde stdin)', () => {
+    const catalog = run(['integration', 'catalog', integ]);
+    expect(catalog.status).toBe(0);
+    expect(catalog.stdout).toContain('| API de pedidos | openapi | 2.1.0 | API Gateway → API de pedidos |');
+    const matrix = run(['integration', 'matrix', '--stdin'], readFileSync(integ, 'utf8'));
+    expect(matrix.status).toBe(0);
+    expect(matrix.stdout).toMatch(/^\| Origen \\ Destino \| Tienda web/);
+    expect(matrix.stdout).toContain('evento');
+  });
+
+  it('generate --module integration falla con un mensaje claro sin credenciales', () => {
+    const r = spawnSync(cli[0], [cli[1], 'generate', 'Un sistema de pagos', '--module', 'integration', '--provider', 'anthropic'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        ANTHROPIC_API_KEY: '',
+        ANTHROPIC_AUTH_TOKEN: '',
+        ANTHROPIC_PROFILE: 'inexistente-c4-test',
+        ANTHROPIC_BASE_URL: '',
+        ANTHROPIC_FOUNDRY_API_KEY: '',
+        ANTHROPIC_FOUNDRY_BASE_URL: '',
+        ANTHROPIC_FOUNDRY_RESOURCE: '',
+        ANTHROPIC_FOUNDRY_MODEL: '',
+        AI_API_KEY: '',
+        AI_BASE_URL: '',
+        AI_MODEL: '',
+        HOME: dir,
+      },
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/Error generando el modelo/);
+    expect(r.stderr).not.toMatch(/\n\s+at /);
   });
 });

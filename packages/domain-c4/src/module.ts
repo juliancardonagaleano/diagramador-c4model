@@ -1,6 +1,5 @@
 import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue } from '@iark/kernel';
-import { generationJsonSchema } from './ai/generationSchema';
-import { systemPrompt, userPrompt } from './ai/prompt';
+import { c4AiSpec } from './ai/spec';
 import { toDrawio, type DrawioNotation } from './export/drawio/toDrawio';
 import type { DrawioLocale } from './export/drawio/styles';
 import { toMermaid, type MermaidFormat } from './export/mermaid/toMermaid';
@@ -75,6 +74,6 @@ export const c4Module: DomainModule<C4Document> = {
   // El orden es el de la detección por contenido: draw.io (XML), Mermaid (cabecera reconocible) y por último el DSL.
   importers: [drawioImporter, mermaidImporter, dslImporter],
   exporters: [drawioExporter, mermaidExporter],
-  aiPrompt: ({ instruction, base }) => ({ system: systemPrompt(), user: userPrompt(instruction, base), jsonSchema: generationJsonSchema() }),
+  ai: c4AiSpec,
   entities: (document): EntityRef[] => document.model.elements.map((e) => ({ id: e.id, name: e.name, kind: e.type })),
 };
