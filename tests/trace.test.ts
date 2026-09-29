@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { buildTraceGraph, traceMermaid, traceReach, traceReachReport, traceReport, type AnyModule } from '@iark/kernel';
+import { buildTraceGraph, traceMermaid, traceReach, traceReachReport, traceReport, traceSvg, type AnyModule } from '@iark/kernel';
 import { dataModule, enterpriseModule, integrationModule, platformModule, securityModule } from '../src/modules-app/testing';
 
 const doc = (file: string): unknown => JSON.parse(readFileSync(`examples/${file}`, 'utf8'));
@@ -88,6 +88,40 @@ describe('trazabilidad entre módulos', () => {
   });
 });
 
+describe('dibujo del grafo de trazabilidad (SVG)', () => {
+  it('dibuja un recuadro por módulo y una flecha por enlace, y con un alcance solo ese subgrafo', async () => {
+    const graph = buildTraceGraph(inputs());
+    const svg = await traceSvg(graph, { title: 'Trazabilidad', moduleLabels: { security: 'Seguridad' } });
+    expect(svg.startsWith('<svg')).toBe(true);
+    expect(svg).toContain('Trazabilidad');
+    expect(svg).toContain('>Seguridad<');
+    expect((svg.match(/marker-end="url\(#arrow\)"/g) ?? []).length).toBe(14);
+
+    const reached = traceReach(graph, 'urn:iark:integration:pedidos', { direction: 'referrers' });
+    const subset = await traceSvg(graph, { reached });
+    expect((subset.match(/marker-end="url\(#arrow\)"/g) ?? []).length).toBe(2);
+    // Punto de partida, quien se apoya en él (naranja) y ningún nodo ajeno al alcance.
+    expect(subset).toContain('stroke="#0f172a"');
+    expect(subset).toContain('stroke="#f59e0b"');
+    expect(subset).not.toContain('Facturación');
+  });
+
+  it('sin enlaces devuelve un SVG con el aviso y escapa el texto de los documentos', async () => {
+    const one = buildTraceGraph([{ module: securityModule, document: parse(securityModule, 'seguridad-ejemplo.json') }]);
+    // El módulo de seguridad enlaza con plataforma, que no se aportó: no hay enlaces resolubles.
+    expect(await traceSvg(one)).toContain('No hay enlaces entre los documentos aportados.');
+
+    const graph = buildTraceGraph(inputs());
+    graph.nodes[0] = { ...graph.nodes[0], name: '<img src=x onerror=alert(1)>' };
+    const link = graph.links[0];
+    const target = graph.nodes.findIndex((n) => n.urn === link.from);
+    graph.nodes[target] = { ...graph.nodes[target], name: '<script>x</script> & "co"' };
+    const svg = await traceSvg(graph);
+    expect(svg).not.toContain('<script>');
+    expect(svg).not.toContain('<img');
+  });
+});
+
 describe('iark trace (CLI)', () => {
   const run = (args: string[]) => spawnSync('node_modules/.bin/tsx', ['src/cli/index.ts', 'trace', ...args], { encoding: 'utf8' });
   const docs = ['security=examples/seguridad-ejemplo.json', 'platform=examples/plataforma-ejemplo.json', 'integration=examples/pedidos-integracion.json'];
@@ -102,6 +136,9 @@ describe('iark trace (CLI)', () => {
     expect(json.from).toBe('urn:iark:platform:pedidos');
     expect(json.reached).toHaveLength(3);
     expect(run([...docs, '--format', 'mermaid']).stdout.startsWith('flowchart LR')).toBe(true);
+    const svg = run([...docs, '--from', 'integration:pedidos', '--format', 'svg']);
+    expect(svg.status).toBe(0);
+    expect(svg.stdout.startsWith('<svg')).toBe(true);
   });
 
   it('--strict falla con referencias rotas pero no con las de módulos sin documento; los errores de uso salen con código 2', () => {

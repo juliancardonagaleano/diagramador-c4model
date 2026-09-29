@@ -129,6 +129,7 @@ describe('iark serve: API por módulo', () => {
     expect(general.graph.links).toHaveLength(11);
     expect(general.report).toContain('3 documentos');
     expect(general.mermaid.startsWith('flowchart LR')).toBe(true);
+    expect(general.svg.startsWith('<svg')).toBe(true);
     const impact = await (await post('/api/trace', JSON.stringify({ documents, from: 'urn:iark:integration:pedidos', direction: 'referrers' }))).json();
     expect(impact.reached.map((r: { node: { urn: string } }) => r.node.urn)).toEqual(['urn:iark:integration:pedidos', 'urn:iark:platform:pedidos', 'urn:iark:security:pedidos']);
     expect(impact.report).toContain('a 2 saltos');

@@ -98,3 +98,10 @@
   font: 11px/1.5 var(--wb-mono);
   white-space: pre-wrap;
 }
+.sh-link {
+  color: var(--wb-primary);
+  text-decoration: none;
+}
+.sh-link:hover {
+  text-decoration: underline;
+}

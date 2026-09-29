@@ -52,6 +52,7 @@ export default defineConfig({
         'modules-host': fileURLToPath(new URL('./examples/modules-host.html', import.meta.url)),
         'web-component-host': fileURLToPath(new URL('./examples/web-component-host.html', import.meta.url)),
         suite: fileURLToPath(new URL('./suite.html', import.meta.url)),
+        trazabilidad: fileURLToPath(new URL('./trazabilidad.html', import.meta.url)),
       },
     },
   },
