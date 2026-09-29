@@ -25,7 +25,7 @@ export function AiTab() {
     }
   };
 
-  const cliCommand = `npx c4diagram generate "${(instruction.trim() || 'Describe aquí el sistema').replace(/"/g, '\\"')}" --out diagrama.drawio --json diagrama.json`;
+  const cliCommand = `npx iark generate "${(instruction.trim() || 'Describe aquí el sistema').replace(/"/g, '\\"')}" --out diagrama.drawio --json diagrama.json`;
 
   return (
     <div className="p-3 space-y-3 text-sm">

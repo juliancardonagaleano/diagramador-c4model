@@ -9,7 +9,7 @@ export { extractJson };
 
 /**
  * Lee la entrada estándar completa. `readFileSync(0)` lanza `EAGAIN` cuando stdin es un pipe no bloqueante cuyo
- * productor aún no ha escrito (p. ej. `c4diagram import x.drawio | c4diagram layout --stdin`, donde el primer
+ * productor aún no ha escrito (p. ej. `iark import x.drawio | iark layout --stdin`, donde el primer
  * comando tarda en arrancar), así que se lee por bloques y, si no hay datos todavía, se espera y se reintenta.
  */
 function readStdin(): string {

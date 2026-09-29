@@ -128,6 +128,23 @@ const noopStorage: StateStorage = {
   removeItem: () => {},
 };
 
+const STORAGE_KEY = 'iark-diagrams';
+/** Clave anterior al cambio de marca: se lee una vez para no perder el diagrama guardado por el usuario. */
+const LEGACY_STORAGE_KEY = 'diagramador-c4model';
+
+const migratingLocalStorage: StateStorage = {
+  getItem: (name) => {
+    const current = localStorage.getItem(name);
+    if (current !== null || name !== STORAGE_KEY) return current;
+    return localStorage.getItem(LEGACY_STORAGE_KEY);
+  },
+  setItem: (name, value) => {
+    localStorage.setItem(name, value);
+    if (name === STORAGE_KEY) localStorage.removeItem(LEGACY_STORAGE_KEY);
+  },
+  removeItem: (name) => localStorage.removeItem(name),
+};
+
 const defaultUi: UiState = {
   theme: 'light',
   showHeader: true,
@@ -516,8 +533,8 @@ export const useDocumentStore = create<DocumentStore>()(
       },
     ),
     {
-      name: 'diagramador-c4model',
-      storage: createJSONStorage(() => (isEmbedMode ? noopStorage : localStorage)),
+      name: STORAGE_KEY,
+      storage: createJSONStorage(() => (isEmbedMode ? noopStorage : migratingLocalStorage)),
       partialize: (state) => ({ doc: state.doc, activeViewId: state.activeViewId, ui: state.ui, lastSavedAt: state.lastSavedAt }),
       // Los ajustes nuevos (p. ej. nodeStyle) conservan su valor por defecto aunque el localStorage sea anterior.
       merge: (persisted, current) => {

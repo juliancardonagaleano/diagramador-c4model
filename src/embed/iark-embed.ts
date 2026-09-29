@@ -4,17 +4,17 @@ import type { EmbedEvent, ExportFormat, HostAction, LoadAction } from './protoco
 export type { EmbedEvent, ExportFormat, HostAction, C4Document };
 
 /**
- * SDK de anfitrión: crea un iframe con el diagramador en modo embebido y
+ * SDK de anfitrión: crea un iframe con IArk - DIAgrams en modo embebido y
  * gestiona el protocolo postMessage (handshake `init` → `load`, eventos, acciones).
  *
- *   const embed = createC4Embed({ container: '#editor', url: 'https://mi-host/diagramador/', document, autosave: true,
+ *   const embed = createIarkEmbed({ container: '#editor', url: 'https://mi-host/diagramador/', document, autosave: true,
  *     onSave: ({ document, drawio }) => guardar(document), onExit: () => cerrar() });
  *   const xml = await embed.export('drawio');
  */
-export interface C4EmbedOptions {
+export interface IarkEmbedOptions {
   /** Elemento (o selector) donde insertar el iframe. */
   container: HTMLElement | string;
-  /** URL de la app del diagramador (se le añaden `embed=1&proto=json`). */
+  /** URL de la app de IArk - DIAgrams (se le añaden `embed=1&proto=json`). */
   url: string;
   /** Documento inicial (objeto o JSON). Si se omite, se abre en blanco. */
   document?: C4Document | string;
@@ -45,9 +45,9 @@ export interface C4EmbedOptions {
   onEvent?: (event: EmbedEvent) => void;
 }
 
-export interface C4Embed {
+export interface IarkEmbed {
   iframe: HTMLIFrameElement;
-  /** Promesa que se resuelve cuando el diagramador ha cargado el documento inicial. */
+  /** Promesa que se resuelve cuando IArk - DIAgrams ha cargado el documento inicial. */
   ready: Promise<void>;
   load(document?: C4Document | string, options?: Omit<LoadAction, 'action' | 'document'>): Promise<C4Document>;
   merge(document: C4Document | string, autoLayout?: boolean): void;
@@ -64,10 +64,10 @@ export interface C4Embed {
   destroy(): void;
 }
 
-export function createC4Embed(options: C4EmbedOptions): C4Embed {
+export function createIarkEmbed(options: IarkEmbedOptions): IarkEmbed {
   const container =
     typeof options.container === 'string' ? document.querySelector<HTMLElement>(options.container) : options.container;
-  if (!container) throw new Error('createC4Embed: no se encontró el contenedor');
+  if (!container) throw new Error('createIarkEmbed: no se encontró el contenedor');
 
   const url = new URL(options.url, window.location.href);
   url.searchParams.set('embed', '1');
@@ -82,7 +82,7 @@ export function createC4Embed(options: C4EmbedOptions): C4Embed {
   iframe.style.border = '0';
   iframe.style.width = '100%';
   iframe.style.height = '100%';
-  iframe.setAttribute('title', options.title ?? 'Diagramador C4');
+  iframe.setAttribute('title', options.title ?? 'IArk - DIAgrams');
   for (const [k, v] of Object.entries(options.iframeAttributes ?? {})) iframe.setAttribute(k, v);
   container.appendChild(iframe);
 
@@ -139,7 +139,7 @@ export function createC4Embed(options: C4EmbedOptions): C4Embed {
       // con esa forma pero roto casi seguro viene de él (versión desalineada, bug); en vez de
       // descartarlo en silencio se avisa. El resto (ruido ajeno a nuestro protocolo) se ignora.
       const looksAddressedToUs = parseFailed ? (event.data as string).trim().startsWith('{') : !!data && typeof data === 'object';
-      if (looksAddressedToUs) options.onError?.({ message: 'Mensaje recibido del diagramador embebido no reconocido' });
+      if (looksAddressedToUs) options.onError?.({ message: 'Mensaje recibido de IArk - DIAgrams embebido no reconocido' });
       return;
     }
     const msg = data as EmbedEvent;
@@ -250,4 +250,11 @@ export function createC4Embed(options: C4EmbedOptions): C4Embed {
   };
 }
 
-export default createC4Embed;
+/** @deprecated Nombre anterior (C4 Model); use `createIarkEmbed`. */
+export const createC4Embed = createIarkEmbed;
+/** @deprecated Nombre anterior (C4 Model); use `IarkEmbed`. */
+export type C4Embed = IarkEmbed;
+/** @deprecated Nombre anterior (C4 Model); use `IarkEmbedOptions`. */
+export type C4EmbedOptions = IarkEmbedOptions;
+
+export default createIarkEmbed;

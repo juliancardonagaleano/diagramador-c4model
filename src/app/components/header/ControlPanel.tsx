@@ -10,7 +10,7 @@ import { DIRECTIONS, DISTRIBUTIONS } from './FloatingToolbar';
 const Logo = () => (
   <div className="flex items-center gap-2 select-none">
     <div className="h-8 w-8 rounded-md flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: 'var(--c4-primary)' }}>
-      C4
+      IA
     </div>
   </div>
 );

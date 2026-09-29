@@ -12,7 +12,7 @@ function run(args: string[], input?: string) {
   return spawnSync(cli[0], [cli[1], ...args], { input, encoding: 'utf8' });
 }
 
-describe('c4diagram (CLI)', () => {
+describe('iark (CLI)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'c4cli-'));
 
   it('layout escribe coordenadas en todas las vistas', () => {
@@ -118,7 +118,7 @@ describe('c4diagram (CLI)', () => {
   });
 });
 
-describe('c4diagram import', () => {
+describe('iark import', () => {
   const dir = mkdtempSync(join(tmpdir(), 'c4import-'));
   const ids = (items: Array<{ id: string }>) => items.map((i) => i.id).sort();
 

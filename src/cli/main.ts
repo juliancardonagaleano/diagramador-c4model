@@ -112,8 +112,8 @@ function jsonOut(value: unknown): string {
 export function buildProgram(): Command {
   const program = new Command();
   program
-    .name('c4diagram')
-    .description('Diagramador C4: genera modelos con IA, aplica autolayout y exporta a .drawio, sin navegador.')
+    .name('iark')
+    .description('IArk - DIAgrams: genera modelos con IA, aplica autolayout y exporta a .drawio, sin navegador.')
     .version('0.1.0')
     .configureOutput({ writeErr: (s) => process.stderr.write(s) });
 
