@@ -377,7 +377,7 @@ describe('iark: módulos de la suite', () => {
   it('--module desconocido falla con la lista de módulos disponibles', () => {
     const r = run(['import', 'examples/banca.mmd', '--module', 'datos']);
     expect(r.status).toBe(2);
-    expect(r.stderr).toMatch(/No existe el módulo «datos»\. Módulos disponibles: c4, integration, data\./);
+    expect(r.stderr).toMatch(/No existe el módulo «datos»\. Módulos disponibles: c4, integration, data, enterprise\./);
   });
 
   it('modules lista también el módulo de integraciones con sus formatos', () => {
@@ -385,7 +385,7 @@ describe('iark: módulos de la suite', () => {
     expect(list.stdout).toMatch(/^integration {2}Arquitectura de integraciones {2}v0\.1\.0/m);
     expect(list.stdout).toMatch(/importa: mermaid {2}· {2}exporta: mermaid, svg, drawio/);
     const manifest = JSON.parse(run(['modules', '--json']).stdout);
-    expect(manifest.modules.map((m: { id: string }) => m.id)).toEqual(['c4', 'integration', 'data']);
+    expect(manifest.modules.map((m: { id: string }) => m.id)).toEqual(['c4', 'integration', 'data', 'enterprise']);
     expect(manifest.modules[1]).toMatchObject({ exportFormats: ['mermaid', 'svg', 'drawio'], importFormats: ['mermaid'] });
   });
 
@@ -613,6 +613,141 @@ describe('iark: módulo de datos', () => {
 
   it('generate --module data falla con un mensaje claro sin credenciales', () => {
     const r = spawnSync(cli[0], [cli[1], 'generate', 'Un lago de datos', '--module', 'data', '--provider', 'anthropic'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        ANTHROPIC_API_KEY: '',
+        ANTHROPIC_AUTH_TOKEN: '',
+        ANTHROPIC_PROFILE: 'inexistente-c4-test',
+        ANTHROPIC_BASE_URL: '',
+        ANTHROPIC_FOUNDRY_API_KEY: '',
+        ANTHROPIC_FOUNDRY_BASE_URL: '',
+        ANTHROPIC_FOUNDRY_RESOURCE: '',
+        ANTHROPIC_FOUNDRY_MODEL: '',
+        AI_API_KEY: '',
+        AI_BASE_URL: '',
+        AI_MODEL: '',
+        HOME: dir,
+      },
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/Error generando el modelo/);
+  });
+});
+
+describe('iark: módulo empresarial', () => {
+  const ent = 'examples/empresa-arquitectura.json';
+  const dir = mkdtempSync(join(tmpdir(), 'iarkent-'));
+
+  it('modules lista el módulo empresarial con sus formatos', () => {
+    expect(run(['modules']).stdout).toMatch(/^enterprise {2}Arquitectura empresarial {2}v0\.1\.0\n {4}importa: mermaid {2}· {2}exporta: mermaid, svg, drawio/m);
+  });
+
+  it('validate --module enterprise valida el documento y devuelve 2 con errores de estructura', () => {
+    const ok = run(['validate', ent, '--module', 'enterprise']);
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toMatch(/Documento válido \(módulo enterprise\)\. 0 error\(es\), 0 aviso\(s\)/);
+
+    const bad = join(dir, 'bad.json');
+    writeFileSync(bad, JSON.stringify({ applications: [{ id: 'a', name: 'A' }], capabilities: [{ id: 'c', name: 'C' }], relations: [{ id: 'r', kind: 'supports', sourceId: 'c', targetId: 'a' }] }));
+    const r = run(['validate', bad, '--module', 'enterprise']);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/Documento inválido para el módulo «enterprise»/);
+    expect(r.stderr).toMatch(/no puede unir capacidad → aplicación/);
+  });
+
+  it('validate muestra avisos de gobierno y --strict los convierte en fallo', () => {
+    const risky = join(dir, 'risky.json');
+    writeFileSync(risky, JSON.stringify({ units: [{ id: 'u', name: 'U' }], capabilities: [{ id: 'c', name: 'Clave', ownerId: 'u', importance: 'core' }] }));
+    const r = run(['validate', risky, '--module', 'enterprise']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/Capacidad «Clave» no está soportada por ninguna aplicación/);
+    expect(run(['validate', risky, '--module', 'enterprise', '--strict']).status).toBe(3);
+  });
+
+  it('schema y prompt --module enterprise usan el contrato del módulo', () => {
+    expect(JSON.parse(run(['schema', '--module', 'enterprise']).stdout).properties.capabilities).toBeDefined();
+    expect(JSON.parse(run(['schema', '--module', 'enterprise', '--generation']).stdout).properties.relations).toBeDefined();
+    const prompt = run(['prompt', 'Un banco', '--module', 'enterprise', '--from', ent]);
+    expect(prompt.status).toBe(0);
+    expect(prompt.stdout).toContain('arquitecto empresarial');
+    expect(prompt.stdout).toContain('Un banco');
+    expect(prompt.stdout).toContain('motor-precios');
+  });
+
+  it('convert --module enterprise exporta Mermaid, SVG y draw.io, y elige las vistas por nombre', () => {
+    const mmd = run(['convert', ent, '--module', 'enterprise', '--to', 'mermaid']);
+    expect(mmd.status).toBe(0);
+    expect(mmd.stdout).toMatch(/^flowchart TB/);
+    expect(run(['convert', ent, '--module', 'enterprise', '--to', 'mermaid', '--view', 'landscape']).stdout).toMatch(/erp\["ERP corporativo<br\/>SAP S\/4HANA"\]:::application/);
+    expect(run(['convert', ent, '--module', 'enterprise', '--to', 'mermaid', '--view', 'impact:hana']).stdout).toMatch(/Tienda online/);
+
+    const svg = join(dir, 'mapa.svg');
+    expect(run(['convert', ent, '--module', 'enterprise', '--out', svg]).status).toBe(0);
+    expect(readFileSync(svg, 'utf8')).toContain('Mapa de capacidades');
+
+    const drawio = join(dir, 'empresa.drawio');
+    expect(run(['convert', ent, '--module', 'enterprise', '--out', drawio]).status).toBe(0);
+    expect([].concat(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram)).toHaveLength(10);
+
+    const missing = run(['convert', ent, '--module', 'enterprise', '--to', 'mermaid', '--view', 'nada']);
+    expect(missing.status).not.toBe(0);
+    expect(missing.stderr).toMatch(/No existe la vista «nada»/);
+  });
+
+  it('import --module enterprise recupera el paisaje desde su Mermaid (ida y vuelta)', () => {
+    const mmd = join(dir, 'paisaje.mmd');
+    const json = join(dir, 'paisaje.json');
+    run(['convert', ent, '--module', 'enterprise', '--to', 'mermaid', '--view', 'landscape', '--out', mmd]);
+    const r = run(['import', mmd, '--module', 'enterprise', '--out', json]);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toMatch(/Importado "paisaje" en el módulo enterprise: 31 elementos/);
+    const doc = JSON.parse(readFileSync(json, 'utf8'));
+    expect(doc.relations).toHaveLength(39);
+    expect(doc.applications).toHaveLength(11);
+    expect(run(['validate', json, '--module', 'enterprise']).status).toBe(0);
+  });
+
+  it('un Mermaid que no se puede importar termina en un mensaje de una línea con código 2, sin stack', () => {
+    const r = run(['import', '--stdin', '--module', 'enterprise'], 'sequenceDiagram\n  A->>B: hola');
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/no se puede importar como arquitectura empresarial/);
+    expect(r.stderr).not.toMatch(/Error inesperado|\n\s+at /);
+  });
+
+  it('enterprise coverage, impact y lifecycle', () => {
+    const coverage = run(['enterprise', 'coverage', ent]);
+    expect(coverage.status).toBe(0);
+    expect(coverage.stdout).toContain('Cobertura: 12 de 12 capacidad(es) hoja tienen al menos una aplicación.');
+
+    const impact = run(['enterprise', 'impact', 'kubernetes', ent]);
+    expect(impact.status).toBe(0);
+    expect(impact.stdout).toContain('Impacto de «Kubernetes» (Tecnología)');
+    expect(impact.stdout).toContain('Responsables a avisar: Equipo Plataforma');
+    expect(run(['enterprise', 'impact', 'tienda-web', ent, '--direction', 'dependencies']).stdout).not.toContain('Responsables a avisar');
+
+    const unknown = run(['enterprise', 'impact', 'nada', ent]);
+    expect(unknown.status).toBe(2);
+    expect(unknown.stderr).toMatch(/No existe el elemento «nada»/);
+
+    const lifecycle = run(['enterprise', 'lifecycle', '--stdin', '--today', '2026-06-15'], readFileSync(ent, 'utf8'));
+    expect(lifecycle.status).toBe(0);
+    expect(lifecycle.stdout).toContain('| WMS heredado | Aplicación | en retirada | — | Gestión de inventario | Gestión de inventario |');
+  });
+
+  it('enterprise from-integration crea el inventario de aplicaciones con referencias URN', () => {
+    const r = run(['enterprise', 'from-integration', 'examples/pedidos-integracion.json']);
+    expect(r.status).toBe(0);
+    const doc = JSON.parse(r.stdout);
+    expect(doc.applications.length).toBeGreaterThan(0);
+    expect(doc.applications[0].ref).toMatch(/^urn:iark:integration:/);
+    expect(doc.technologies.every((t: { kind: string }) => t.kind === 'database')).toBe(true);
+    expect(r.stderr).toMatch(/No se crean capacidades ni procesos/);
+    expect(run(['validate', '--stdin', '--module', 'enterprise'], r.stdout).status).toBe(0);
+  });
+
+  it('generate --module enterprise falla con un mensaje claro sin credenciales', () => {
+    const r = spawnSync(cli[0], [cli[1], 'generate', 'Un banco', '--module', 'enterprise', '--provider', 'anthropic'], {
       encoding: 'utf8',
       env: {
         ...process.env,
