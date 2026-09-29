@@ -5,6 +5,8 @@
  * y el deshacer son comunes y no conocen ningún dominio.
  */
 
+import type { GraphLayout } from '../graph/layout';
+
 /** Figuras que sabe dibujar el lienzo (y, por extensión, cualquier notación de módulo). */
 export type ShapeKind = 'rect' | 'rounded' | 'cylinder' | 'pill' | 'hexagon' | 'chevron' | 'pipe' | 'bar' | 'circle' | 'card' | 'actor' | 'document';
 
@@ -108,6 +110,11 @@ export interface EditorSpec<TDoc> {
   remove(document: TDoc, id: string): EditResult<TDoc>;
   /** Explica por qué no se puede unir ese origen con ese destino con ese tipo de relación; `undefined` si se puede. */
   canConnect?(document: TDoc, kind: string, sourceId: string, targetId: string): string | undefined;
+  /**
+   * Colocación propia de una vista (p. ej. la cuadrícula anidada de un mapa de capacidades). Si devuelve `undefined`, el
+   * lienzo aplica el autolayout común por capas.
+   */
+  layout?(document: TDoc, viewId?: string): GraphLayout | undefined | Promise<GraphLayout | undefined>;
 }
 
 /** Id nuevo y único con la forma `base`, `base-2`, `base-3`… */

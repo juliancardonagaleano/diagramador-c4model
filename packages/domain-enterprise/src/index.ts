@@ -10,4 +10,5 @@ export { fromMermaid, EnterpriseImportError, type EnterpriseImportOptions, type 
 export { fromIntegrationJson } from './import/fromIntegration';
 export { enterpriseAiSpec, generatedEnterpriseSchema, type GeneratedEnterprise } from './ai/generation';
 export { enterpriseCommands } from './commands';
+export { enterpriseEditor } from './editor';
 export { enterpriseModule } from './module';

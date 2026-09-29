@@ -80,3 +80,27 @@ test.describe('lienzo interactivo de módulos', () => {
     await expect(page.locator('.react-flow__edge-text', { hasText: /^1\./ }).first()).toBeVisible();
   });
 });
+
+test.describe('lienzo empresarial', () => {
+  test('el mapa de capacidades se abre anidado con su propia cuadrícula y el paisaje con figuras por capa', async ({ page }) => {
+    const errors = await open(page, 'enterprise');
+    await expect(page.locator('[data-testid="node-gestion-comercial"].cv-group')).toBeVisible();
+    await expect(page.locator('[data-testid="node-ventas-online"][data-kind="capability"]')).toBeVisible();
+    await page.screenshot({ path: 'test-results/canvas-enterprise-capabilities.png' });
+    await page.getByTestId('canvas-view').selectOption('landscape');
+    await expect(page.locator('[data-shape="bar"]').first()).toBeVisible();
+    await expect(page.locator('[data-shape="chevron"]').first()).toBeVisible();
+    await expect(page.locator('.react-flow__edge').first()).toBeVisible();
+    await page.screenshot({ path: 'test-results/canvas-enterprise-landscape.png' });
+    expect(errors).toEqual([]);
+  });
+
+  test('una capacidad nueva entra en el mapa y su madurez se elige en las propiedades', async ({ page }) => {
+    await open(page, 'enterprise');
+    await page.getByTestId('add-capability').click();
+    const inspector = page.getByTestId('inspector');
+    await inspector.getByLabel('Madurez').selectOption('5');
+    await expect(page.locator('.react-flow__node', { hasText: 'madurez 5/5' }).first()).toBeVisible();
+    expect(await docText(page)).toContain('"maturity": 5');
+  });
+});
