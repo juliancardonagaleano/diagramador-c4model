@@ -15,8 +15,8 @@ import {
   splitTraceView,
   viewChoices,
   viewTitle,
-} from './engine';
-import { SOURCES, c4Module, example, securityModule } from './testing';
+} from '@iark/kernel';
+import { SOURCES, c4Module, example, securityModule } from '../src/modules-app/testing';
 
 const securityText = example('seguridad-ejemplo.json');
 

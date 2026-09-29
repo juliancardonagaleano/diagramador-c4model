@@ -1,13 +1,13 @@
-import type { CommandOption, CommandSpec, DomainModule, EntityRef, ExportContext, ImportContext, ModuleIssue, ViewRef } from '@iark/kernel';
-import { extractJson } from '@iark/kernel';
+import { extractJson } from '../util/extractJson';
+import type { CommandOption, CommandSpec, DomainModule, EntityRef, ExportContext, ImportContext, ModuleIssue, ViewRef } from './types';
 
 /**
- * Lógica pura del banco de trabajo de módulos: todo lo que la interfaz y el puente `postMessage` hacen con un módulo lo
- * hacen a través del contrato de `DomainModule` (esquema, validación, vistas, exportadores, importadores y comandos), sin
- * conocer la especialidad. Un módulo nuevo aparece aquí sin tocar este archivo.
+ * Operaciones sobre un módulo, comunes a todas las superficies (banco de trabajo web, puente `postMessage`, servicio HTTP):
+ * todo lo que se hace con un módulo se hace a través del contrato de `DomainModule` (esquema, validación, vistas,
+ * exportadores, importadores y comandos), sin conocer la especialidad. Un módulo nuevo aparece en todas sin tocar este archivo.
  */
 
-/** El banco de trabajo opera con cualquier módulo: el tipo del documento solo lo conoce el propio módulo. */
+/** Las superficies operan con cualquier módulo: el tipo del documento solo lo conoce el propio módulo. */
 export type AnyModule = DomainModule<any>;
 
 export interface FieldIssue {

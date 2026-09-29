@@ -8,10 +8,12 @@ const OWN_EDITOR = new Set(['c4']);
 export interface SuiteManifestOptions {
   version: string;
   /**
-   * Prefijo de la API HTTP de la instancia (`/api`); solo lo declara `iark serve`. El sitio estático (GitHub Pages) no
-   * tiene API, así que su manifiesto no anuncia `api`.
+   * Prefijo de la API HTTP de la instancia, relativo al manifiesto (`../api`); solo lo declara `iark serve`. El sitio
+   * estático (GitHub Pages) no tiene API, así que su manifiesto no anuncia `api`.
    */
   api?: string;
+  /** La instancia sirve el sitio (editores embebibles y JSON Schema estáticos). Por defecto sí; un servicio solo con API, no. */
+  site?: boolean;
 }
 
 /**
@@ -20,13 +22,16 @@ export interface SuiteManifestOptions {
  * Así el mismo manifiesto vale bajo cualquier ruta base (GitHub Pages sirve bajo `/<repositorio>/`).
  */
 export function suiteManifest(registry: ModuleRegistry, options: SuiteManifestOptions): SuiteManifest {
+  const site = options.site ?? true;
+  const api = options.api?.replace(/\/+$/, '');
   const endpoints: Record<string, ModuleManifest['endpoints']> = {};
   for (const module of registry.list()) {
-    endpoints[module.id] = {
-      embed: OWN_EDITOR.has(module.id) ? '../' : `../modulos.html?module=${module.id}`,
-      schema: `../schema/${module.id}-document.schema.json`,
-      ...(options.api ? { api: `${options.api.replace(/\/+$/, '')}/${module.id}` } : {}),
+    const found = {
+      ...(site ? { embed: OWN_EDITOR.has(module.id) ? '../' : `../modulos.html?module=${module.id}` } : {}),
+      ...(site ? { schema: `../schema/${module.id}-document.schema.json` } : api ? { schema: `${api}/${module.id}/schema` } : {}),
+      ...(api ? { api: `${api}/${module.id}` } : {}),
     };
+    if (Object.keys(found).length > 0) endpoints[module.id] = found;
   }
   return buildManifest(registry, { name: SUITE_NAME, version: options.version, endpoints });
 }

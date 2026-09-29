@@ -18,7 +18,7 @@ import {
   type ImportResult,
   type ModuleCapabilities,
   type ViewChoices,
-} from './engine';
+} from '@iark/kernel';
 
 /** Un módulo que el banco de trabajo sabe cargar (bajo demanda: cada especialidad es un trozo aparte del paquete). */
 export interface ModuleSource {

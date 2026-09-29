@@ -7,7 +7,7 @@ import {
   type SuiteCapabilitiesInfo,
 } from '../embed/moduleProtocol';
 import { InvalidDocumentError, type WorkbenchController } from './controller';
-import { viewTitle, type Analysis } from './engine';
+import { viewTitle, type Analysis } from '@iark/kernel';
 
 export interface BridgeOptions {
   controller: WorkbenchController;

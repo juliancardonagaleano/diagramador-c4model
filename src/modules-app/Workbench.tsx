@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import type { WorkbenchController } from './controller';
-import { countBySeverity, locateId } from './engine';
+import { countBySeverity, locateId } from '@iark/kernel';
 import { readFile } from './files';
 import { DiagramPanel, ExportPanel, FilePicker, ImportPanel, IssuesPanel, ReportsPanel } from './panels';
 

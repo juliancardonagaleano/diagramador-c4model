@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { basename, extname } from 'node:path';
 import { Command, InvalidArgumentError } from 'commander';
 import { applyLayoutToView, autoLayoutDocumentWithQuality, layoutView } from '@core/layout/elkLayout';
@@ -16,6 +17,7 @@ import { DEFAULT_AI_MODEL, generateDocument, GenerationError, type Effort } from
 import { analyzeDocument } from '@core/model/issues';
 import { buildManifest, ModuleError, type ModuleRegistry, UnknownModuleError } from '@iark/kernel';
 import { createDefaultRegistry, DEFAULT_MODULE } from './registry';
+import { createSuiteServer } from './serve';
 import { genericExport, genericGenerate, genericPrompt, genericSchema, genericValidate, readModuleDocument } from './generic';
 import { CliError, dslIncludeOptions, extractJson, info, readDocument, readInput, writeOutput } from './io';
 
@@ -140,6 +142,12 @@ function parseLayerSpacing(value: string): number {
 function parseRetries(value: string): number {
   const n = Number.parseInt(value, 10);
   if (!Number.isInteger(n) || n < 0) throw new InvalidArgumentError('Los reintentos deben ser un entero ≥ 0.');
+  return n;
+}
+
+function parsePort(value: string): number {
+  const n = Number.parseInt(value, 10);
+  if (!Number.isInteger(n) || n < 0 || n > 65535) throw new InvalidArgumentError('El puerto debe ser un entero entre 0 y 65535.');
   return n;
 }
 
@@ -411,6 +419,32 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
         process.stdout.write(`${m.id}  ${m.name}  v${m.version}\n`);
         process.stdout.write(`    importa: ${m.importers.map((i) => i.id).join(', ') || '-'}  ·  exporta: ${m.exporters.map((e) => e.id).join(', ') || '-'}\n`);
       }
+    });
+
+  program
+    .command('serve')
+    .description('Servicio HTTP de la suite: API por módulo (validar, vistas, exportar, importar, informes), manifiesto de federación /.well-known/iark.json y, con --static, el sitio')
+    .option('-p, --port <n>', 'puerto (0 elige uno libre)', parsePort, 8787)
+    .option('--host <host>', 'dirección en la que escucha (en un contenedor, 0.0.0.0)', '127.0.0.1')
+    .option('--static <carpeta>', 'sirve también el sitio compilado (p. ej. dist/app), con el editor, el banco de trabajo y el shell', process.env.IARK_STATIC)
+    .option('--cors <orígenes>', 'orígenes autorizados a llamar a la API desde un navegador, separados por comas, o * (por defecto, ninguno)')
+    .action(async (opts) => {
+      if (opts.static && !existsSync(opts.static)) throw new CliError(`La carpeta del sitio «${opts.static}» no existe (¿falta \`npm run build\`?).`);
+      const cors = typeof opts.cors === 'string' ? opts.cors.split(',').map((o: string) => o.trim()).filter(Boolean) : [];
+      const server = createSuiteServer({ registry, version: CLI_VERSION, staticDir: opts.static, cors });
+      await new Promise<void>((resolveListening, rejectListening) => {
+        server.once('error', rejectListening);
+        server.listen(opts.port, opts.host, resolveListening);
+      });
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : opts.port;
+      info(`IArk - DIAgrams escuchando en http://${opts.host.includes(':') ? `[${opts.host}]` : opts.host}:${port}${opts.static ? ` (sitio: ${opts.static})` : ' (solo API)'}`);
+      info(`  manifiesto: /.well-known/iark.json · módulos: /api/modules`);
+      await new Promise<void>((resolveClosed) => {
+        const stop = (): void => void server.close(() => resolveClosed());
+        process.once('SIGINT', stop);
+        process.once('SIGTERM', stop);
+      });
     });
 
   registerModuleCommands(program, registry);

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { WorkbenchController, WorkbenchState } from './controller';
-import { commandInfos, countBySeverity, exportFormats, type CommandInfo, type CommandOutput, type ExportedFile } from './engine';
+import { commandInfos, countBySeverity, exportFormats, type CommandInfo, type CommandOutput, type ExportedFile } from '@iark/kernel';
 import { copyText, downloadText, fileStem, readFile, svgDataUrl } from './files';
 
 const SEVERITY_LABEL = { error: 'Error', warning: 'Aviso', info: 'Nota' } as const;
