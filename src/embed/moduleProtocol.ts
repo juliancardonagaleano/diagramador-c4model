@@ -35,7 +35,7 @@ export const moduleLoadActionSchema = z.object({
 export const moduleConfigureActionSchema = z.object({
   action: z.literal('configure'),
   theme: z.enum(['light', 'dark']).optional(),
-  /** `min` oculta la cabecera y las pestañas: solo editor y vista. */
+  /** `min` oculta la marca y las pestañas de módulos (el anfitrión ya eligió el módulo) y conserva las acciones. */
   ui: z.enum(['full', 'min']).optional(),
 });
 

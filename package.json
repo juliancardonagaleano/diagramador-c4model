@@ -42,6 +42,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "schema": "tsx scripts/generate-schema.ts",
+    "manifest": "tsx scripts/generate-manifest.ts",
     "cli": "tsx src/cli/index.ts",
     "e2e": "playwright test",
     "deploy:pages": "bash scripts/deploy-gh-pages.sh",

@@ -1,4 +1,6 @@
-import { defineConfig } from 'vite';
+import { cpSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
@@ -10,9 +12,27 @@ import { fileURLToPath, URL } from 'node:url';
  */
 const base = process.env.BASE_PATH ?? '/';
 
+/**
+ * Publica los JSON Schema de los módulos (`schema/`) junto al sitio: el manifiesto de federación
+ * (`/.well-known/iark.json`) los anuncia como `endpoints.schema` y sirven de `$schema` para editores y agentes.
+ */
+function publishSchemas(): Plugin {
+  let outDir = 'dist/app';
+  return {
+    name: 'iark-publish-schemas',
+    apply: 'build',
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir);
+    },
+    closeBundle() {
+      if (existsSync('schema')) cpSync('schema', resolve(outDir, 'schema'), { recursive: true });
+    },
+  };
+}
+
 export default defineConfig({
   base,
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), publishSchemas()],
   resolve: {
     alias: {
       '@core': fileURLToPath(new URL('./packages/domain-c4/src', import.meta.url)),
@@ -30,6 +50,7 @@ export default defineConfig({
         'embed-host': fileURLToPath(new URL('./examples/embed-host.html', import.meta.url)),
         modulos: fileURLToPath(new URL('./modulos.html', import.meta.url)),
         'modules-host': fileURLToPath(new URL('./examples/modules-host.html', import.meta.url)),
+        suite: fileURLToPath(new URL('./suite.html', import.meta.url)),
       },
     },
   },

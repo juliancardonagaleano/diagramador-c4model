@@ -73,18 +73,21 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
 
   return (
     <div className="wb" data-ui={ui}>
-      {ui === 'full' && (
-        <header className="wb-header">
-          <a className="wb-brand" href="./" title="Abrir el editor C4">
-            IArk - DIAgrams <small>Módulos</small>
-          </a>
-          <div className="wb-modules" role="tablist" aria-label="Módulos">
-            {controller.sources.map((s) => (
-              <button key={s.id} type="button" role="tab" aria-selected={s.id === state.moduleId} onClick={() => void controller.selectModule(s.id)}>
-                {s.label}
-              </button>
-            ))}
-          </div>
+      <header className="wb-header">
+          {ui === 'full' && (
+            <>
+              <a className="wb-brand" href="./" title="Abrir el editor C4">
+                IArk - DIAgrams <small>Módulos</small>
+              </a>
+              <div className="wb-modules" role="tablist" aria-label="Módulos">
+                {controller.sources.map((s) => (
+                  <button key={s.id} type="button" role="tab" aria-selected={s.id === state.moduleId} onClick={() => void controller.selectModule(s.id)}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           <div className="wb-actions">
             <button type="button" disabled={!state.moduleId} onClick={() => void controller.loadExample()}>
               Cargar ejemplo
@@ -104,8 +107,7 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
               </>
             )}
           </div>
-        </header>
-      )}
+      </header>
 
       <main className="wb-main">
         <section className="wb-editor" aria-label="Documento">

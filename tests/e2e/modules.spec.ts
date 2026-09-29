@@ -140,6 +140,13 @@ test.describe('banco de trabajo de módulos', () => {
     await expect(page.getByRole('alert')).toContainText('No se reconoce el formato');
   });
 
+  test('ui=min oculta la marca y las pestañas de módulos pero conserva las acciones', async ({ page }) => {
+    await page.goto('/modulos.html?module=data&ui=min', { waitUntil: 'networkidle' });
+    await expect(diagram(page)).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole('tab', { name: 'Integración' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Cargar ejemplo' })).toBeVisible();
+  });
+
   test('el borrador se conserva al recargar y «Cargar ejemplo» lo restaura', async ({ page }) => {
     await open(page, 'integration');
     const editor = page.getByLabel('Documento JSON');
