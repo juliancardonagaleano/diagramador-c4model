@@ -5,6 +5,7 @@ import { useActions } from '../../hooks/useActions';
 import { isEmbedMode, useDocumentStore, useTemporalStore } from '../../store/documentStore';
 import { relativeTime } from '../../utils/files';
 import { AboutModal, ShortcutsModal } from './HelpModals';
+import { MermaidPreviewModal } from './MermaidPreviewModal';
 import { DIRECTIONS, DISTRIBUTIONS } from './FloatingToolbar';
 
 const Logo = () => (
@@ -17,21 +18,32 @@ const Logo = () => (
 
 interface MenuProps {
   label: string;
-  items: Array<{ key: string; label: string; onClick?: () => void; disabled?: boolean; divider?: boolean; checked?: boolean; shortcut?: string }>;
+  items: Array<{ key: string; label: string; onClick?: () => void; disabled?: boolean; divider?: boolean; checked?: boolean; shortcut?: string; closeMenu?: boolean }>;
 }
 
 function Menu({ label, items }: MenuProps) {
+  const [open, setOpen] = useState(false);
   return (
     <Dropdown
       trigger="click"
       position="bottomLeft"
+      visible={open}
+      onVisibleChange={setOpen}
       render={
         <Dropdown.Menu>
           {items.map((it) =>
             it.divider ? (
               <Dropdown.Divider key={it.key} />
             ) : (
-              <Dropdown.Item key={it.key} onClick={it.onClick} disabled={it.disabled}>
+              <Dropdown.Item
+                key={it.key}
+                onClick={() => {
+                  it.onClick?.();
+                  // Las opciones que abren un diálogo cierran el menú: si no, quedaría por encima del diálogo.
+                  if (it.closeMenu) setOpen(false);
+                }}
+                disabled={it.disabled}
+              >
                 <div className="flex items-center justify-between gap-6 w-full min-w-[220px]">
                   <span>
                     {it.checked !== undefined && <span className="inline-block w-4">{it.checked ? '✓' : ''}</span>}
@@ -74,6 +86,7 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showMermaid, setShowMermaid] = useState(false);
   const [, tick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => tick((n) => n + 1), 15000);
@@ -105,6 +118,7 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
         { key: 'export', label: 'Exportar .drawio (notación C4)…', onClick: () => void actions.exportDrawio('c4') },
         { key: 'export-card', label: 'Exportar .drawio (tarjetas)…', onClick: () => void actions.exportDrawio('card') },
         { key: 'export-mermaid', label: 'Exportar Mermaid (.mmd)…', onClick: () => void actions.exportMermaid('c4') },
+        { key: 'preview-mermaid', label: 'Vista previa de Mermaid…', onClick: () => setShowMermaid(true), closeMenu: true },
         { key: 'json', label: 'Descargar JSON…', onClick: actions.saveJson },
         { key: 'd2', label: '', divider: true },
         { key: 'exit', label: 'Salir sin guardar', onClick: onEmbedExit },
@@ -123,6 +137,7 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
         { key: 'export-mermaid', label: 'Exportar Mermaid (.mmd)', onClick: () => void actions.exportMermaid('c4') },
         { key: 'export-mermaid-flow', label: 'Exportar Mermaid (diagrama de flujo)', onClick: () => void actions.exportMermaid('flowchart') },
         { key: 'copy-mermaid', label: 'Copiar vista como Mermaid', onClick: () => void actions.exportMermaid('c4', 'clipboard') },
+        { key: 'preview-mermaid', label: 'Vista previa de Mermaid…', onClick: () => setShowMermaid(true), closeMenu: true },
       ];
 
   const editMenu: MenuProps['items'] = [
@@ -248,6 +263,7 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
       </div>
       <AboutModal visible={showAbout} onClose={() => setShowAbout(false)} />
       <ShortcutsModal visible={showShortcuts} onClose={() => setShowShortcuts(false)} />
+      <MermaidPreviewModal visible={showMermaid} onClose={() => setShowMermaid(false)} />
     </header>
   );
 }

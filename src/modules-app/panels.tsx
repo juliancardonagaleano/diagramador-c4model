@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { WorkbenchController, WorkbenchState } from './controller';
 import { commandInfos, countBySeverity, exportFormats, type CommandInfo, type CommandOutput, type ExportedFile } from '@iark/kernel';
+import { MermaidPreview } from '../mermaid-preview/MermaidPreview';
 import { copyText, downloadText, fileStem, readFile, svgDataUrl } from './files';
 
 const SEVERITY_LABEL = { error: 'Error', warning: 'Aviso', info: 'Nota' } as const;
@@ -334,6 +335,12 @@ export function ExportPanel({ controller, state, notify }: PanelProps) {
         <div className="wb-note" role="alert" style={{ margin: '0 0 10px' }}>
           {error}
         </div>
+      )}
+      {preview?.format === 'mermaid' && (
+        <>
+          <h3>Dibujo de Mermaid</h3>
+          <MermaidPreview text={preview.data} label={`Vista previa de Mermaid${state.viewId ? ` (${state.viewId})` : ''}`} />
+        </>
       )}
       {preview && (
         <pre className="wb-out" data-testid="export-preview" data-format={preview.format}>
