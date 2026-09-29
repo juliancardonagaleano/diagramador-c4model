@@ -9,6 +9,7 @@ Editor web de diagramas del **modelo C4** (Contexto, Contenedores y Componentes)
 - **Editor interactivo** con la estética de [drawdb.app](https://www.drawdb.app/): cabecera con menús, toolbar flotante, panel lateral con pestañas y cards, panel de problemas, tema claro/oscuro, deshacer/rehacer, minimapa.
 - **CLI `iark`** para generar diagramas a partir de **instrucciones en lenguaje natural** (Claude, salida estructurada), aplicar autolayout y convertir a `.drawio` sin abrir un navegador. Se puede usar sin clave de API con cualquier otra IA o agente.
 - **Modo embebido** por `<iframe>` con protocolo **postMessage** al estilo de draw.io (`embed.diagrams.net`) y un SDK de anfitrión.
+- **Suite de módulos** (integraciones, datos, empresarial, plataforma, seguridad) con **banco de trabajo web**, **widget embebible** (SDK y Web Component `<iark-module>`), **federación por manifiesto**, **servicio HTTP** (`iark serve`, con Dockerfile) y **trazabilidad entre módulos** (`iark trace`).
 
 ## Instalación
 
@@ -20,6 +21,8 @@ npm test           # pruebas unitarias y de componente (vitest + Testing Library
 npm run test:coverage  # igual, con informe de cobertura (informativo, sin umbral que bloquee)
 npm run e2e        # pruebas de extremo a extremo con @playwright/test (requiere build:app previo)
 npm run verify     # typecheck + test + build + e2e, de punta a punta
+npm run manifest   # regenera public/.well-known/iark.json (manifiesto de federación) a partir de los módulos registrados
+npm run cli -- serve --static dist/app   # servicio HTTP + sitio en http://127.0.0.1:8787 (tras npm run build)
 ```
 
 Requisitos: Node 20+.
@@ -383,6 +386,23 @@ iark security from-platform plataforma.json [--env prod]                        
 
 Al importar un `flowchart`, cada `subgraph` es una zona (con el prefijo `Zona no confiable|DMZ|interna|restringida: …` que pone el exportador se conoce su nivel; sin él se importa como interna y se avisa) y cada nodo, un activo cuyo tipo sale de su clase (`:::actor`, `:::external`, `:::process`, `:::datastore`; también en español) o, si no, de su forma (`[( )]` = almacén, `([ ])` = actor). Al final del texto del nodo se leen `datos confidenciales` y `cifrado en reposo` / `sin cifrar en reposo`. Las flechas son flujos: gruesa `==>` = cifrado, punteada `-.->` = sin cifrar, continua = no se sabe; la etiqueta es `protocolo · descripción · datos … · autenticación …`. Las amenazas y los controles se describen en el JSON, no en Mermaid. La interfaz web todavía no edita este módulo.
 
+## Trazabilidad entre módulos
+
+Los elementos de un documento pueden apuntar a los de otro módulo con una referencia estable `ref: "urn:iark:<módulo>:<id>"` (por ejemplo, un servicio de plataforma que realiza un sistema de integración, o un activo de seguridad que es un servicio de plataforma). Ningún módulo conoce el código de otro: `iark trace` reúne los documentos y sigue esos enlaces.
+
+```bash
+# Enlaces por par de módulos y referencias sin resolver
+iark trace integration=examples/pedidos-integracion.json platform=examples/plataforma-ejemplo.json security=examples/seguridad-ejemplo.json
+# Impacto de tocar un sistema de integración: qué se apoya en él, entre módulos (y de qué se apoya)
+iark trace integration=… platform=… security=… --from integration:pedidos --direction referrers
+iark trace … --format mermaid   # un subgrafo por módulo; --format json para otras herramientas; --strict falla (código 3) con URN mal formadas o inexistentes
+```
+
+- `--direction refs|referrers|both` y `--depth n` acotan el alcance; sin `--from` se muestra el grafo completo.
+- Un módulo sin documento aportado no invalida los enlaces hacia él: se listan como «sin resolver» (y no rompen `--strict`).
+- El servicio HTTP expone lo mismo en `POST /api/trace` (ver más abajo) y `generate --from …` conserva los `ref` del documento base al refinar con IA, aunque el modelo no los conozca.
+- Los ejemplos (`examples/*.json`) ya traen una cadena real: empresarial → integración, plataforma → integración y seguridad → plataforma.
+
 ## CLI `iark`
 
 ```
@@ -527,6 +547,78 @@ Seguridad: solo se atienden mensajes cuyo `source` es `window.parent`; con `&ori
 
 Demo completa: [`examples/embed-host.html`](examples/embed-host.html) (en desarrollo: `http://localhost:5173/examples/embed-host.html`; tras `npm run build` queda en `dist/app/examples/embed-host.html`).
 
+## Suite web: banco de trabajo, widget, shell y servicio
+
+Los cinco módulos nuevos comparten una interfaz genérica que se genera a partir del contrato `DomainModule` (esquema, vistas, exportadores, informes…), de modo que un módulo nuevo aparece en la web sin escribir pantallas. Cada módulo se carga bajo demanda (`import()` dinámico), así que el editor C4 no paga su peso.
+
+| Superficie | Dónde | Para qué |
+|---|---|---|
+| Banco de trabajo | `modulos.html?module=security` | Editar el JSON del módulo con validación en vivo (esquema + reglas del dominio), ver las vistas y las vistas de traza, exportar (Mermaid, SVG, draw.io), importar Mermaid, ejecutar informes y conversiones (`from-integration`…). El borrador se guarda en el navegador (no en modo embebido). |
+| Widget embebible | `modulos.html?embed=1&proto=json&origin=…` | Mismo banco de trabajo dentro de un `<iframe>`, con un protocolo `postMessage` propio (`src/embed/moduleProtocol.ts`). |
+| Shell de la suite | `suite.html` | Descubre los módulos de una instancia leyendo su manifiesto y monta el editor C4 o el widget del módulo elegido. Acepta una URL de manifiesto de otra instancia. |
+| Servicio HTTP | `iark serve` | La misma API para todos los módulos y el sitio estático, en un proceso Node sin dependencias. |
+
+### Protocolo de módulos y SDK
+
+Es el protocolo del editor C4 con dos añadidos: el `init` lleva el `capabilities` de la instancia (módulos, formatos, informes y vistas de traza) y las acciones/eventos llevan un `requestId` para correlacionar las respuestas. El origen del anfitrión es `?origin`, o el del `referrer`, o el propio; los mensajes nunca se envían a `*`.
+
+- **Acciones** (anfitrión → iframe): `load` (con `module`, `document` o texto con `importer`, `viewId`, `autosave`, `readOnly`), `configure` (`theme`, `ui: 'full' | 'min'`), `setView`, `export`, `validate`, `run` (informe o conversión), `capabilities`, `status`, `dialog`, `save`, `exit`.
+- **Eventos** (iframe → anfitrión): `init`, `configure`, `load`, `change`, `autosave`, `issues`, `viewChange`, `export`, `result`, `capabilities`, `save`, `exit`, `error`.
+- **`ui=min`** oculta la marca y las pestañas de módulos pero conserva las acciones.
+
+```js
+import { createIarkModuleEmbed } from 'iark-diagrams/embed'; // o dist/embed/iark-embed.global.js → window.IArkEmbed.createIarkModuleEmbed
+const embed = createIarkModuleEmbed({
+  container: '#panel',
+  url: 'https://mi-servidor/diagramador/modulos.html', // o el `endpoints.embed` del manifiesto
+  module: 'security',
+  document: miDocumento,
+  autosave: true,
+  onChange: ({ document, issues }) => guardar(document),
+});
+const capacidades = await embed.initialized;
+await embed.ready;
+const svg = await embed.export('svg', 'dfd');
+const { output } = await embed.run('risks', { options: { status: 'open' } });
+```
+
+Las acciones que esperan respuesta (`load`, `export`, `validate`, `run`, `capabilities`) devuelven una promesa y se rechazan con el mensaje de `error`, o por tiempo (15 s, configurable). Las que se lanzan antes del `init` se encolan. Demo: [`examples/modules-host.html`](examples/modules-host.html).
+
+### Web Component `<iark-module>`
+
+```html
+<script type="module" src="https://mi-servidor/diagramador/embed/iark-module-element.js"></script>
+<iark-module manifest="https://mi-servidor/diagramador/.well-known/iark.json" module="security" theme="dark" ui="min" style="height: 520px"></iark-module>
+<script>document.querySelector('iark-module').document = miDocumento;</script>
+```
+
+Atributos: `manifest` (descubre el editor del módulo en la instancia) o `src` (URL directa de `modulos.html`), `module`, `theme`, `ui`, `readonly`, `autosave`, `view`. El documento va por la propiedad `document` (objeto o JSON). Eventos DOM: `iark-init`, `iark-load`, `iark-change`, `iark-view-change`, `iark-save`, `iark-exit`, `iark-error`, `iark-result`. Métodos: `export`, `run`, `validate`, `capabilities`, `setView`, `save`; esperan a que el widget esté listo. Demo: [`examples/web-component-host.html`](examples/web-component-host.html). Se empaqueta como `dist/embed/iark-module-element.{js,global.js}` y como el subpath `iark-diagrams/element`.
+
+### Federación por manifiesto
+
+Cada instancia publica `/.well-known/iark.json` (esquema `iark.manifest/1`): módulos, versiones, formatos y **endpoints relativos** al manifiesto (`embed`, `schema`, `api`). El sitio estático lo incluye junto con los JSON Schema de cada módulo (`npm run manifest` lo regenera; una prueba comprueba que no se desincroniza), y `iark serve` lo genera al vuelo con la URL de su API. El shell y el Web Component solo dependen de ese manifiesto, no del código de los módulos.
+
+### Servicio HTTP (`iark serve`)
+
+```bash
+npm run build
+node dist/cli/index.js serve --static dist/app --port 8787      # o: docker build -t iark-diagrams . && docker run --rm -p 8787:8787 iark-diagrams
+curl localhost:8787/api/modules
+curl -X POST localhost:8787/api/security/validate -d @examples/seguridad-ejemplo.json
+curl -X POST 'localhost:8787/api/security/export?format=svg&view=dfd' -d @examples/seguridad-ejemplo.json > dfd.svg
+```
+
+| Ruta | Descripción |
+|---|---|
+| `GET /.well-known/iark.json` · `GET /api/modules` | Manifiesto de la instancia y capacidades de los módulos |
+| `GET /api/<módulo>/capabilities` · `/schema[?kind=generation]` | Formatos, informes, vistas de traza; JSON Schema del documento o de la salida de IA |
+| `POST /api/<módulo>/validate` · `/views` · `/export?format=&view=` | Cuerpo: el documento JSON |
+| `POST /api/<módulo>/import?importer=&name=` | Cuerpo: texto (Mermaid…) → documento y avisos |
+| `POST /api/<módulo>/run/<comando>` | Cuerpo `{ input?, args?, options? }` → informe o conversión |
+| `POST /api/trace` | Cuerpo `{ documents: [{ module, document }], from?, direction?, depth? }` → grafo de trazabilidad |
+
+Sin estado, sin dependencias (`node:http`). Sin `--cors` solo responde al mismo origen; `--cors https://mi-app.example` (o `*`) abre la API a un navegador de otro origen. El cuerpo máximo es de 5 MB. La generación con IA sigue viviendo solo en el CLI. El `Dockerfile` compila y deja solo las dependencias de producción; la imagen no se ha construido en el entorno de desarrollo (no hay demonio Docker), aunque su etapa de ejecución se simuló copiando los mismos archivos.
+
 ## Estructura del proyecto
 
 Monorepo con workspaces de npm. Los paquetes internos se consumen desde su código fuente; `npm run build` los empaqueta dentro de `dist/`.
@@ -539,11 +631,15 @@ packages/domain-data/  @iark/domain-data: módulo `data` (activos, dominios, pip
 packages/domain-enterprise/  @iark/domain-enterprise: módulo `enterprise` (capacidades, procesos, aplicaciones y tecnología con ciclo de vida; mapa de capacidades, paisaje, impacto y obsolescencia; import Mermaid, export Mermaid/SVG/draw.io, IA)
 packages/domain-platform/  @iark/domain-platform: módulo `platform` (entornos, redes, recursos, servicios, despliegues, dependencias y pipelines; topología, despliegue por entorno, entrega continua e impacto; import Mermaid, export Mermaid/SVG/draw.io, IA)
 packages/domain-security/  @iark/domain-security: módulo `security` (zonas de confianza, activos, flujos de datos, amenazas STRIDE y controles; diagrama de flujo de datos, modelo de amenazas, riesgos y superficie de ataque; import Mermaid, export Mermaid/SVG/draw.io, IA)
-src/cli/               comandos de iark (commander); carga los módulos del registro
-src/embed/             protocolo postMessage y SDK de anfitrión
+src/cli/               comandos de iark (commander): módulos, `trace`, `serve`; carga los módulos del registro
+src/embed/             protocolo postMessage (C4 y de módulos), SDK de anfitrión y Web Component <iark-module>
+src/modules-app/       banco de trabajo genérico de módulos (controlador sin React, editor, protocolo del puente)
+src/shell/             shell de la suite (descubrimiento por manifiesto)
 src/app/               editor React (Vite, React Flow, Semi UI, Tailwind)
 schema/                JSON Schema del documento y del formato de generación
-examples/              documento de ejemplo y página anfitriona de demostración
+examples/              documentos de ejemplo por módulo y páginas anfitrionas de demostración
+public/.well-known/    manifiesto de federación publicado con el sitio (iark.json)
+Dockerfile             imagen del servicio (`iark serve` + sitio)
 docs/roadmap.md        hoja de ruta de la suite (integraciones, datos, empresarial, plataforma…)
 tests/e2e/             pruebas Playwright
 ```
