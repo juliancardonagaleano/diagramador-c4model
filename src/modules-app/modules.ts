@@ -2,7 +2,7 @@ import type { ModuleSource } from './controller';
 
 /**
  * Ejemplos del repositorio (`examples/*.json`), cargados bajo demanda: solo se descarga el de la especialidad que se abre.
- * El editor visual de C4 es la aplicación principal (`index.html`), por eso el banco de trabajo no lo lista.
+ * C4 es una especialidad más: su lienzo es el editor principal (`index.html`) embebido en el banco de trabajo.
  */
 const examples = import.meta.glob('../../examples/*.json', { query: '?raw', import: 'default' }) as Record<string, () => Promise<string>>;
 
@@ -14,6 +14,7 @@ const example = (file: string): (() => Promise<string>) => {
 
 /** Módulos que ofrece el banco de trabajo: un trozo de paquete por especialidad, que solo se descarga al abrirla. */
 export const MODULE_SOURCES: ModuleSource[] = [
+  { id: 'c4', label: 'C4', load: () => import('@iark/domain-c4').then((m) => m.c4Module), example: example('banca.json') },
   { id: 'integration', label: 'Integración', load: () => import('@iark/domain-integration').then((m) => m.integrationModule), example: example('pedidos-integracion.json') },
   { id: 'data', label: 'Datos', load: () => import('@iark/domain-data').then((m) => m.dataModule), example: example('ventas-datos.json') },
   { id: 'enterprise', label: 'Empresarial', load: () => import('@iark/domain-enterprise').then((m) => m.enterpriseModule), example: example('empresa-arquitectura.json') },

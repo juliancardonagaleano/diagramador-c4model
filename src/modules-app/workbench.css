@@ -113,8 +113,8 @@ input[type='text'] {
 }
 
 .wb {
-  display: grid;
-  grid-template-rows: auto 1fr;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
 }
@@ -157,6 +157,7 @@ input[type='text'] {
 }
 
 .wb-main {
+  flex: 1;
   display: grid;
   grid-template-columns: minmax(280px, 42%) 1fr;
   min-height: 0;

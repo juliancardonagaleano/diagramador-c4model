@@ -390,7 +390,8 @@ describe('generación con IA', () => {
     const generated = toGenerated(doc);
     const result = generatedToData(generated);
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.document).toEqual(doc);
+    // la especificación de IA no incluye `ref`: los recupera `carryRefs` al refinar (ver el kernel)
+    if (result.ok) expect(result.document).toEqual({ ...doc, assets: doc.assets.map(({ ref: _ref, ...asset }) => asset) });
     const broken = { ...generated, pipelines: [{ ...generated.pipelines[0], inputs: ['fantasma'] }] };
     const failed = generatedToData(broken);
     expect(failed.ok).toBe(false);

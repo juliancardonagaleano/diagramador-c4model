@@ -20,7 +20,7 @@ describe('TraceBoard', () => {
     expect(Object.values(results).every((r) => r.ok)).toBe(true);
     const graph = board.graph();
     expect(graph.documents.map((d) => d.module)).toEqual(['integration', 'data', 'enterprise', 'platform', 'security']);
-    expect(graph.links).toHaveLength(14);
+    expect(graph.links).toHaveLength(15);
     expect(graph.problems).toEqual([]);
     expect(board.moduleLabels().security).toBe('Seguridad');
   });

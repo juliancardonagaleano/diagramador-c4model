@@ -54,6 +54,13 @@ export default defineConfig({
         suite: fileURLToPath(new URL('./suite.html', import.meta.url)),
         trazabilidad: fileURLToPath(new URL('./trazabilidad.html', import.meta.url)),
       },
+      output: {
+        // El módulo C4 lo importa el editor principal de forma estática y el banco de trabajo bajo demanda: si quedara
+        // dentro del trozo del editor, abrir C4 en el banco ejecutaría (y pintaría) el editor entero. Va en su propio trozo.
+        advancedChunks: {
+          groups: [{ name: 'domain-c4', test: /packages[\\/]domain-c4[\\/]/ }],
+        },
+      },
     },
   },
   server: {

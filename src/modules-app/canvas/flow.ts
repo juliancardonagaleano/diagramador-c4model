@@ -69,7 +69,7 @@ export function buildFlow(
     const box = boxes.get(n.id);
     const fallback = { x: (i % 4) * 240, y: Math.floor(i / 4) * 140 };
     const at = moved.get(n.id) ?? (box ? { x: box.x, y: box.y } : fallback);
-    absolute.set(n.id, { ...at, width: box?.width ?? notation.width, height: box?.height ?? notation.height });
+    absolute.set(n.id, { ...at, width: box?.width ?? n.width ?? notation.width, height: box?.height ?? n.height ?? notation.height });
   });
 
   const depth = (id: string): number => {

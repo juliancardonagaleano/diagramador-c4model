@@ -19,7 +19,7 @@ describe('trazabilidad entre módulos', () => {
   it('reúne los enlaces por URN de los ejemplos: seguridad → plataforma → integración', () => {
     const graph = buildTraceGraph(inputs());
     expect(graph.problems).toEqual([]);
-    expect(graph.links).toHaveLength(14);
+    expect(graph.links).toHaveLength(15);
     expect(graph.links).toContainEqual({ from: 'urn:iark:security:pedidos', to: 'urn:iark:platform:pedidos' });
     expect(graph.links).toContainEqual({ from: 'urn:iark:platform:pedidos', to: 'urn:iark:integration:pedidos' });
     expect(graph.documents.find((d) => d.module === 'security')).toMatchObject({ source: 'seguridad.json' });
@@ -29,7 +29,8 @@ describe('trazabilidad entre módulos', () => {
   it('el impacto de un elemento atraviesa módulos: quién se apoya en él, y de qué se apoya', () => {
     const graph = buildTraceGraph(inputs());
     const impact = traceReach(graph, 'urn:iark:integration:pedidos', { direction: 'referrers' });
-    expect(impact.map((r) => [r.node.urn, r.distance])).toEqual([
+    expect(impact.map((r) => [r.node.urn, r.distance]).sort()).toEqual([
+      ['urn:iark:data:erp', 1],
       ['urn:iark:integration:pedidos', 0],
       ['urn:iark:platform:pedidos', 1],
       ['urn:iark:security:pedidos', 2],
@@ -77,12 +78,12 @@ describe('trazabilidad entre módulos', () => {
     const impact = traceReachReport(traceReach(graph, 'urn:iark:integration:pedidos', { direction: 'referrers' }), 'referrers');
     expect(impact).toContain('security:pedidos (Servicio de pedidos) · asset · a 2 saltos');
     expect(impact).not.toContain('De lo que se apoya');
-    expect(impact).toContain('Módulos alcanzados: platform, security');
+    expect(impact).toMatch(/Módulos alcanzados: (platform, data|data, platform), security/);
 
     const mermaid = traceMermaid(graph);
     expect(mermaid.startsWith('flowchart LR')).toBe(true);
     expect(mermaid).toContain('subgraph security["security"]');
-    expect((mermaid.match(/-\.->/g) ?? []).length).toBe(14);
+    expect((mermaid.match(/-\.->/g) ?? []).length).toBe(15);
     const subset = traceMermaid(graph, new Set(['urn:iark:integration:pedidos', 'urn:iark:platform:pedidos']));
     expect((subset.match(/-\.->/g) ?? []).length).toBe(1);
   });
@@ -95,11 +96,11 @@ describe('dibujo del grafo de trazabilidad (SVG)', () => {
     expect(svg.startsWith('<svg')).toBe(true);
     expect(svg).toContain('Trazabilidad');
     expect(svg).toContain('>Seguridad<');
-    expect((svg.match(/marker-end="url\(#arrow\)"/g) ?? []).length).toBe(14);
+    expect((svg.match(/marker-end="url\(#arrow\)"/g) ?? []).length).toBe(15);
 
     const reached = traceReach(graph, 'urn:iark:integration:pedidos', { direction: 'referrers' });
     const subset = await traceSvg(graph, { reached });
-    expect((subset.match(/marker-end="url\(#arrow\)"/g) ?? []).length).toBe(2);
+    expect((subset.match(/marker-end="url\(#arrow\)"/g) ?? []).length).toBe(3);
     // Punto de partida, quien se apoya en él (naranja) y ningún nodo ajeno al alcance.
     expect(subset).toContain('stroke="#0f172a"');
     expect(subset).toContain('stroke="#f59e0b"');

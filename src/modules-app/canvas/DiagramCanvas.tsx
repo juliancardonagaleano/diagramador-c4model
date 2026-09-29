@@ -15,7 +15,7 @@ import { layoutGraph, pretty, type EditResult, type EditorSpec, type GraphLayout
 import './canvas.css';
 import { buildFlow, structureKey, type FlowEdge, type FlowNode } from './flow';
 import type { EditHistory } from './history';
-import { Inspector } from './Inspector';
+import { Inspector, type LinkTools } from './Inspector';
 import { NotationNode } from './NotationNode';
 import { ShapeSvg } from './shapes';
 import { CANVAS_SHORTCUTS, matchShortcut } from './shortcuts';
@@ -33,6 +33,13 @@ export interface DiagramCanvasProps {
   history: EditHistory;
   onText(text: string): void;
   notify(message: string): void;
+  /** Elemento que hay que seleccionar y encuadrar (al llegar desde otro diagrama). */
+  focusId?: string;
+  links?: LinkTools;
+  /** Hay un diagrama al que volver (Alt+↑). */
+  onBack?(): void;
+  /** Avisa de qué elemento está seleccionado (para la miga de pan al seguir un enlace). */
+  onSelect?(id: string | undefined): void;
 }
 
 const nodeTypes = { notation: NotationNode };
@@ -54,12 +61,15 @@ const writePositions = (key: string, positions: Map<string, { x: number; y: numb
   }
 };
 
-function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, readOnly, history, onText, notify }: DiagramCanvasProps) {
+function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, readOnly, history, onText, notify, focusId, links, onBack, onSelect }: DiagramCanvasProps) {
   const flow = useReactFlow();
   const key = positionsKey(moduleId, viewId);
   const [moved, setMoved] = useState(() => readPositions(key));
   const [layout, setLayout] = useState<GraphLayout | undefined>();
   const [selected, setSelected] = useState<string | undefined>();
+  useEffect(() => {
+    onSelect?.(selected);
+  }, [selected, onSelect]);
   const [edgeKind, setEdgeKind] = useState(spec.defaultEdgeKind ?? spec.edgeKinds[0]?.kind ?? '');
   const [showKeys, setShowKeys] = useState(false);
   const wrapper = useRef<HTMLDivElement>(null);
@@ -86,7 +96,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     const kinds = new Map(spec.nodeKinds.map((k) => [k.kind, k]));
     const parents = new Set(g.nodes.filter((n) => n.parentId).map((n) => n.parentId as string));
     const result = await layoutGraph(
-      g.nodes.filter((n) => !parents.has(n.id)).map((n) => ({ id: n.id, width: kinds.get(n.kind)?.width ?? 180, height: kinds.get(n.kind)?.height ?? 72, groupId: n.parentId })),
+      g.nodes.filter((n) => !parents.has(n.id)).map((n) => ({ id: n.id, width: n.width ?? kinds.get(n.kind)?.width ?? 180, height: n.height ?? kinds.get(n.kind)?.height ?? 72, groupId: n.parentId })),
       g.edges.map((e) => ({ id: e.id, source: e.source, target: e.target, label: e.label })),
       g.nodes.filter((n) => parents.has(n.id)).map((n) => ({ id: n.id, groupId: n.parentId })),
       { direction: 'RIGHT' },
@@ -104,9 +114,34 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
   useEffect(() => {
     if (!layout || !fitPending.current) return;
     fitPending.current = false;
-    const timer = window.setTimeout(() => void flow.fitView({ padding: 0.15, duration: 200, maxZoom: 1 }), 60);
+    const timer = window.setTimeout(() => {
+      if (focusId && graph?.nodes.some((n) => n.id === focusId)) {
+        setSelected(focusId);
+        void flow.fitView({ nodes: [{ id: focusId }], padding: 1.2, duration: 250, maxZoom: 1 });
+      } else void flow.fitView({ padding: 0.15, duration: 200, maxZoom: 1 });
+    }, 60);
     return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout, flow]);
+
+  // Foco pedido cuando la vista ya está colocada (p. ej. desde «Referenciado por» dentro del mismo módulo).
+  useEffect(() => {
+    if (!focusId || !layout || !graph?.nodes.some((n) => n.id === focusId)) return;
+    setSelected(focusId);
+    const timer = window.setTimeout(() => void flow.fitView({ nodes: [{ id: focusId }], padding: 1.2, duration: 250, maxZoom: 1 }), 60);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId]);
+
+  const follow = useCallback(
+    (id: string | undefined): void => {
+      const ref = id ? graph?.nodes.find((n) => n.id === id)?.ref : undefined;
+      if (!ref) return notify('El elemento seleccionado no enlaza con ningún otro módulo.');
+      if (!links) return notify('Este banco de trabajo no puede seguir enlaces.');
+      links.follow(ref);
+    },
+    [graph, links, notify],
+  );
 
   const commit = useCallback(
     (result: EditResult<unknown>): string | undefined => {
@@ -183,10 +218,12 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
       else if (action === 'layout') autoLayout();
       else if (action === 'fit') void flow.fitView({ padding: 0.15, duration: 250 });
       else if (action === 'deselect') setSelected(undefined);
+      else if (action === 'follow') follow(selected);
+      else if (action === 'back') onBack?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [autoLayout, flow, redo, remove, selected, undo]);
+  }, [autoLayout, flow, follow, onBack, redo, remove, selected, undo]);
 
   const onNodesChange = useCallback((_: NodeChange[]) => undefined, []);
   const onEdgesChange = useCallback((_: EdgeChange[]) => undefined, []);
@@ -295,6 +332,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
             nodesConnectable={!readOnly}
             elementsSelectable
             onNodeClick={(_, n) => setSelected(n.id)}
+            onNodeDoubleClick={(_, n) => follow(n.id)}
             onEdgeClick={(_, e) => setSelected(e.id)}
             onPaneClick={() => setSelected(undefined)}
             onConnect={onConnect}
@@ -309,7 +347,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
             <MiniMap pannable zoomable nodeColor={(n) => ((n.data as FlowNode['data']).node.fill ?? (n.data as FlowNode['data']).notation.fill)} />
           </ReactFlow>
         </div>
-        <Inspector spec={spec} document={document} id={selected ?? ''} readOnly={readOnly} onPatch={patch} onRemove={remove} />
+        <Inspector spec={spec} document={document} id={selected ?? ''} readOnly={readOnly} moduleId={moduleId} links={links} onPatch={patch} onRemove={remove} />
       </div>
     </div>
   );

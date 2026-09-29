@@ -142,6 +142,12 @@ export class WorkbenchController {
     return module;
   }
 
+  /** Texto con el que se abriría el módulo `id` ahora mismo: el activo, el borrador guardado o el ejemplo. */
+  async draftText(id: string): Promise<string | undefined> {
+    if (id === this.state.moduleId) return this.state.text;
+    return this.options.storage?.read(id) ?? (await this.source(id).example?.());
+  }
+
   // ───────────── módulo y documento ─────────────
 
   /**
