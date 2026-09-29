@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { documentSchema } from '../core/model/schema';
-import type { C4Document, LayoutDirection } from '../core/model/types';
+import { documentSchema } from '@core/model/schema';
+import type { C4Document, LayoutDirection } from '@core/model/types';
 
 /**
  * Protocolo postMessage entre la página anfitriona y el diagramador embebido

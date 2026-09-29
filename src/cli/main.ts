@@ -1,20 +1,24 @@
 import { basename, extname } from 'node:path';
 import { Command, InvalidArgumentError } from 'commander';
-import { applyLayoutToView, autoLayoutDocumentWithQuality, layoutView } from '../core/layout/elkLayout';
-import { formatQuality, type LayoutQuality } from '../core/layout/quality';
-import { sampleDocument } from '../core/model/sample';
-import { toDrawio, DrawioExportError, type DrawioNotation } from '../core/export/drawio/toDrawio';
-import { fromDrawio, DrawioImportError } from '../core/import/drawio/fromDrawio';
-import { fromStructurizrDsl, DslImportError } from '../core/import/structurizr/fromStructurizrDsl';
-import { fromMermaid, looksLikeMermaid, MermaidImportError } from '../core/import/mermaid/fromMermaid';
-import { toMermaid, MermaidExportError, type MermaidFormat } from '../core/export/mermaid/toMermaid';
-import { documentJsonSchema, DocumentValidationError, formatIssues, validateDocument } from '../core/model/schema';
-import type { C4Document, LayoutDensity, LayoutDirectionOption, LayoutDistribution } from '../core/model/types';
-import { generationJsonSchema } from '../core/ai/generationSchema';
-import { standalonePrompt } from '../core/ai/prompt';
-import { DEFAULT_AI_MODEL, generateDocument, GenerationError, type Effort } from '../core/ai/generate';
-import { analyzeDocument } from '../core/model/issues';
+import { applyLayoutToView, autoLayoutDocumentWithQuality, layoutView } from '@core/layout/elkLayout';
+import { formatQuality, type LayoutQuality } from '@core/layout/quality';
+import { sampleDocument } from '@core/model/sample';
+import { toDrawio, DrawioExportError, type DrawioNotation } from '@core/export/drawio/toDrawio';
+import { DrawioImportError } from '@core/import/drawio/fromDrawio';
+import { DslImportError } from '@core/import/structurizr/fromStructurizrDsl';
+import { MermaidImportError } from '@core/import/mermaid/fromMermaid';
+import { toMermaid, MermaidExportError, type MermaidFormat } from '@core/export/mermaid/toMermaid';
+import { documentJsonSchema, DocumentValidationError, formatIssues, validateDocument } from '@core/model/schema';
+import type { C4Document, LayoutDensity, LayoutDirectionOption, LayoutDistribution } from '@core/model/types';
+import { generationJsonSchema } from '@core/ai/generationSchema';
+import { standalonePrompt } from '@core/ai/prompt';
+import { DEFAULT_AI_MODEL, generateDocument, GenerationError, type Effort } from '@core/ai/generate';
+import { analyzeDocument } from '@core/model/issues';
+import { buildManifest, type ModuleRegistry, UnknownModuleError } from '@iark/kernel';
+import { createDefaultRegistry, DEFAULT_MODULE } from './registry';
 import { CliError, dslIncludeOptions, extractJson, info, readDocument, readInput, writeOutput } from './io';
+
+const CLI_VERSION = '0.1.0';
 
 const DIRECTIONS: LayoutDirectionOption[] = ['auto', 'DOWN', 'RIGHT', 'LEFT', 'UP'];
 const DISTRIBUTIONS: LayoutDistribution[] = ['auto', 'centered', 'elk'];
@@ -54,41 +58,47 @@ function parseDensity(value: string): LayoutDensity {
   return v;
 }
 
-const IMPORT_FORMATS = ['auto', 'drawio', 'dsl', 'mermaid'] as const;
-
-function parseImportFormat(value: string): (typeof IMPORT_FORMATS)[number] {
-  const v = value.toLowerCase() as (typeof IMPORT_FORMATS)[number];
-  if (!IMPORT_FORMATS.includes(v)) throw new InvalidArgumentError(`Formato inválido. Use: ${IMPORT_FORMATS.join(', ')}`);
-  return v;
-}
-
-/** Deduce el formato de un archivo a importar: primero por la extensión y, si no basta (stdin, otra extensión), por el contenido. */
-function detectImportFormat(file: string | undefined, text: string): 'drawio' | 'dsl' | 'mermaid' {
-  const ext = file ? extname(file).toLowerCase() : '';
-  if (ext === '.dsl') return 'dsl';
-  if (ext === '.mmd' || ext === '.mermaid') return 'mermaid';
-  if (ext === '.drawio' || ext === '.xml') return 'drawio';
-  const head = text.replace(/^﻿/, '').trimStart();
-  if (head.startsWith('<')) return 'drawio';
-  if (looksLikeMermaid(text)) return 'mermaid';
-  if (/\bworkspace\b/.test(head)) return 'dsl';
-  throw new CliError(`No se reconoce el formato${file ? ` de "${file}"` : ' de la entrada'}: use --format drawio, dsl o mermaid.`, 2);
+/**
+ * Importa una fuente con un importador del módulo: el indicado con `--format` o, si es `auto`, el que se deduce de la
+ * extensión o del contenido.
+ */
+async function importSource(
+  registry: ModuleRegistry,
+  moduleId: string,
+  input: { file?: string; raw: string; format?: string; name?: string; fromFile: boolean },
+): Promise<{ format: string; document: C4Document; warnings: string[] }> {
+  const module = registry.require(moduleId);
+  const ids = module.importers.map((i) => i.id).sort();
+  const requested = (input.format ?? 'auto').toLowerCase();
+  if (requested !== 'auto' && !ids.includes(requested)) {
+    throw new CliError(`Formato inválido «${input.format}». Use: auto, ${ids.join(', ')}.`, 2);
+  }
+  const importer =
+    requested === 'auto'
+      ? registry.detectImporter<C4Document>(moduleId, input.fromFile ? input.file : undefined, input.raw)
+      : module.importers.find((i) => i.id === requested);
+  if (!importer) {
+    const list = ids.length > 1 ? `${ids.slice(0, -1).join(', ')} o ${ids[ids.length - 1]}` : ids.join(', ');
+    throw new CliError(`No se reconoce el formato${input.fromFile ? ` de "${input.file}"` : ' de la entrada'}: use --format ${list}.`, 2);
+  }
+  const fallbackName = input.fromFile && input.file ? basename(input.file).replace(/\.(drawio|xml|dsl|txt|mmd|mermaid|md)$/i, '') : undefined;
+  const outcome = await importer.import(input.raw, {
+    name: input.name,
+    fallbackName,
+    file: input.fromFile ? input.file : undefined,
+    // Solo el DSL de Structurizr lo usa (resolver `!include` sin salir de la carpeta del archivo).
+    extra: input.fromFile && input.file ? dslIncludeOptions(input.file) : undefined,
+  });
+  return { format: importer.id, document: outcome.document as C4Document, warnings: outcome.warnings };
 }
 
 /** Documento base de `generate`/`prompt --from`: un JSON del modelo o cualquier fuente importable (.drawio, .dsl, .mmd). */
-async function readBaseDocument(file: string): Promise<C4Document> {
+async function readBaseDocument(registry: ModuleRegistry, file: string): Promise<C4Document> {
   const raw = readInput(file, false);
   if (extname(file).toLowerCase() === '.json' || raw.trimStart().startsWith('{')) return readDocument(file, false);
-  const format = detectImportFormat(file, raw);
-  const fallbackName = basename(file).replace(/\.(drawio|xml|dsl|txt|mmd|mermaid|md)$/i, '');
-  const imported =
-    format === 'dsl'
-      ? fromStructurizrDsl(raw, { fallbackName, ...dslIncludeOptions(file) })
-      : format === 'mermaid'
-        ? fromMermaid(raw, { fallbackName })
-        : await fromDrawio(raw, { name: fallbackName });
+  const imported = await importSource(registry, DEFAULT_MODULE, { file, raw, fromFile: true });
   for (const warning of imported.warnings) info(`aviso: ${warning}`);
-  info(`Documento base importado de ${format}: ${imported.document.model.elements.length} elementos, ${imported.document.model.relationships.length} relaciones.`);
+  info(`Documento base importado de ${imported.format}: ${imported.document.model.elements.length} elementos, ${imported.document.model.relationships.length} relaciones.`);
   return imported.document;
 }
 
@@ -142,12 +152,12 @@ function jsonOut(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-export function buildProgram(): Command {
+export function buildProgram(registry: ModuleRegistry = createDefaultRegistry()): Command {
   const program = new Command();
   program
     .name('iark')
     .description('IArk - DIAgrams: genera modelos con IA, aplica autolayout y exporta a .drawio, sin navegador.')
-    .version('0.1.0')
+    .version(CLI_VERSION)
     .configureOutput({ writeErr: (s) => process.stderr.write(s) });
 
   program
@@ -167,7 +177,7 @@ export function buildProgram(): Command {
     .option('--distribution <auto|centered|elk>', 'distribución del autolayout', parseDistribution)
     .option('--notation <c4|card>', 'notación de las figuras en el .drawio', parseNotation, 'c4')
     .action(async (instruction: string, opts) => {
-      const base = opts.from ? await readBaseDocument(opts.from) : undefined;
+      const base = opts.from ? await readBaseDocument(registry, opts.from) : undefined;
       const result = await generateDocument({
         instruction,
         base,
@@ -278,22 +288,15 @@ export function buildProgram(): Command {
     .description('Importa un diagrama de draw.io (.drawio), un DSL de Structurizr (.dsl) o un diagrama de Mermaid (.mmd) y lo convierte en un documento C4 en JSON')
     .argument('[archivo]', 'archivo de entrada: .drawio, .dsl o .mmd (o "-" para stdin)')
     .option('--stdin', 'leer el archivo de la entrada estándar')
-    .option('--format <formato>', `formato de entrada: ${IMPORT_FORMATS.join('|')} (auto lo deduce de la extensión o del contenido)`, parseImportFormat, 'auto')
+    .option('--format <formato>', 'formato de entrada: auto|drawio|dsl|mermaid (auto lo deduce de la extensión o del contenido)', 'auto')
+    .option('--module <id>', 'módulo de la suite que importa el documento (ver `iark modules`)', DEFAULT_MODULE)
     .option('-o, --out <archivo.json>', 'archivo de salida (por defecto stdout)')
     .option('--name <nombre>', 'nombre del diagrama (por defecto, el del workspace del DSL o el nombre del archivo)')
     .option('--layout', 'aplica autolayout (ELK) a las vistas sin coordenadas (un DSL o Mermaid no las tienen)', false)
     .action(async (file: string | undefined, opts) => {
       const raw = readInput(file, opts.stdin);
       const fromFile = !opts.stdin && file !== undefined && file !== '-';
-      const format = opts.format === 'auto' ? detectImportFormat(fromFile ? file : undefined, raw) : opts.format;
-      const fallbackName = fromFile ? basename(file).replace(/\.(drawio|xml|dsl|txt|mmd|mermaid|md)$/i, '') : undefined;
-
-      const imported =
-        format === 'dsl'
-          ? fromStructurizrDsl(raw, { name: opts.name, fallbackName, ...(fromFile ? dslIncludeOptions(file) : {}) })
-          : format === 'mermaid'
-            ? fromMermaid(raw, { name: opts.name, fallbackName })
-            : await fromDrawio(raw, { name: opts.name ?? fallbackName });
+      const imported = await importSource(registry, opts.module, { file, raw, format: opts.format, name: opts.name, fromFile });
       let { document } = imported;
       for (const warning of imported.warnings) info(`aviso: ${warning}`);
 
@@ -354,7 +357,7 @@ export function buildProgram(): Command {
     .argument('<instrucción>', 'descripción del sistema o instrucción de refinamiento')
     .option('-f, --from <archivo>', 'documento existente a refinar: JSON, .drawio, .dsl (Structurizr) o .mmd (Mermaid)')
     .action(async (instruction: string, opts) => {
-      const base = opts.from ? await readBaseDocument(opts.from) : undefined;
+      const base = opts.from ? await readBaseDocument(registry, opts.from) : undefined;
       process.stdout.write(standalonePrompt(instruction, base));
     });
 
@@ -365,7 +368,46 @@ export function buildProgram(): Command {
       process.stdout.write(jsonOut(sampleDocument));
     });
 
+  program
+    .command('modules')
+    .description('Lista los módulos (especialidades) de la suite instalados; con --json, su manifiesto de federación')
+    .option('--json', 'imprime el manifiesto (`iark.manifest/1`) en JSON', false)
+    .action((opts) => {
+      if (opts.json) {
+        process.stdout.write(jsonOut(buildManifest(registry, { name: 'IArk - DIAgrams', version: CLI_VERSION })));
+        return;
+      }
+      for (const m of registry.list()) {
+        process.stdout.write(`${m.id}  ${m.name}  v${m.version}\n`);
+        process.stdout.write(`    importa: ${m.importers.map((i) => i.id).join(', ') || '-'}  ·  exporta: ${m.exporters.map((e) => e.id).join(', ') || '-'}\n`);
+      }
+    });
+
+  registerModuleCommands(program, registry);
+
   return program;
+}
+
+/** Cada módulo con `cliCommands` cuelga sus subcomandos de `iark <módulo> …`: instalar un módulo extiende el CLI. */
+function registerModuleCommands(program: Command, registry: ModuleRegistry): void {
+  for (const module of registry.list()) {
+    if (!module.cliCommands?.length) continue;
+    const group = program.command(module.id).description(`${module.name}: comandos del módulo`);
+    for (const spec of module.cliCommands) {
+      const cmd = group.command(spec.name).description(spec.description);
+      for (const arg of spec.args ?? []) cmd.argument(arg.required ? `<${arg.name}>` : `[${arg.name}]`, arg.description);
+      for (const opt of spec.options ?? []) cmd.option(opt.flags, opt.description, opt.default as string | boolean | undefined);
+      cmd.option('--stdin', 'leer la entrada estándar', false);
+      cmd.action(async (...actionArgs: unknown[]) => {
+        const command = actionArgs[actionArgs.length - 1] as Command;
+        const options = command.opts();
+        const args = actionArgs.slice(0, (spec.args ?? []).length).map((a) => String(a ?? ''));
+        const stdin = options.stdin ? readInput(undefined, true) : undefined;
+        const out = await spec.run({ args, options, stdin });
+        if (out) process.stdout.write(out.endsWith('\n') ? out : `${out}\n`);
+      });
+    }
+  }
 }
 
 export async function run(argv = process.argv): Promise<void> {
@@ -376,6 +418,11 @@ export async function run(argv = process.argv): Promise<void> {
     if (error instanceof CliError) {
       process.stderr.write(`${error.message}\n`);
       process.exitCode = error.exitCode;
+      return;
+    }
+    if (error instanceof UnknownModuleError) {
+      process.stderr.write(`${error.message}\n`);
+      process.exitCode = 2;
       return;
     }
     if (error instanceof DocumentValidationError) {

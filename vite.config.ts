@@ -15,7 +15,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
-      '@core': fileURLToPath(new URL('./src/core', import.meta.url)),
+      '@core': fileURLToPath(new URL('./packages/domain-c4/src', import.meta.url)),
       '@app': fileURLToPath(new URL('./src/app', import.meta.url)),
       '@embed': fileURLToPath(new URL('./src/embed', import.meta.url)),
     },

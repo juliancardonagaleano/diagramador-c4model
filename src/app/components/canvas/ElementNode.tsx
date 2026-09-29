@@ -1,6 +1,6 @@
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 import { memo } from 'react';
-import { C4_COLORS, C4_EXTERNAL_COLOR, ELEMENT_TYPE_LABELS, type C4Element } from '../../../core/model/types';
+import { C4_COLORS, C4_EXTERNAL_COLOR, ELEMENT_TYPE_LABELS, type C4Element } from '@core/model/types';
 import { C4Shape, shapeGeometry, shapeOf } from './C4Shape';
 
 export type ElementNodeData = {

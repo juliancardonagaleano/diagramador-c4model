@@ -1,0 +1,18 @@
+{
+  "name": "@iark/domain-c4",
+  "version": "0.1.0",
+  "private": true,
+  "description": "IArk - DIAgrams: módulo de arquitectura de soluciones (modelo C4): documento, vistas, autolayout, importadores y exportadores, prompts de IA",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./module": "./src/module.ts"
+  },
+  "dependencies": {
+    "@iark/kernel": "*",
+    "elkjs": "^0.12.0",
+    "fast-xml-parser": "^5.3.4",
+    "nanoid": "^5.1.6",
+    "zod": "^4.3.3"
+  }
+}

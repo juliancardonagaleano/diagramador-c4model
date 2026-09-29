@@ -1,9 +1,9 @@
 import { readFileSync, readSync, realpathSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
-import type { IncludeResolver } from '../core/import/structurizr/fromStructurizrDsl';
-import { parseDocument } from '../core/model/schema';
-import { extractJson } from '../core/util/extractJson';
-import type { C4Document } from '../core/model/types';
+import type { IncludeResolver } from '@core/import/structurizr/fromStructurizrDsl';
+import { parseDocument } from '@core/model/schema';
+import { extractJson } from '@iark/kernel';
+import type { C4Document } from '@core/model/types';
 
 export { extractJson };
 

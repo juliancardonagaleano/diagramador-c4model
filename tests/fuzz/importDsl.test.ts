@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { DslImportError, fromStructurizrDsl, type IncludeResolver } from '../../src/core/import/structurizr/fromStructurizrDsl';
-import { validateDocument } from '../../src/core/model/schema';
+import { DslImportError, fromStructurizrDsl, type IncludeResolver } from '@core/import/structurizr/fromStructurizrDsl';
+import { validateDocument } from '@core/model/schema';
 
 function mulberry32(a: number) {
   return () => {

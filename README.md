@@ -361,15 +361,21 @@ Demo completa: [`examples/embed-host.html`](examples/embed-host.html) (en desarr
 
 ## Estructura del proyecto
 
+Monorepo con workspaces de npm. Los paquetes internos se consumen desde su código fuente; `npm run build` los empaqueta dentro de `dist/`.
+
 ```
-src/core/     modelo, esquema zod, derivación de vistas, autolayout ELK, export/import .drawio, import del DSL de Structurizr, IA (sin DOM)
-src/cli/      comandos de iark (commander)
-src/embed/    protocolo postMessage y SDK de anfitrión
-src/app/      editor React (Vite, React Flow, Semi UI, Tailwind)
-schema/       JSON Schema del documento y del formato de generación
-examples/     documento de ejemplo y página anfitriona de demostración
-tests/e2e/    pruebas Playwright
+packages/kernel/       @iark/kernel: contrato de módulo (DomainModule), registro, URN, manifiesto de federación, cliente de IA y utilidades de importación
+packages/domain-c4/    @iark/domain-c4: módulo `c4` (modelo, esquema zod, vistas, autolayout ELK, import/export draw.io, Structurizr y Mermaid, prompts de IA; sin DOM)
+src/cli/               comandos de iark (commander); carga los módulos del registro
+src/embed/             protocolo postMessage y SDK de anfitrión
+src/app/               editor React (Vite, React Flow, Semi UI, Tailwind)
+schema/                JSON Schema del documento y del formato de generación
+examples/              documento de ejemplo y página anfitriona de demostración
+docs/roadmap.md        hoja de ruta de la suite (integraciones, datos, empresarial, plataforma…)
+tests/e2e/             pruebas Playwright
 ```
+
+`iark modules` lista los módulos instalados y `iark modules --json` emite su manifiesto (`iark.manifest/1`), que es la base de la federación. Cada especialidad nueva es un paquete `@iark/domain-*` que implementa `DomainModule` y se registra en `src/cli/registry.ts`.
 
 ## Decisiones de diseño
 

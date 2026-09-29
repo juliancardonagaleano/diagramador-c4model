@@ -12,11 +12,11 @@ import {
   isValidParentType,
   suggestViewElements,
   typeChangeBlockedReason,
-} from '../../core/model/factories';
-import { sampleDocument } from '../../core/model/sample';
-import { applyLayoutToView, layoutView, type LayoutOptions } from '../../core/layout/elkLayout';
-import type { LayoutQuality } from '../../core/layout/quality';
-import type { LayoutDirection } from '../../core/model/types';
+} from '@core/model/factories';
+import { sampleDocument } from '@core/model/sample';
+import { applyLayoutToView, layoutView, type LayoutOptions } from '@core/layout/elkLayout';
+import type { LayoutQuality } from '@core/layout/quality';
+import type { LayoutDirection } from '@core/model/types';
 
 /** true si el id de ruta (relación o `rel@origen->destino`) toca alguno de los elementos movidos. */
 function touchesAny(routeId: string, moved: Map<string, unknown>): boolean {
@@ -40,7 +40,7 @@ import {
   type LayoutDirectionOption,
   type LayoutDistribution,
   type ViewType,
-} from '../../core/model/types';
+} from '@core/model/types';
 
 export type Selection =
   | { kind: 'element'; id: string }

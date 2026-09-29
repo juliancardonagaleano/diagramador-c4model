@@ -362,3 +362,27 @@ describe('iark: Mermaid', () => {
     expect(r.stdout).toContain('Aplicación web');
   });
 });
+
+describe('iark: módulos de la suite', () => {
+  it('modules lista los módulos instalados y --json emite el manifiesto', () => {
+    const list = run(['modules']);
+    expect(list.status).toBe(0);
+    expect(list.stdout).toMatch(/^c4 {2}Arquitectura de soluciones \(C4\) {2}v1\.0\.0/);
+    expect(list.stdout).toMatch(/importa: drawio, mermaid, dsl {2}·/);
+    const manifest = JSON.parse(run(['modules', '--json']).stdout);
+    expect(manifest).toMatchObject({ schema: 'iark.manifest/1', name: 'IArk - DIAgrams' });
+    expect(manifest.modules[0]).toMatchObject({ id: 'c4', importFormats: ['drawio', 'mermaid', 'dsl'], exportFormats: ['drawio', 'mermaid'] });
+  });
+
+  it('--module desconocido falla con la lista de módulos disponibles', () => {
+    const r = run(['import', 'examples/banca.mmd', '--module', 'datos']);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/No existe el módulo «datos»\. Módulos disponibles: c4\./);
+  });
+
+  it('--format inválido lista los formatos del módulo', () => {
+    const r = run(['import', 'examples/banca.mmd', '--format', 'visio']);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/Formato inválido «visio»\. Use: auto, drawio, dsl, mermaid\./);
+  });
+});

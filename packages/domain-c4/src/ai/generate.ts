@@ -3,10 +3,20 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { autoLayoutDocument } from '../layout/elkLayout';
 import { formatIssues } from '../model/schema';
 import type { C4Document, LayoutDensity, LayoutDirectionOption, LayoutDistribution } from '../model/types';
-import { extractJson } from '../util/extractJson';
 import { generatedDocumentSchema, generatedToDocument, generationJsonSchema, type GeneratedDocument } from './generationSchema';
-import { createAiClient, credentialsHint, openaiSettings, resolveModel, resolveProvider, type AiProvider } from './client';
-import { chatCompletion, HttpError, initialCompatState, type ChatMessage } from './openaiCompat';
+import {
+  chatCompletion,
+  createAiClient,
+  credentialsHint,
+  extractJson,
+  HttpError,
+  initialCompatState,
+  openaiSettings,
+  resolveModel,
+  resolveProvider,
+  type AiProvider,
+  type ChatMessage,
+} from '@iark/kernel';
 import { retryPrompt, systemPrompt, userPrompt } from './prompt';
 
 export const DEFAULT_AI_MODEL = 'claude-opus-5';

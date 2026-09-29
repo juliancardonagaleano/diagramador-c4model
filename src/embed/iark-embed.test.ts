@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
-import { sampleDocument } from '../core/model/sample';
+import { sampleDocument } from '@core/model/sample';
 import { createIarkEmbed } from './iark-embed';
 
 function fromIframe(iframe: HTMLIFrameElement, data: unknown, origin = 'http://localhost') {

@@ -1,7 +1,6 @@
 import { classifyFill, CARD_FILL, parseC4TypeLabel, type C4CellKind } from '../../export/drawio/styles';
 import { slugify } from '../../model/factories';
-import { MAX_ID_LENGTH, pickId } from '../ids';
-import { Warnings } from '../warnings';
+import { MAX_ID_LENGTH, pickId, Warnings } from '@iark/kernel';
 import { formatIssues, validateDocument } from '../../model/schema';
 import {
   DEFAULT_SIZES,

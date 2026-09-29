@@ -1,7 +1,7 @@
 import { Button, Dropdown, Empty, Input } from '@douyinfe/semi-ui';
 import { IconPlus, IconSearch } from '@douyinfe/semi-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { ELEMENT_TYPE_LABELS, type ElementType } from '../../../core/model/types';
+import { ELEMENT_TYPE_LABELS, type ElementType } from '@core/model/types';
 import { useDocumentStore } from '../../store/documentStore';
 import { ElementCard } from './ElementCard';
 

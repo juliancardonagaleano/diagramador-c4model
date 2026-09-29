@@ -15,8 +15,7 @@ import {
   type ViewType,
 } from '../../model/types';
 import { defaultViews } from '../defaultViews';
-import { pickId } from '../ids';
-import { Warnings } from '../warnings';
+import { pickId, Warnings } from '@iark/kernel';
 import { DslImportError, parseDsl, type DslStatement, type DslToken, type IncludeResolver } from './parse';
 
 export { DslImportError };

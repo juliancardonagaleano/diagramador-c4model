@@ -24,6 +24,9 @@
       "import": "./dist/embed/iark-embed.js"
     }
   },
+  "workspaces": [
+    "packages/*"
+  ],
   "files": [
     "dist",
     "schema",

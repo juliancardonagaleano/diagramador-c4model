@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
-import { validateDocument } from '../../core/model/schema';
+import { validateDocument } from '@core/model/schema';
 import { useDocumentStore } from './documentStore';
 
 function reset() {

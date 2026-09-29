@@ -1,7 +1,7 @@
 import { Button, TextArea, Toast, Tooltip } from '@douyinfe/semi-ui';
 import { IconCopy, IconImport, IconTerminal } from '@douyinfe/semi-icons';
 import { useState } from 'react';
-import { standalonePrompt } from '../../../core/ai/prompt';
+import { standalonePrompt } from '@core/ai/prompt';
 import { useActions } from '../../hooks/useActions';
 import { useDocumentStore } from '../../store/documentStore';
 import { downloadText } from '../../utils/files';

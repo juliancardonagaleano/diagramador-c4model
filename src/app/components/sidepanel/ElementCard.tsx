@@ -1,8 +1,8 @@
 import { Button, Input, Select, Switch, TextArea, Tooltip } from '@douyinfe/semi-ui';
 import { IconDelete, IconEyeClosed, IconEyeOpened, IconTreeTriangleDown, IconTreeTriangleRight } from '@douyinfe/semi-icons';
 import { useEffect, useState } from 'react';
-import { C4_COLORS, C4_EXTERNAL_COLOR, ELEMENT_TYPE_LABELS, PARENT_TYPE, type C4Element, type ElementShape, type ElementType } from '../../../core/model/types';
-import { isValidParentType, typeChangeBlockedReason } from '../../../core/model/factories';
+import { C4_COLORS, C4_EXTERNAL_COLOR, ELEMENT_TYPE_LABELS, PARENT_TYPE, type C4Element, type ElementShape, type ElementType } from '@core/model/types';
+import { isValidParentType, typeChangeBlockedReason } from '@core/model/factories';
 import { useDocumentStore } from '../../store/documentStore';
 
 const SHAPES: Array<{ value: ElementShape; label: string }> = [

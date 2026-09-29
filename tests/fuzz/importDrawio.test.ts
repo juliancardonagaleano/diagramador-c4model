@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { toDrawio } from '../../src/core/export/drawio/toDrawio';
-import { DrawioImportError, fromDrawio } from '../../src/core/import/drawio/fromDrawio';
-import { autoLayoutDocument } from '../../src/core/layout/elkLayout';
-import { sampleDocument } from '../../src/core/model/sample';
-import { validateDocument } from '../../src/core/model/schema';
+import { toDrawio } from '@core/export/drawio/toDrawio';
+import { DrawioImportError, fromDrawio } from '@core/import/drawio/fromDrawio';
+import { autoLayoutDocument } from '@core/layout/elkLayout';
+import { sampleDocument } from '@core/model/sample';
+import { validateDocument } from '@core/model/schema';
 
 function mulberry32(a: number) {
   return () => {

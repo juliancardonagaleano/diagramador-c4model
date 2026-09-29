@@ -1,14 +1,14 @@
 import { Modal, Toast } from '@douyinfe/semi-ui';
 import { createElement, useCallback } from 'react';
-import { toDrawio, type DrawioNotation } from '../../core/export/drawio/toDrawio';
-import { autoLayoutDocument } from '../../core/layout/elkLayout';
-import { DrawioImportError, fromDrawio } from '../../core/import/drawio/fromDrawio';
-import { DslImportError, fromStructurizrDsl } from '../../core/import/structurizr/fromStructurizrDsl';
-import { fromMermaid, MermaidImportError } from '../../core/import/mermaid/fromMermaid';
-import { toMermaid, type MermaidFormat } from '../../core/export/mermaid/toMermaid';
-import type { C4Document } from '../../core/model/types';
-import { validateDocument, formatIssues } from '../../core/model/schema';
-import type { LayoutDirectionOption, LayoutDistribution } from '../../core/model/types';
+import { toDrawio, type DrawioNotation } from '@core/export/drawio/toDrawio';
+import { autoLayoutDocument } from '@core/layout/elkLayout';
+import { DrawioImportError, fromDrawio } from '@core/import/drawio/fromDrawio';
+import { DslImportError, fromStructurizrDsl } from '@core/import/structurizr/fromStructurizrDsl';
+import { fromMermaid, MermaidImportError } from '@core/import/mermaid/fromMermaid';
+import { toMermaid, type MermaidFormat } from '@core/export/mermaid/toMermaid';
+import type { C4Document } from '@core/model/types';
+import { validateDocument, formatIssues } from '@core/model/schema';
+import type { LayoutDirectionOption, LayoutDistribution } from '@core/model/types';
 import { useDocumentStore } from '../store/documentStore';
 import { downloadText, extractJson, pickTextFile, safeFilename } from '../utils/files';
 

@@ -1,10 +1,10 @@
 import { Modal, Toast } from '@douyinfe/semi-ui';
 import { useEffect, useRef } from 'react';
-import { toDrawio } from '../../core/export/drawio/toDrawio';
-import { autoLayoutDocument } from '../../core/layout/elkLayout';
-import { viewLevel } from '../../core/model/factories';
-import { formatIssues, validateDocument } from '../../core/model/schema';
-import type { C4Document } from '../../core/model/types';
+import { toDrawio } from '@core/export/drawio/toDrawio';
+import { autoLayoutDocument } from '@core/layout/elkLayout';
+import { viewLevel } from '@core/model/factories';
+import { formatIssues, validateDocument } from '@core/model/schema';
+import type { C4Document } from '@core/model/types';
 import { parseHostAction, PROTOCOL_VERSION, type EmbedEvent, type HostAction } from '../../embed/protocol';
 import { isEmbedMode, useDocumentStore } from '../store/documentStore';
 import { extractJson } from '../utils/files';

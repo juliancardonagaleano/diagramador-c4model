@@ -56,7 +56,7 @@ export {
   type GeneratedDocument,
 } from './ai/generationSchema';
 export { systemPrompt, userPrompt, standalonePrompt } from './ai/prompt';
-export { createAiClient, resolveModel, resolveProvider, type AiProvider } from './ai/client';
+export { createAiClient, resolveModel, resolveProvider, extractJson, type AiProvider } from '@iark/kernel';
 export { generateDocument, GenerationError, DEFAULT_AI_MODEL, type GenerateOptions, type GenerateResult, type Effort } from './ai/generate';
 export { analyzeDocument, type DocumentIssue } from './model/issues';
-export { extractJson } from './util/extractJson';
+export { c4Module } from './module';

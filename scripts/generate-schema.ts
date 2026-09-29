@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { documentJsonSchema } from '../src/core/model/schema';
-import { generationJsonSchema } from '../src/core/ai/generationSchema';
+import { documentJsonSchema } from '@core/model/schema';
+import { generationJsonSchema } from '@core/ai/generationSchema';
 
 mkdirSync('schema', { recursive: true });
 const doc = { $id: 'https://github.com/juliancardonagaleano/diagramador-c4model/schema/c4-document.schema.json', title: 'Documento C4 (IArk - DIAgrams)', ...documentJsonSchema() };

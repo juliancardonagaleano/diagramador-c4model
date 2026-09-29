@@ -1,4 +1,4 @@
-import type { C4Document, LayoutDirection } from '../core/model/types';
+import type { C4Document, LayoutDirection } from '@core/model/types';
 import type { EmbedEvent, ExportFormat, HostAction, LoadAction } from './protocol';
 
 export type { EmbedEvent, ExportFormat, HostAction, C4Document };

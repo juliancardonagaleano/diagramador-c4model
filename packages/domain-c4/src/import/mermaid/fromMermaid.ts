@@ -2,8 +2,7 @@ import { slugify } from '../../model/factories';
 import { formatIssues, validateDocument } from '../../model/schema';
 import { DOCUMENT_VERSION, PARENT_TYPE, type C4Document, type C4Element, type C4Relationship, type ElementShape, type ElementType } from '../../model/types';
 import { defaultViews } from '../defaultViews';
-import { pickId } from '../ids';
-import { Warnings } from '../warnings';
+import { pickId, Warnings } from '@iark/kernel';
 
 export class MermaidImportError extends Error {
   constructor(message: string) {
