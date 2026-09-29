@@ -35,24 +35,16 @@ Requisitos: Node 20+.
 
 ## Despliegue (GitHub Pages)
 
-La app es un sitio estático (`dist/app`), sin servidor: la generación con IA vive solo en el CLI. El workflow
-`.github/workflows/deploy-pages.yml` construye la app con `npm run build:app` y la publica en GitHub Pages en cada
-push a `master` (también se puede lanzar a mano desde la pestaña *Actions*):
+La app es un sitio estático (`dist/app`), sin servidor: la generación con IA vive solo en el CLI. No hay workflow
+de GitHub Actions: el sitio compilado se entrega en la rama `gh-pages` con `npm run deploy:pages`, que construye la
+app con la ruta base `/<repositorio>/` y publica el resultado (solo el sitio compilado, más `.nojekyll`). La rama
+se reescribe en cada publicación.
 
+- Origen de Pages: *Settings → Pages → Build and deployment → Deploy from a branch → `gh-pages` / (root)*.
 - URL: `https://<usuario>.github.io/<repositorio>/` (la demo del modo embebido queda en
   `.../examples/embed-host.html`).
-- Como Pages sirve bajo `/<repositorio>/`, el workflow fija `BASE_PATH` y `vite.config.ts` lo usa como `base`.
-  En hostings que sirven en la raíz (Cloudflare Pages, Netlify, Vercel) basta con el comando `npm run build:app`
-  y la carpeta `dist/app`, sin definir `BASE_PATH`.
-- El origen de Pages debe ser **GitHub Actions** (*Settings → Pages → Build and deployment → Source*). Si Pages
-  está en "Deploy from a branch", GitHub sirve el código fuente del repositorio (el `index.html` de la raíz carga
-  `/src/app/main.tsx`, que el navegador no ejecuta) y la página queda en blanco; además `actions/deploy-pages`
-  rechaza el despliegue. La primera ejecución del workflow intenta activar Pages con ese origen; si ya estaba
-  activado desde una rama, cámbialo a mano y relanza el workflow.
-
-**Sin GitHub Actions** (por ejemplo, cuenta con la facturación bloqueada): `npm run deploy:pages` construye la app
-con la ruta base y publica `dist/app` en la rama `gh-pages`. En ese caso el origen de Pages es *Deploy from a
-branch → `gh-pages` / (root)*. La rama se reescribe en cada publicación (contiene solo el sitio compilado).
+- `vite.config.ts` usa `BASE_PATH` como `base`. En hostings que sirven en la raíz (Cloudflare Pages, Netlify,
+  Vercel) basta con `npm run build:app` y la carpeta `dist/app`, sin definir `BASE_PATH`.
 
 ## Formato JSON
 
