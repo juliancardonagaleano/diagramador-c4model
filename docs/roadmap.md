@@ -13,7 +13,7 @@ Plan aprobado el 2026-09-29 con las recomendaciones de la propuesta (quinta espe
 
 ## 1. Punto de partida (lo que ya existe en el repo)
 
-- **Núcleo sin DOM** (`src/core`, exportado como `diagramador-c4model/core`): modelo `C4Document` (elementos, relaciones, vistas C1/C2/C3), validación con zod y JSON Schema, autolayout con ELK, export a `.drawio`, importadores de `.drawio` y de Structurizr DSL, y generación con IA (`core/ai`, proveedores Anthropic, Foundry y OpenAI-compatible).
+- **Núcleo sin DOM** (`src/core`, exportado como `iark-diagrams/core`): modelo `C4Document` (elementos, relaciones, vistas C1/C2/C3), validación con zod y JSON Schema, autolayout con ELK, export a `.drawio`, importadores de `.drawio` y de Structurizr DSL, y generación con IA (`core/ai`, proveedores Anthropic, Foundry y OpenAI-compatible).
 - **CLI** `c4diagram` (`src/cli`, commander): `generate`, import/export, layout, esquema.
 - **Frontend** React + `@xyflow/react` + zustand (`src/app`).
 - **Embebido** por iframe + `postMessage` con protocolo versionado y validado con zod (`src/embed/protocol.ts`, SDK de anfitrión `c4-embed`).

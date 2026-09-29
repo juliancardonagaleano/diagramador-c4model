@@ -5,8 +5,9 @@
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)
-repo=$(basename "$root")
 cd "$root"
+# Nombre del repositorio según el remoto `origin` (la carpeta local puede llamarse distinto o el remoto haberse renombrado).
+repo=$(basename "$(git remote get-url origin 2>/dev/null || echo "$root")" .git)
 
 # Pages sirve bajo /<repositorio>/; se puede sobrescribir con BASE_PATH.
 BASE_PATH="${BASE_PATH:-/$repo/}" OUT_DIR=dist/pages npm run build:app
