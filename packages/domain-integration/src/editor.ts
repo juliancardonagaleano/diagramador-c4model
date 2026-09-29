@@ -95,6 +95,7 @@ export const integrationEditor: EditorSpec<IntegrationDocument> = {
           label: n.name,
           sublabel: n.technology,
           parentId: n.parentId && shown.has(n.parentId) ? n.parentId : undefined,
+          ref: n.ref,
           dashed: n.external,
           fill: n.external ? '#6b6b6b' : undefined,
         })),

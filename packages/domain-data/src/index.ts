@@ -12,3 +12,4 @@ export { fromIntegrationJson } from './import/fromIntegration';
 export { dataAiSpec, generatedDataSchema, type GeneratedData } from './ai/generation';
 export { dataCommands } from './commands';
 export { dataModule } from './module';
+export { dataEditor, columnsToText, parseColumns } from './editor';

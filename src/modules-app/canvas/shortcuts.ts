@@ -2,7 +2,7 @@
  * Atajos del lienzo de los módulos. Son los mismos del editor C4 (Ctrl+Z, Ctrl+Y, Supr, Ctrl+L, Ctrl+rueda…) para que
  * los cinco diagramadores y el editor C4 se manejen igual.
  */
-export type CanvasAction = 'undo' | 'redo' | 'delete' | 'layout' | 'fit' | 'deselect' | 'duplicateEdgeKind';
+export type CanvasAction = 'undo' | 'redo' | 'delete' | 'layout' | 'fit' | 'deselect' | 'follow' | 'back';
 
 export const CANVAS_SHORTCUTS: Array<[string, string]> = [
   ['Ctrl/⌘ + Z', 'Deshacer'],
@@ -13,7 +13,8 @@ export const CANVAS_SHORTCUTS: Array<[string, string]> = [
   ['0', 'Ajustar a la ventana'],
   ['Ctrl/⌘ + rueda', 'Zoom'],
   ['Arrastrar desde un punto de conexión', 'Crear una relación del tipo elegido en la barra'],
-  ['Doble clic en el nombre', 'Renombrar'],
+  ['Doble clic en un elemento enlazado · Alt + ↓', 'Seguir el enlace a su elemento en otro módulo'],
+  ['Alt + ↑', 'Volver al diagrama desde el que se llegó'],
 ];
 
 export interface KeyLike {
@@ -35,5 +36,7 @@ export function matchShortcut(e: KeyLike, typing: boolean): CanvasAction | undef
   if (!mod && !e.altKey && (e.key === 'Delete' || e.key === 'Backspace')) return 'delete';
   if (!mod && !e.altKey && e.key === 'Escape') return 'deselect';
   if (!mod && !e.altKey && e.key === '0') return 'fit';
+  if (!mod && e.altKey && e.key === 'ArrowDown') return 'follow';
+  if (!mod && e.altKey && e.key === 'ArrowUp') return 'back';
   return undefined;
 }

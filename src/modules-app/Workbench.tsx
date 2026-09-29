@@ -1,8 +1,11 @@
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { WorkbenchController } from './controller';
-import { countBySeverity, locateId } from '@iark/kernel';
+import { canRender, countBySeverity, locateId } from '@iark/kernel';
 import { readFile } from './files';
 import { DiagramCanvas } from './canvas/DiagramCanvas';
+import { C4EmbedCanvas } from './canvas/C4EmbedCanvas';
+import type { LinkTools } from './canvas/Inspector';
+import { resolveRef, SuiteLinks } from './links';
 import { EditHistory } from './canvas/history';
 import { DiagramPanel, ExportPanel, FilePicker, ImportPanel, IssuesPanel, ReportsPanel } from './panels';
 
@@ -25,6 +28,21 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
   const [panel, setPanel] = useState<PanelId | undefined>();
   const history = useMemo(() => new EditHistory(), [state.moduleId]);
+
+  // ── Enlaces entre diagramas: seguir una URN lleva al módulo destino con el elemento encuadrado; la miga permite volver.
+  interface Stop {
+    moduleId: string;
+    viewId?: string;
+    elementId?: string;
+    label: string;
+  }
+  const suiteLinks = useMemo(() => new SuiteLinks(controller), [controller]);
+  const [trail, setTrail] = useState<Stop[]>([]);
+  const [focus, setFocus] = useState<{ moduleId: string; id: string } | undefined>();
+  const selectedRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (focus && focus.moduleId !== state.moduleId) setFocus(undefined);
+  }, [focus, state.moduleId]);
   const [toast, setToast] = useState<string | undefined>();
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const jsonEditor = useRef<HTMLTextAreaElement>(null);
@@ -34,6 +52,63 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(undefined), 4000);
   }, []);
+
+  const goTo = useCallback(
+    async (moduleId: string, elementId?: string): Promise<void> => {
+      await controller.selectModule(moduleId);
+      if (!elementId) return;
+      const { module: target, analysis } = controller.getState();
+      // En C4 no hay lienzo propio: se abre la vista cuyo alcance es el elemento (o la primera que lo dibuja).
+      if (target?.id === 'c4' && analysis.status === 'ok') {
+        const doc = analysis.document as { views?: Array<{ id: string; scopeId?: string; elements?: Array<{ id: string }> }> };
+        const view = doc.views?.find((v) => v.scopeId === elementId) ?? doc.views?.find((v) => v.elements?.some((e) => e.id === elementId));
+        if (view) controller.setView(view.id);
+      }
+      setFocus({ moduleId, id: elementId });
+      setPanel('canvas');
+    },
+    [controller],
+  );
+
+  const followRef = useCallback(
+    async (urn: string): Promise<void> => {
+      const ref = resolveRef(urn);
+      if (!ref) return notify(`La referencia «${urn}» no es una URN válida (urn:iark:<módulo>:<id>).`);
+      if (!controller.moduleIds.includes(ref.moduleId)) return notify(`El módulo «${ref.moduleId}» no está en este banco de trabajo.`);
+      if ((await suiteLinks.exists(urn)) === false) notify(`El elemento «${ref.elementId}» no existe en el documento actual de ${suiteLinks.label(ref.moduleId)}.`);
+      const from = controller.getState();
+      if (from.moduleId) {
+        const label = `${suiteLinks.label(from.moduleId)}${selectedRef.current ? ` · ${selectedRef.current}` : ''}`;
+        setTrail((t) => [...t, { moduleId: from.moduleId!, viewId: from.viewId, elementId: selectedRef.current, label }]);
+      }
+      await goTo(ref.moduleId, ref.elementId);
+    },
+    [controller, goTo, notify, suiteLinks],
+  );
+
+  const goBack = useCallback(async (): Promise<void> => {
+    const stop = trail[trail.length - 1];
+    if (!stop) return;
+    setTrail((t) => t.slice(0, -1));
+    await goTo(stop.moduleId, stop.elementId);
+    if (stop.viewId) controller.setView(stop.viewId);
+  }, [controller, goTo, trail]);
+
+  const linkTools = useMemo<LinkTools>(
+    () => ({
+      modules: controller.sources.map((s) => ({ id: s.id, label: s.label })),
+      entities: (id) => suiteLinks.entities(id),
+      backlinks: (moduleId, elementId) => suiteLinks.backlinks(moduleId, elementId),
+      follow: (urn) => void followRef(urn),
+    }),
+    [controller, followRef, suiteLinks],
+  );
+
+  const c4Refs = useMemo(() => {
+    if (state.module?.id !== 'c4' || state.analysis.status !== 'ok') return [];
+    const doc = state.analysis.document as { model?: { elements?: Array<{ id: string; name: string; ref?: string }> } };
+    return (doc.model?.elements ?? []).filter((e) => typeof e.ref === 'string').map((e) => ({ id: e.id, name: e.name, ref: e.ref as string }));
+  }, [state.module, state.analysis]);
 
   const reveal = useCallback(
     (id: string) => {
@@ -67,11 +142,14 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
   const panelProps = { controller, state, reveal, notify };
 
   const editor = module?.editor;
-  const active: PanelId = panel ?? (editor ? 'canvas' : 'diagram');
-  const canvasMode = active === 'canvas' && !!editor;
+  // C4 no declara `editor`: su lienzo es el editor principal embebido.
+  const hasCanvas = !!editor || module?.id === 'c4';
+  const active: PanelId = panel ?? (hasCanvas ? 'canvas' : 'diagram');
+  const canvasMode = active === 'canvas' && hasCanvas;
+  const renders = module ? canRender(module) : true;
   const tabs: Array<[PanelId, string]> = [
-    ...(editor ? ([['canvas', 'Lienzo']] as Array<[PanelId, string]>) : []),
-    ['diagram', editor ? 'Vista SVG' : 'Diagrama'],
+    ...(hasCanvas ? ([['canvas', 'Lienzo']] as Array<[PanelId, string]>) : []),
+    ['diagram', hasCanvas ? (renders ? 'Vista SVG' : 'JSON') : 'Diagrama'],
     ['issues', `Problemas${problemCount ? ` (${problemCount})` : ''}`],
     ['reports', 'Informes'],
     ['export', 'Exportar'],
@@ -121,6 +199,17 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
           </div>
       </header>
 
+      {trail.length > 0 && (
+        <div className="wb-trail" role="navigation" aria-label="Diagramas recorridos" data-testid="trail">
+          {trail.map((stop, i) => (
+            <span key={i}>{stop.label} ›</span>
+          ))}
+          <strong>{module ? suiteLinks.label(module.id) : ''}</strong>
+          <button type="button" onClick={() => void goBack()} title="Alt+↑" data-testid="trail-back">
+            ← Volver
+          </button>
+        </div>
+      )}
       <main className="wb-main" data-mode={canvasMode ? 'canvas' : undefined}>
         <section className="wb-editor" aria-label="Documento">
           <div className="wb-bar">
@@ -162,7 +251,20 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
               </button>
             ))}
           </div>
-          {canvasMode && (
+          {canvasMode && !editor && (
+            <C4EmbedCanvas
+              document={analysis.status === 'ok' ? analysis.document : undefined}
+              text={state.text}
+              viewId={state.viewId}
+              readOnly={state.readOnly}
+              theme={document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'}
+              onText={(t) => controller.setText(t)}
+              onView={(id) => controller.setView(id)}
+              refs={c4Refs}
+              onFollow={(urn) => void followRef(urn)}
+            />
+          )}
+          {canvasMode && editor && (
             <DiagramCanvas
               moduleId={module!.id}
               spec={editor as never}
@@ -175,6 +277,10 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
               history={history}
               onText={(t) => controller.setText(t)}
               notify={notify}
+              focusId={focus?.moduleId === module!.id ? focus.id : undefined}
+              links={linkTools}
+              onBack={trail.length > 0 ? () => void goBack() : undefined}
+              onSelect={(id) => (selectedRef.current = id)}
             />
           )}
           {active === 'diagram' && <DiagramPanel {...panelProps} />}

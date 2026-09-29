@@ -30,6 +30,8 @@ export interface C4Element {
   shape?: ElementShape;
   /** Color de acento opcional (hex) que sustituye al color C4 por defecto. */
   color?: string;
+  /** Referencia a un elemento de otro módulo de la suite (`urn:iark:integration:pedidos`). */
+  ref?: string;
 }
 
 export interface C4Relationship {

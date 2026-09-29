@@ -10,6 +10,7 @@ import { analyzeData } from './issues';
 import { dataDocumentSchema, dataJsonSchema } from './schema';
 import { DATA_DOCUMENT_VERSION, type DataDocument } from './types';
 import { listViews } from './views';
+import { dataEditor } from './editor';
 
 const mermaidImporter: Importer<DataDocument> = {
   id: 'mermaid',
@@ -73,4 +74,5 @@ export const dataModule: DomainModule<DataDocument> = {
     { prefix: 'downstream', label: 'Impacto (aguas abajo)', applies: (e) => e.kind !== 'domain' && e.kind !== 'pipeline' },
   ],
   cliCommands: dataCommands,
+  editor: dataEditor,
 };

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseUrn } from '@iark/kernel';
 import {
   DOCUMENT_VERSION,
   PARENT_TYPE,
@@ -27,6 +28,7 @@ export const elementSchema = z.object({
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, 'El color debe ser hexadecimal (#RRGGBB)')
     .optional(),
+  ref: z.string().optional(),
 });
 
 export const relationshipSchema = z.object({
@@ -111,6 +113,9 @@ export const documentSchema = z
     });
 
     doc.model.elements.forEach((el, i) => {
+      if (el.ref !== undefined && !parseUrn(el.ref)) {
+        ctx.addIssue({ code: 'custom', path: ['model', 'elements', i, 'ref'], message: `La referencia de "${el.id}" no es una URN válida (urn:iark:<módulo>:<id>): "${el.ref}"` });
+      }
       const expectedParent = PARENT_TYPE[el.type];
       if (el.parentId !== undefined) {
         const parent = elements.get(el.parentId);

@@ -44,12 +44,21 @@ export interface EditorNode {
   sublabel?: string;
   /** Nodo contenedor: si también está en el grafo, este se dibuja como grupo. */
   parentId?: string;
+  /** Referencia a un elemento de otro módulo (`urn:iark:<módulo>:<id>`): el lienzo la muestra como enlace navegable. */
+  ref?: string;
   /** Insignias pequeñas sobre el nodo (patrón, criticidad, clasificación…). */
   badges?: string[];
   /** Borde discontinuo (p. ej. un sistema externo). */
   dashed?: boolean;
   /** Color que sustituye al de la notación (p. ej. clasificación de un dato). */
   fill?: string;
+  /** Borde que sustituye al de la notación (p. ej. rojo para un dato restringido). */
+  stroke?: string;
+  /** Líneas de detalle bajo el título, alineadas a la izquierda (las columnas de una tabla, los atributos de una entidad). */
+  lines?: string[];
+  /** Tamaño que sustituye al de la notación (p. ej. una ficha crece con sus columnas). */
+  width?: number;
+  height?: number;
 }
 
 export interface EditorEdge {
