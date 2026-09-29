@@ -33,6 +33,14 @@ describe('analyzeDocument', () => {
     expect(issues.some((i) => i.elementId === 'api' && /padre de tipo incorrecto/.test(i.message))).toBe(false);
   });
 
+  it('detecta una vista de contexto que no incluye su sistema', () => {
+    const doc = structuredClone(sampleDocument);
+    const ctx = doc.views.find((v) => v.id === 'contexto')!;
+    ctx.elements = ctx.elements.filter((e) => e.id !== ctx.scopeId);
+    const issues = analyzeDocument(doc);
+    expect(issues.some((i) => i.severity === 'error' && i.viewId === 'contexto' && i.elementId === 'banca' && /no incluye su alcance/.test(i.message))).toBe(true);
+  });
+
   it('detecta un scopeId de vista de tipo incoherente', () => {
     const doc = structuredClone(sampleDocument);
     const cont = doc.views.find((v) => v.id === 'contenedores')!;

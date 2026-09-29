@@ -55,9 +55,26 @@ describe('generateDocument', () => {
     // El scope no se incluye como elemento de su propia vista de contenedores.
     const cont = r.document.views.find((v) => v.id === 'cont')!;
     expect(cont.elements.map((e) => e.id)).not.toContain('tienda');
+    // ...pero en la vista de contexto el sistema sí es un nodo y se conserva.
+    const ctx = r.document.views.find((v) => v.id === 'ctx')!;
+    expect(ctx.elements.map((e) => e.id).sort()).toEqual(['cliente', 'pagos', 'tienda']);
     // Autolayout aplicado
     for (const v of r.document.views) for (const e of v.elements) expect(e.x).toBeTypeOf('number');
     expect(r.usage.inputTokens).toBe(100);
+  });
+
+  it('reintenta si la vista de contexto omite su propio sistema', async () => {
+    const sinSistema: GeneratedDocument = {
+      ...good,
+      views: good.views.map((v) => (v.id === 'ctx' ? { ...v, elementIds: ['cliente', 'pagos'] } : v)),
+    };
+    const client = fakeClient([sinSistema, good]);
+    const r = await generateDocument({ instruction: 'Una tienda', client, skipLayout: true });
+    expect(r.attempts).toBe(2);
+    const parse = (client.beta.messages.parse as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const secondMessages = (parse[1][0] as { messages: Array<{ role: string; content: unknown }> }).messages;
+    expect(String(secondMessages[2].content)).toMatch(/debe incluir su alcance "tienda"/);
+    expect(r.document.views.find((v) => v.id === 'ctx')!.elements.map((e) => e.id)).toContain('tienda');
   });
 
   it('reintenta con los errores de validación y luego acepta', async () => {

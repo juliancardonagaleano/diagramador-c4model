@@ -95,7 +95,23 @@ describe('c4diagram (CLI)', () => {
   it('generate falla con un mensaje claro sin credenciales', () => {
     const r = spawnSync(cli[0], [cli[1], 'generate', 'Una tienda'], {
       encoding: 'utf8',
-      env: { ...process.env, ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '', ANTHROPIC_PROFILE: 'inexistente-c4-test', HOME: dir },
+      // Se vacían también las variables de Foundry / API compatible con OpenAI: si el entorno
+      // que ejecuta las pruebas las define, `generate` haría una llamada real en vez de fallar.
+      env: {
+        ...process.env,
+        ANTHROPIC_API_KEY: '',
+        ANTHROPIC_AUTH_TOKEN: '',
+        ANTHROPIC_PROFILE: 'inexistente-c4-test',
+        ANTHROPIC_BASE_URL: '',
+        ANTHROPIC_FOUNDRY_API_KEY: '',
+        ANTHROPIC_FOUNDRY_BASE_URL: '',
+        ANTHROPIC_FOUNDRY_RESOURCE: '',
+        ANTHROPIC_FOUNDRY_MODEL: '',
+        AI_API_KEY: '',
+        AI_BASE_URL: '',
+        AI_MODEL: '',
+        HOME: dir,
+      },
     });
     expect(r.status).not.toBe(0);
     expect(r.stderr).toMatch(/Error generando el modelo/);

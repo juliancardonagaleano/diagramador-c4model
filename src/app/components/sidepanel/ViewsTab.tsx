@@ -58,13 +58,17 @@ function ViewCard({ view }: { view: C4View }) {
             <label>Alcance</label>
             <Select size="small" className="w-full" showClear value={view.scopeId} placeholder="Sistema o contenedor" disabled={readOnly} optionList={scopeOptions} onChange={(v) => updateView(view.id, { scopeId: (v as string | undefined) ?? undefined })} />
           </div>
-          {scope && <p className="text-xs text-color-3 -mt-1 mb-2">Se dibuja como boundary: {scope.name}</p>}
+          {scope && (
+            <p className="text-xs text-color-3 -mt-1 mb-2">
+              {view.type === 'systemContext' ? `Sistema descrito: ${scope.name}` : `Se dibuja como boundary: ${scope.name}`}
+            </p>
+          )}
           <div className="text-xs text-color-2 mb-1">Elementos en la vista</div>
           <div className="flex flex-wrap gap-1 mb-2">
             {view.elements.map((ve) => {
               const el = doc.model.elements.find((e) => e.id === ve.id);
               return (
-                <Tag key={ve.id} size="small" closable={!readOnly} onClose={() => removeElementFromView(view.id, ve.id)}>
+                <Tag key={ve.id} size="small" closable={!readOnly && !(view.type === 'systemContext' && ve.id === view.scopeId)} onClose={() => removeElementFromView(view.id, ve.id)}>
                   {el?.name ?? ve.id}
                 </Tag>
               );

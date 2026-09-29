@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
+import { validateDocument } from '../../core/model/schema';
 import { useDocumentStore } from './documentStore';
 
 function reset() {
@@ -143,6 +144,42 @@ describe('documentStore', () => {
       updateRelationship(rel.id, { description: 'Nueva descripción' });
       const after = useDocumentStore.getState().doc.model.relationships.find((r) => r.id === rel.id)!;
       expect(after.description).toBe('Nueva descripción');
+    });
+  });
+
+  describe('el sistema de una vista de contexto', () => {
+    const ctx = () => useDocumentStore.getState().doc.views.find((v) => v.id === 'contexto')!;
+
+    it('removeElementFromView no lo quita de su propia vista (dejaría un documento inválido)', () => {
+      useDocumentStore.getState().removeElementFromView('contexto', 'banca');
+      expect(ctx().elements.map((e) => e.id)).toContain('banca');
+      expect(validateDocument(useDocumentStore.getState().doc).ok).toBe(true);
+    });
+
+    it('removeElementFromView sigue quitando el resto de elementos de la vista', () => {
+      useDocumentStore.getState().removeElementFromView('contexto', 'email');
+      expect(ctx().elements.map((e) => e.id)).not.toContain('email');
+    });
+
+    it('en una vista de contenedores el alcance tampoco está entre los elementos, y quitar otro no lo afecta', () => {
+      useDocumentStore.getState().removeElementFromView('contenedores', 'cliente');
+      expect(validateDocument(useDocumentStore.getState().doc).ok).toBe(true);
+    });
+
+    it('updateView lo añade a la vista al fijar o cambiar el alcance', () => {
+      const { updateView } = useDocumentStore.getState();
+      // Se quita a la fuerza (simula un documento viejo) y se vuelve a fijar el alcance.
+      useDocumentStore.setState((s) => ({
+        doc: { ...s.doc, views: s.doc.views.map((v) => (v.id === 'contexto' ? { ...v, scopeId: undefined, elements: v.elements.filter((e) => e.id !== 'banca') } : v)) },
+      }));
+      updateView('contexto', { scopeId: 'banca' });
+      expect(ctx().elements.map((e) => e.id)).toContain('banca');
+      expect(validateDocument(useDocumentStore.getState().doc).ok).toBe(true);
+    });
+
+    it('updateView no duplica el sistema si ya estaba en la vista', () => {
+      useDocumentStore.getState().updateView('contexto', { scopeId: 'banca' });
+      expect(ctx().elements.filter((e) => e.id === 'banca')).toHaveLength(1);
     });
   });
 

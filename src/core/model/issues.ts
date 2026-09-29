@@ -81,6 +81,13 @@ export function analyzeDocument(doc: C4Document): DocumentIssue[] {
       const expected = VIEW_SCOPE_TYPE[v.type];
       if (scope && scope.type !== expected) {
         issues.push({ severity: 'error', message: `La vista "${v.title ?? v.id}" tiene un alcance de tipo incorrecto`, viewId: v.id });
+      } else if (scope && v.type === 'systemContext' && !v.elements.some((e) => e.id === scope.id)) {
+        issues.push({
+          severity: 'error',
+          message: `La vista "${v.title ?? v.id}" (systemContext) no incluye su alcance "${scope.name}"`,
+          viewId: v.id,
+          elementId: scope.id,
+        });
       }
     }
   }
