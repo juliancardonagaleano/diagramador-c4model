@@ -62,11 +62,23 @@ export interface Exporter<TDoc> {
   export(document: TDoc, context: ExportContext): Promise<string> | string;
 }
 
-/** Instrucciones para que una IA (o un agente sin clave de API) genere o refine un documento del módulo. */
-export interface PromptSpec {
-  system: string;
-  user: string;
-  jsonSchema: unknown;
+/**
+ * Cómo se genera o refina un documento del módulo con una IA (o con un agente sin clave de API, usando solo los
+ * prompts y el JSON Schema). El kernel aporta el proveedor, los reintentos y la salida estructurada.
+ */
+export interface AiSpec<TDoc> {
+  /** Esquema zod de lo que produce el modelo (normalmente el documento sin coordenadas ni datos derivados). */
+  generationSchema: ZodType<unknown>;
+  generationJsonSchema(): unknown;
+  system(): string;
+  /** Mensaje de usuario: la instrucción y, si se refina, el documento base. */
+  user(instruction: string, base?: TDoc): string;
+  /** Mensaje con el que se le devuelven al modelo los problemas de su intento anterior. */
+  retry(issues: string): string;
+  /** Convierte lo generado en documento del módulo; si no es válido, devuelve los motivos para el reintento. */
+  toDocument(generated: unknown): { ok: true; document: TDoc } | { ok: false; issues: string };
+  /** Acabado del documento generado (p. ej. autolayout). Opcional. */
+  finish?(document: TDoc): Promise<TDoc> | TDoc;
 }
 
 /** Elemento del documento al que otros módulos pueden apuntar. */
@@ -88,14 +100,16 @@ export interface CommandOption {
 export interface CommandContext {
   args: string[];
   options: Record<string, unknown>;
-  /** Contenido de la entrada estándar si el comando la usa (ya leída por el CLI). */
-  stdin?: string;
+  /** Contenido del archivo o de la entrada estándar, si el comando declara `input`. */
+  input?: string;
 }
 
 /** Subcomando que el módulo aporta al CLI (`iark <módulo> <nombre>`). Devuelve el texto que se escribe en stdout. */
 export interface CommandSpec {
   name: string;
   description: string;
+  /** Si el comando lee un documento: el CLI añade `[archivo]`, `--stdin` y `--out`, lee la entrada y la pasa en `context.input`. */
+  input?: { description: string };
   args?: Array<{ name: string; description: string; required?: boolean }>;
   options?: CommandOption[];
   run(context: CommandContext): Promise<string | void> | string | void;
@@ -117,7 +131,7 @@ export interface DomainModule<TDoc = unknown> {
   validate(document: TDoc): ModuleIssue[];
   importers: Importer<TDoc>[];
   exporters: Exporter<TDoc>[];
-  aiPrompt?(input: { instruction: string; base?: TDoc }): PromptSpec;
+  ai?: AiSpec<TDoc>;
   /** Elementos referenciables desde otros módulos por URN. */
   entities?(document: TDoc): EntityRef[];
   cliCommands?: CommandSpec[];

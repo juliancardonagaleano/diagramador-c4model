@@ -37,9 +37,10 @@ describe('c4Module', () => {
   });
 
   it('prepara el prompt de IA y expone las entidades referenciables por URN', () => {
-    const spec = c4Module.aiPrompt!({ instruction: 'Una tienda' });
-    expect(spec.user).toContain('Una tienda');
-    expect(spec.system.length).toBeGreaterThan(100);
+    const ai = c4Module.ai!;
+    expect(ai.user('Una tienda')).toContain('Una tienda');
+    expect(ai.system().length).toBeGreaterThan(100);
+    expect(ai.toDocument({ workspace: { name: 'Demo', description: null }, elements: [], relationships: [], views: [] })).toMatchObject({ ok: true });
     const entities = c4Module.entities!(sampleDocument);
     expect(entities.length).toBe(sampleDocument.model.elements.length);
     expect(entities[0]).toMatchObject({ id: sampleDocument.model.elements[0].id, kind: sampleDocument.model.elements[0].type });

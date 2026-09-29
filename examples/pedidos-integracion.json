@@ -1,0 +1,41 @@
+{
+  "version": "1.0",
+  "workspace": { "name": "Pedidos en línea", "description": "Integración del flujo de pedido de una tienda" },
+  "nodes": [
+    { "id": "tienda-web", "kind": "system", "name": "Tienda web", "technology": "React", "owner": "Equipo Web" },
+    { "id": "gateway", "kind": "gateway", "name": "API Gateway", "technology": "Kong", "owner": "Plataforma" },
+    { "id": "pedidos", "kind": "system", "name": "Servicio de pedidos", "technology": "Java, Spring Boot", "owner": "Equipo Pedidos" },
+    { "id": "pedidos-api", "kind": "api", "name": "API de pedidos", "parentId": "pedidos" },
+    { "id": "kafka", "kind": "broker", "name": "Kafka", "owner": "Plataforma" },
+    { "id": "pedido-creado", "kind": "topic", "name": "pedido-creado", "parentId": "kafka" },
+    { "id": "pedidos-db", "kind": "store", "name": "Base de pedidos", "technology": "PostgreSQL" },
+    { "id": "facturacion", "kind": "system", "name": "Facturación", "technology": ".NET", "owner": "Equipo Finanzas" },
+    { "id": "pasarela-pagos", "kind": "system", "name": "Pasarela de pagos", "external": true }
+  ],
+  "contracts": [
+    { "id": "pedidos-openapi", "name": "API de pedidos", "format": "openapi", "version": "2.1.0" },
+    { "id": "pedido-creado-avro", "name": "Evento PedidoCreado", "format": "avro", "version": "1.3" }
+  ],
+  "interactions": [
+    { "id": "web-gw", "sourceId": "tienda-web", "targetId": "gateway", "style": "request-response", "protocol": "HTTPS/JSON", "description": "Crea el pedido" },
+    { "id": "gw-api", "sourceId": "gateway", "targetId": "pedidos-api", "style": "request-response", "protocol": "REST", "contractId": "pedidos-openapi", "description": "Enruta la petición" },
+    { "id": "pedidos-db-w", "sourceId": "pedidos", "targetId": "pedidos-db", "style": "request-response", "protocol": "JDBC", "description": "Guarda el pedido" },
+    { "id": "pedidos-topic", "sourceId": "pedidos", "targetId": "pedido-creado", "style": "event", "protocol": "Kafka", "contractId": "pedido-creado-avro", "description": "Publica PedidoCreado", "criticality": "high" },
+    { "id": "topic-fact", "sourceId": "pedido-creado", "targetId": "facturacion", "style": "event", "protocol": "Kafka", "contractId": "pedido-creado-avro", "description": "Consume PedidoCreado" },
+    { "id": "fact-pagos", "sourceId": "facturacion", "targetId": "pasarela-pagos", "style": "request-response", "protocol": "HTTPS", "description": "Cobra el pedido", "pattern": "circuit-breaker" }
+  ],
+  "flows": [
+    {
+      "id": "crear-pedido",
+      "name": "Crear un pedido",
+      "steps": [
+        { "interactionId": "web-gw" },
+        { "interactionId": "gw-api" },
+        { "interactionId": "pedidos-db-w" },
+        { "interactionId": "pedidos-topic" },
+        { "interactionId": "topic-fact" },
+        { "interactionId": "fact-pagos" }
+      ]
+    }
+  ]
+}

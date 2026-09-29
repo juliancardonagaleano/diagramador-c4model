@@ -6,9 +6,10 @@ Plan aprobado el 2026-09-29 con las recomendaciones de la propuesta (quinta espe
 
 | Fase | Estado |
 |---|---|
-| 0 – Cimientos | **Hecha en su primera parte**: monorepo con workspaces, `@iark/kernel` (contrato `DomainModule`, `ModuleRegistry`, URN `urn:iark:<módulo>:<id>`, manifiesto `iark.manifest/1`, utilidades de importación e IA) y `@iark/domain-c4` (todo el modelo C4 actual como módulo `c4`). Pendiente: extraer al kernel un grafo genérico de elementos y vistas (se hará con el primer módulo vertical, cuando haya requisitos reales). |
+| 0 – Cimientos | **Hecha en su primera parte**: monorepo con workspaces, `@iark/kernel` (contrato `DomainModule`, `ModuleRegistry`, URN `urn:iark:<módulo>:<id>`, manifiesto `iark.manifest/1`, utilidades de importación e IA) y `@iark/domain-c4` (todo el modelo C4 actual como módulo `c4`). El grafo genérico se extrajo en la Fase 2 (layout y SVG); un modelo de elementos y vistas común sigue sin hacer falta. |
 | 1 – Mermaid + importadores unificados | **Hecha**: `fromMermaid`/`toMermaid` en el núcleo, `iark import` unificado por módulo, `convert --to mermaid`, menús del frontend. Pendiente: vista previa renderizada de Mermaid (carga diferida de la librería `mermaid`). |
-| 2 en adelante | Sin empezar. |
+| 2 – Primer módulo vertical: Integraciones | **Hecha en el núcleo y el CLI** (2026-09-29): módulo `integration` (`packages/domain-integration`) con esquema, validación semántica, vistas derivadas (mapa y flujos), IA, import Mermaid, export Mermaid/SVG/draw.io y subcomandos `iark integration from-c4|catalog|matrix`. Para ello el kernel ganó lo genérico que pedía un segundo módulo: `AiSpec` + `generateStructured`, la sintaxis Mermaid compartida, layout ELK y render SVG de grafos, y el CLI acepta `--module` en `generate/import/convert/validate/schema/prompt`. Pendiente: editor web y widget embebido del módulo (campo `module` y `capabilities` en el protocolo `postMessage`). |
+| 3 en adelante | Sin empezar (Datos, Empresarial, Plataforma, Seguridad). |
 
 ## 1. Punto de partida (lo que ya existe en el repo)
 

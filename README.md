@@ -96,7 +96,7 @@ Reglas que se derivan automáticamente (no se almacenan):
 - **Boundaries**: el `scopeId` de una vista de contenedores/componentes y cualquier elemento visible con hijos visibles.
 - **Relaciones**: se dibujan las que unen dos elementos visibles; si un extremo no está visible pero sí su ancestro, se dibuja una relación *implícita* (una por par).
 
-El JSON Schema está en [`schema/c4-document.schema.json`](schema/c4-document.schema.json) (`npm run schema` lo regenera; `iark schema` lo imprime).
+El JSON Schema está en [`schema/c4-document.schema.json`](schema/c4-document.schema.json) (`npm run schema` lo regenera; `iark schema` lo imprime). El módulo de integraciones tiene los suyos en `schema/integration-*.schema.json`.
 
 ## Notación del lienzo
 
@@ -219,6 +219,35 @@ Mermaid no guarda coordenadas ni vistas: se crean las vistas por defecto y el au
 
 **Exportar** la vista activa (Archivo ▸ Exportar Mermaid, copiar al portapapeles, o `iark convert doc.json --to mermaid --view contenedores [--mermaid-format c4|flowchart]`). `generate --from` y `prompt --from` aceptan también `.drawio`, `.dsl` y `.mmd` como documento base.
 
+## Módulo de integraciones
+
+Segunda especialidad de la suite (`--module integration`): modela **cómo se hablan los sistemas** (APIs, gateways, brokers, colas y tópicos, almacenes), con sus contratos y los flujos de extremo a extremo. Vive en `packages/domain-integration` y no depende del código C4: se enlaza con él solo por referencias URN (`urn:iark:c4:<id>`).
+
+Documento JSON (ejemplo completo en [`examples/pedidos-integracion.json`](examples/pedidos-integracion.json), esquema con `iark schema --module integration`):
+
+| Parte | Contenido |
+|---|---|
+| `nodes` | `system`, `api` (dentro de un sistema), `gateway`, `broker`, `queue` / `topic` (dentro de un broker) y `store`; opcionales `technology`, `owner`, `external` y `ref` (URN al elemento C4 o de otro módulo) |
+| `contracts` | `openapi`, `asyncapi`, `graphql`, `protobuf`, `avro`, `json-schema`, `wsdl` u `other`, con `version` |
+| `interactions` | de un nodo a otro: `style` (`request-response`, `async-message`, `event`, `batch`, `stream`), `protocol`, `pattern` (circuit-breaker, saga, outbox, CQRS…), `contractId` y `criticality` |
+| `flows` | secuencias ordenadas de interacciones (p. ej. «Crear un pedido») |
+
+No se guardan coordenadas: las vistas se derivan del modelo (`map` con todo el mapa y `flow:<id>` por cada flujo) y el autolayout las coloca al exportar. `validate` comprueba la estructura (referencias, jerarquía, autoenlaces) y avisa de lo dudoso: colas sin productor o sin consumidor, interacciones sin contrato o duplicadas, contratos sin versión, dependencias síncronas circulares o una petición-respuesta contra una cola.
+
+```bash
+iark validate  pedidos.json --module integration
+iark convert   pedidos.json --module integration --out mapa.svg          # también .mmd (Mermaid) y .drawio; --to fuerza el formato
+iark convert   pedidos.json --module integration --to mermaid --view flow:crear-pedido   # el flujo sale como sequenceDiagram
+iark import    mapa.mmd     --module integration --out pedidos.json       # Mermaid (flowchart o sequence) → documento
+iark generate  "Pedidos con Kafka y una pasarela de pagos" --module integration --json pedidos.json
+iark prompt    "…" --module integration                                 # prompt autocontenido, sin clave de API
+iark integration from-c4 banca.json                                     # sistemas y contenedores C4 → mapa de integración
+iark integration catalog pedidos.json                                   # tabla Markdown de contratos y dónde se usan
+iark integration matrix  pedidos.json                                   # matriz origen × destino con el estilo de cada enlace
+```
+
+Al importar Mermaid, un `subgraph` con colas (`([ ])`) es un broker y cualquier otro un sistema que agrupa sus APIs; las colas y los tópicos comparten forma, así que un tópico vuelve como cola en la ida y vuelta. La interfaz web todavía no edita este módulo (siguiente paso de la hoja de ruta).
+
 ## CLI `iark`
 
 ```
@@ -230,7 +259,11 @@ iark validate [archivo.json | --stdin] [--strict]
 iark schema   [--generation]
 iark prompt   "<instrucción>" [--from base.json]
 iark example
+iark modules  [--json]
+iark <módulo> <comando>   # comandos propios de cada módulo (p. ej. `iark integration catalog`)
 ```
+
+`generate`, `import`, `convert`, `validate`, `schema` y `prompt` aceptan `--module <id>` para trabajar con cualquier módulo de la suite (por defecto `c4`); `iark modules` lista los instalados y sus formatos de importación y exportación.
 
 En desarrollo: `npm run cli -- <comando>`; tras `npm run build`: `node dist/cli/index.js` o `npx iark` si el paquete está instalado.
 
@@ -364,8 +397,9 @@ Demo completa: [`examples/embed-host.html`](examples/embed-host.html) (en desarr
 Monorepo con workspaces de npm. Los paquetes internos se consumen desde su código fuente; `npm run build` los empaqueta dentro de `dist/`.
 
 ```
-packages/kernel/       @iark/kernel: contrato de módulo (DomainModule), registro, URN, manifiesto de federación, cliente de IA y utilidades de importación
+packages/kernel/       @iark/kernel: contrato de módulo (DomainModule), registro, URN, manifiesto de federación, IA estructurada, sintaxis Mermaid y layout/SVG de grafos genéricos
 packages/domain-c4/    @iark/domain-c4: módulo `c4` (modelo, esquema zod, vistas, autolayout ELK, import/export draw.io, Structurizr y Mermaid, prompts de IA; sin DOM)
+packages/domain-integration/  @iark/domain-integration: módulo `integration` (nodos, contratos, interacciones y flujos; import Mermaid, export Mermaid/SVG/draw.io, IA)
 src/cli/               comandos de iark (commander); carga los módulos del registro
 src/embed/             protocolo postMessage y SDK de anfitrión
 src/app/               editor React (Vite, React Flow, Semi UI, Tailwind)
