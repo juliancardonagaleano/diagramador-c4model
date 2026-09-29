@@ -18,16 +18,16 @@
     { "id": "kafka-dev", "name": "Kafka (dev)", "kind": "queue", "environmentId": "dev", "networkId": "vpc-dev", "technology": "Kafka", "iac": true, "owner": "Plataforma" },
     { "id": "lb-prod", "name": "Balanceador público", "kind": "load-balancer", "environmentId": "prod", "networkId": "subred-publica", "technology": "AWS ALB", "iac": true, "owner": "Plataforma" },
     { "id": "k8s-prod", "name": "k8s-prod", "kind": "cluster", "environmentId": "prod", "networkId": "subred-apps", "technology": "Kubernetes", "version": "1.29", "iac": true, "owner": "Plataforma" },
-    { "id": "kafka-prod", "name": "Kafka (prod)", "kind": "queue", "environmentId": "prod", "networkId": "subred-apps", "technology": "Kafka", "iac": true, "owner": "Plataforma" },
-    { "id": "pedidos-db-prod", "name": "Base de pedidos", "kind": "database", "environmentId": "prod", "networkId": "subred-datos", "technology": "PostgreSQL", "version": "15", "iac": true, "owner": "Plataforma" }
+    { "id": "kafka-prod", "name": "Kafka (prod)", "kind": "queue", "environmentId": "prod", "networkId": "subred-apps", "technology": "Kafka", "iac": true, "owner": "Plataforma", "ref": "urn:iark:integration:kafka" },
+    { "id": "pedidos-db-prod", "name": "Base de pedidos", "kind": "database", "environmentId": "prod", "networkId": "subred-datos", "technology": "PostgreSQL", "version": "15", "iac": true, "owner": "Plataforma", "ref": "urn:iark:integration:pedidos-db" }
   ],
   "services": [
-    { "id": "tienda-web", "name": "Tienda web", "kind": "frontend", "technology": "React", "owner": "Equipo Web", "repo": "tienda/web", "criticality": "high" },
-    { "id": "pedidos", "name": "Servicio de pedidos", "technology": "Java, Spring Boot", "owner": "Equipo Pedidos", "repo": "tienda/pedidos", "criticality": "critical" },
-    { "id": "facturacion", "name": "Facturación", "technology": ".NET", "owner": "Equipo Finanzas", "repo": "tienda/facturacion", "criticality": "high" },
+    { "id": "tienda-web", "name": "Tienda web", "kind": "frontend", "technology": "React", "owner": "Equipo Web", "repo": "tienda/web", "criticality": "high", "ref": "urn:iark:integration:tienda-web" },
+    { "id": "pedidos", "name": "Servicio de pedidos", "technology": "Java, Spring Boot", "owner": "Equipo Pedidos", "repo": "tienda/pedidos", "criticality": "critical", "ref": "urn:iark:integration:pedidos" },
+    { "id": "facturacion", "name": "Facturación", "technology": ".NET", "owner": "Equipo Finanzas", "repo": "tienda/facturacion", "criticality": "high", "ref": "urn:iark:integration:facturacion" },
     { "id": "notificaciones", "name": "Notificaciones", "kind": "worker", "technology": "Node.js", "owner": "Equipo Web", "repo": "tienda/notificaciones", "criticality": "medium" },
     { "id": "reportes", "name": "Reportes nocturnos", "kind": "job", "technology": "Python", "owner": "Equipo Pedidos", "repo": "tienda/reportes", "criticality": "low" },
-    { "id": "pasarela-pagos", "name": "Pasarela de pagos", "external": true, "criticality": "high" }
+    { "id": "pasarela-pagos", "name": "Pasarela de pagos", "external": true, "criticality": "high", "ref": "urn:iark:integration:pasarela-pagos" }
   ],
   "deployments": [
     { "id": "tienda-web-dev", "serviceId": "tienda-web", "environmentId": "dev", "hostId": "k8s-dev", "replicas": 1, "version": "2.4.0" },

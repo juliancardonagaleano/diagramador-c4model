@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Demo: &lt;iark-module&gt; (Web Component)</title>
+    <style>
+      :root { font-family: Inter, -apple-system, Segoe UI, Roboto, sans-serif; color: #222; }
+      body { margin: 0; display: grid; grid-template-rows: auto 1fr auto; height: 100vh; background: #f3f4f6; }
+      header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+      header h1 { font-size: 15px; margin: 0 12px 0 0; }
+      button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; }
+      main { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; min-height: 0; }
+      iark-module { min-height: 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+      #log { margin: 0; max-height: 120px; overflow: auto; padding: 8px 12px; font: 11px/1.5 ui-monospace, Menlo, monospace; background: #fff; border-top: 1px solid #e5e7eb; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Dos widgets, sin JavaScript de integración</h1>
+      <button id="btn-risks">Informe de riesgos (widget 1)</button>
+      <button id="btn-theme">Tema oscuro (widget 1)</button>
+      <button id="btn-view">Vista de amenazas (widget 1)</button>
+    </header>
+    <main>
+      <!-- Widget 1: URL directa del banco de trabajo; el documento se pasa por la propiedad `document`. -->
+      <iark-module id="w1" src="../modulos.html" module="security" ui="min" autosave title="Seguridad"></iark-module>
+      <!-- Widget 2: federación, el editor se descubre en el manifiesto de la instancia. -->
+      <iark-module id="w2" manifest="../.well-known/iark.json" module="data" ui="min" title="Datos"></iark-module>
+    </main>
+    <pre id="log"></pre>
+    <script type="module">
+      import '../src/embed/iark-module-element.ts';
+
+      const log = document.getElementById('log');
+      const print = (label, payload) => {
+        log.prepend(Object.assign(document.createElement('div'), { textContent: `${label}  ${payload === undefined ? '' : JSON.stringify(payload).slice(0, 150)}` }));
+      };
+      const w1 = document.getElementById('w1');
+      const w2 = document.getElementById('w2');
+      for (const [name, el] of [['w1', w1], ['w2', w2]]) {
+        for (const type of ['iark-init', 'iark-load', 'iark-change', 'iark-view-change', 'iark-error']) {
+          el.addEventListener(type, (e) => print(`${name} ${type}`, type === 'iark-load' ? { module: e.detail.module, problemas: e.detail.issues.length } : type === 'iark-init' ? { modulos: e.detail.available } : e.detail));
+        }
+      }
+
+      w1.document = {
+        version: '1.0',
+        workspace: { name: 'Tienda en línea' },
+        zones: [{ id: 'internet', name: 'Internet', trust: 'untrusted' }, { id: 'interna', name: 'Red interna', trust: 'internal' }],
+        assets: [
+          { id: 'cliente', name: 'Cliente', kind: 'actor', zoneId: 'internet' },
+          { id: 'api', name: 'API', kind: 'process', zoneId: 'interna', classification: 'confidential' },
+        ],
+        flows: [{ id: 'cliente-api', sourceId: 'cliente', targetId: 'api', protocol: 'HTTPS', encrypted: true, authentication: 'token' }],
+        threats: [{ id: 'fuerza-bruta', title: 'Fuerza bruta contra la API', category: 'spoofing', targetId: 'api', likelihood: 'medium', impact: 'high', status: 'open' }],
+      };
+      // El widget 2 no recibe documento: la persona pulsa «Cargar ejemplo».
+
+      document.getElementById('btn-risks').onclick = async () => print('informe risks', (await w1.run('risks')).output.split('\n')[2]);
+      document.getElementById('btn-theme').onclick = () => w1.setAttribute('theme', 'dark');
+      document.getElementById('btn-view').onclick = () => w1.setView('threats');
+    </script>
+  </body>
+</html>

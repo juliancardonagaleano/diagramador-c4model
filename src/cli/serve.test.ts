@@ -119,6 +119,33 @@ describe('iark serve: API por módulo', () => {
     expect((await post('/api/security/run/risks', '{ roto')).status).toBe(400);
   });
 
+  it('reúne documentos de varios módulos y sigue sus referencias (POST /api/trace)', async () => {
+    const documents = [
+      { module: 'security', document: JSON.parse(security), source: 'seguridad.json' },
+      { module: 'platform', document: JSON.parse(example('plataforma-ejemplo.json')) },
+      { module: 'integration', document: JSON.parse(example('pedidos-integracion.json')) },
+    ];
+    const general = await (await post('/api/trace', JSON.stringify({ documents }))).json();
+    expect(general.graph.links).toHaveLength(11);
+    expect(general.report).toContain('3 documentos');
+    expect(general.mermaid.startsWith('flowchart LR')).toBe(true);
+    const impact = await (await post('/api/trace', JSON.stringify({ documents, from: 'urn:iark:integration:pedidos', direction: 'referrers' }))).json();
+    expect(impact.reached.map((r: { node: { urn: string } }) => r.node.urn)).toEqual(['urn:iark:integration:pedidos', 'urn:iark:platform:pedidos', 'urn:iark:security:pedidos']);
+    expect(impact.report).toContain('a 2 saltos');
+
+    expect((await post('/api/trace', '{ roto')).status).toBe(400);
+    expect((await post('/api/trace', JSON.stringify({ documents: [] }))).status).toBe(400);
+    expect((await post('/api/trace', JSON.stringify({ documents: [{ document: {} }] }))).status).toBe(400);
+    expect((await post('/api/trace', JSON.stringify({ documents: [{ module: 'nada', document: {} }] }))).status).toBe(404);
+    const bad = await post('/api/trace', JSON.stringify({ documents: [{ module: 'security', document: { version: '9', zones: 1 } }] }));
+    expect(bad.status).toBe(422);
+    const unknownStart = await post('/api/trace', JSON.stringify({ documents, from: 'urn:iark:platform:nada' }));
+    expect(unknownStart.status).toBe(400);
+    expect((await unknownStart.json()).error).toMatch(/No existe el elemento/);
+    const twice = await post('/api/trace', JSON.stringify({ documents: [documents[0], documents[0]] }));
+    expect((await twice.json()).error).toMatch(/aparece más de una vez/);
+  });
+
   it('responde 404 al módulo o la acción desconocidos y 405 (con Allow) al método equivocado', async () => {
     const unknown = await fetch(`${base}/api/nada/capabilities`);
     expect(unknown.status).toBe(404);

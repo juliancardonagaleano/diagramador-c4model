@@ -51,6 +51,23 @@ describe('generateStructured (proveedor openai)', () => {
     expect(body.messages[1].content).toBe('Instrucción: crea algo');
   });
 
+  it('al refinar conserva los ref (enlaces entre módulos) del documento base que el modelo no conoce', async () => {
+    interface Linked {
+      items: Array<{ id: string; ref?: string }>;
+    }
+    const linkedSpec: AiSpec<Linked> = {
+      ...(spec as unknown as AiSpec<Linked>),
+      generationSchema: z.object({ items: z.array(z.object({ id: z.string() })) }),
+      toDocument: (generated) => ({ ok: true, document: generated as Linked }),
+    };
+    const base: Linked = { items: [{ id: 'a', ref: 'urn:iark:integration:a' }, { id: 'b' }] };
+    const fetchMock = vi.fn(async () => reply('{"items":[{"id":"a"},{"id":"b"},{"id":"c"}]}'));
+    const refined = await withEnv(() => generateStructured(linkedSpec, { instruction: 'añade c', base, defaultModel: 'm', provider: 'openai', fetch: fetchMock as unknown as typeof fetch }));
+    expect(refined.document.items).toEqual([{ id: 'a', ref: 'urn:iark:integration:a' }, { id: 'b' }, { id: 'c' }]);
+    const fresh = await withEnv(() => generateStructured(linkedSpec, { instruction: 'crea', defaultModel: 'm', provider: 'openai', fetch: fetchMock as unknown as typeof fetch }));
+    expect(fresh.document.items).toEqual([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+  });
+
   it('reintenta con la corrección cuando el JSON no cumple el esquema o el módulo rechaza el documento', async () => {
     const fetchMock = vi
       .fn()

@@ -18,6 +18,7 @@ import { analyzeDocument } from '@core/model/issues';
 import { buildManifest, ModuleError, type ModuleRegistry, UnknownModuleError } from '@iark/kernel';
 import { createDefaultRegistry, DEFAULT_MODULE } from './registry';
 import { createSuiteServer } from './serve';
+import { registerTrace } from './trace';
 import { genericExport, genericGenerate, genericPrompt, genericSchema, genericValidate, readModuleDocument } from './generic';
 import { CliError, dslIncludeOptions, extractJson, info, readDocument, readInput, writeOutput } from './io';
 
@@ -447,6 +448,7 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
       });
     });
 
+  registerTrace(program, registry);
   registerModuleCommands(program, registry);
 
   return program;

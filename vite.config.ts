@@ -50,6 +50,7 @@ export default defineConfig({
         'embed-host': fileURLToPath(new URL('./examples/embed-host.html', import.meta.url)),
         modulos: fileURLToPath(new URL('./modulos.html', import.meta.url)),
         'modules-host': fileURLToPath(new URL('./examples/modules-host.html', import.meta.url)),
+        'web-component-host': fileURLToPath(new URL('./examples/web-component-host.html', import.meta.url)),
         suite: fileURLToPath(new URL('./suite.html', import.meta.url)),
       },
     },

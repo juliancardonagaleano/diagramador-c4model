@@ -69,3 +69,36 @@ test.describe('shell de la suite (federación por manifiesto)', () => {
     }
   });
 });
+
+test.describe('Web Component <iark-module>', () => {
+  test('dos widgets sin JavaScript de integración: URL directa con documento por propiedad, y descubierto por manifiesto', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto('/examples/web-component-host.html', { waitUntil: 'networkidle' });
+    const frameOf = (module: string) => page.frames().find((f) => f.url().includes('embed=1') && f.url().includes(`module=${module}`));
+    await expect.poll(() => frameOf('security')?.url(), { timeout: 20000 }).toBeTruthy();
+    await expect.poll(() => frameOf('data')?.url(), { timeout: 20000 }).toBeTruthy();
+
+    // widget 1: el documento asignado a la propiedad llegó al banco de trabajo del iframe
+    const security = frameOf('security')!;
+    await expect(security.getByLabel('Documento JSON')).toHaveValue(/Fuerza bruta contra la API/, { timeout: 20000 });
+    await expect(security.locator('[data-testid="diagram-stage"] img')).toBeVisible({ timeout: 20000 });
+    await expect(security.getByRole('tab', { name: 'Integración' })).toHaveCount(0); // ui="min"
+    await expect(page.locator('#log')).toContainText('w1 iark-load');
+
+    // widget 2: el editor se descubrió en el manifiesto; abre en blanco y carga su ejemplo
+    const data = frameOf('data')!;
+    await data.getByRole('button', { name: 'Cargar ejemplo' }).click();
+    await expect(data.getByTestId('editor-status')).toContainText('Válido');
+    await expect(page.locator('#log')).toContainText('w2 iark-init');
+
+    // métodos del elemento y atributos reactivos
+    await page.click('#btn-risks');
+    await expect(page.locator('#log')).toContainText('informe risks');
+    await page.click('#btn-view');
+    await expect(security.locator('[data-testid="diagram-stage"] img')).toHaveAttribute('data-view', 'threats');
+    await page.click('#btn-theme');
+    await expect.poll(() => security.evaluate(() => document.documentElement.dataset.theme)).toBe('dark');
+    expect(errors).toEqual([]);
+  });
+});

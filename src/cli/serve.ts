@@ -4,15 +4,22 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import {
   analyzeText,
+  buildTraceGraph,
   commandInfos,
   exportDocument,
   exportFormats,
   importText,
   moduleCapabilities,
   runCommand,
+  traceMermaid,
+  traceReach,
+  traceReachReport,
+  traceReport,
   viewChoices,
   type AnyModule,
   type ModuleRegistry,
+  type TraceDirection,
+  type TraceInput,
 } from '@iark/kernel';
 import { suiteManifest } from './suiteManifest';
 
@@ -30,6 +37,7 @@ import { suiteManifest } from './suiteManifest';
  *   POST /api/<módulo>/export?format=svg&view=  cuerpo: documento JSON → el archivo exportado
  *   POST /api/<módulo>/import?importer=&name=   cuerpo: texto (Mermaid…) → { document, warnings, importer }
  *   POST /api/<módulo>/run/<comando>            cuerpo: { input?, args?, options? } → { output, warnings, kind }
+ *   POST /api/trace                             cuerpo: { documents: [{ module, document }], from?, direction?, depth? } → grafo de trazabilidad
  */
 export interface ServeOptions {
   registry: ModuleRegistry;
@@ -134,11 +142,46 @@ export function createSuiteServer(options: ServeOptions): Server {
     throw new HttpError(422, 'El documento no cumple el esquema del módulo.', { issues: analysis.issues });
   }
 
+  /** Trazabilidad entre módulos: reúne los documentos aportados y sigue sus referencias URN. */
+  function trace(raw: string): unknown {
+    let body: { documents?: unknown; from?: unknown; direction?: unknown; depth?: unknown };
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      throw new HttpError(400, 'El cuerpo debe ser JSON: { "documents": [{ "module": "…", "document": {…} }], "from"?: "urn:iark:…" }.');
+    }
+    if (!Array.isArray(body.documents) || body.documents.length === 0) throw new HttpError(400, 'Falta "documents": la lista de documentos { module, document } a reunir.');
+    const inputs: TraceInput[] = body.documents.map((entry: { module?: unknown; document?: unknown; source?: unknown }, index: number) => {
+      if (!entry || typeof entry.module !== 'string') throw new HttpError(400, `documents[${index}] necesita "module".`);
+      const module = moduleOf(entry.module);
+      const document = documentOf(module, typeof entry.document === 'string' ? entry.document : JSON.stringify(entry.document ?? null));
+      return { module, document, source: typeof entry.source === 'string' ? entry.source : undefined };
+    });
+    const direction = (body.direction ?? 'both') as TraceDirection;
+    if (!['refs', 'referrers', 'both'].includes(direction)) throw new HttpError(400, 'direction debe ser refs, referrers o both.');
+    try {
+      const graph = buildTraceGraph(inputs);
+      const reached = typeof body.from === 'string' ? traceReach(graph, body.from, { direction, depth: typeof body.depth === 'number' ? body.depth : undefined }) : undefined;
+      return {
+        graph,
+        ...(reached ? { from: reached[0].node.urn, reached } : {}),
+        report: reached ? traceReachReport(reached, direction) : traceReport(graph),
+        mermaid: traceMermaid(graph, reached ? new Set(reached.map((r) => r.node.urn)) : undefined),
+      };
+    } catch (error) {
+      throw new HttpError(400, (error as Error).message);
+    }
+  }
+
   async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     const parts = url.pathname.slice(API.length).split('/').filter(Boolean).map(decodeURIComponent);
     if (parts.length === 1 && parts[0] === 'modules') {
       requireMethod(req, 'GET');
       return sendJson(res, 200, options.registry.list().map(moduleCapabilities));
+    }
+    if (parts.length === 1 && parts[0] === 'trace') {
+      requireMethod(req, 'POST');
+      return sendJson(res, 200, trace(await readBody(req)));
     }
     const [id, action, command] = parts;
     if (!id || !action) throw new HttpError(404, 'Ruta de la API desconocida. Ver /api/modules.');
