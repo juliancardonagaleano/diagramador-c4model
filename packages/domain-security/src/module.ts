@@ -1,4 +1,4 @@
-import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue } from '@iark/kernel';
+import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue, ViewRef } from '@iark/kernel';
 import { looksLikeMermaid } from '@iark/kernel';
 import { securityAiSpec } from './ai/generation';
 import { securityCommands } from './commands';
@@ -9,6 +9,7 @@ import { fromMermaid } from './import/fromMermaid';
 import { analyzeSecurity } from './issues';
 import { securityDocumentSchema, securityJsonSchema } from './schema';
 import { SECURITY_DOCUMENT_VERSION, type SecurityDocument } from './types';
+import { listViews } from './views';
 
 const mermaidImporter: Importer<SecurityDocument> = {
   id: 'mermaid',
@@ -66,6 +67,12 @@ export const securityModule: DomainModule<SecurityDocument> = {
     ...doc.assets.map((a) => ({ id: a.id, name: a.name, kind: 'asset' })),
     ...doc.threats.map((t) => ({ id: t.id, name: t.title, kind: 'threat' })),
     ...doc.controls.map((c) => ({ id: c.id, name: c.name, kind: 'control' })),
+  ],
+  views: (doc): ViewRef[] => listViews(doc).map((v) => ({ id: v.id, title: v.title })),
+  traceViews: [
+    { prefix: 'blast', label: 'Alcance si se compromete', applies: (e) => e.kind === 'asset' },
+    { prefix: 'exposure', label: 'Quién llega hasta él', applies: (e) => e.kind === 'asset' },
+    { prefix: 'focus', label: 'Contexto', applies: (e) => e.kind === 'asset' },
   ],
   cliCommands: securityCommands,
 };

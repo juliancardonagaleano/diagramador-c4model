@@ -438,7 +438,7 @@ function registerModuleCommands(program: Command, registry: ModuleRegistry): voi
         const declared = (spec.args ?? []).length;
         const args = actionArgs.slice(0, declared).map((a) => String(a ?? ''));
         const input = spec.input ? readInput(actionArgs[declared] as string | undefined, Boolean(options.stdin)) : undefined;
-        const out = await spec.run({ args, options, input });
+        const out = await spec.run({ args, options, input, warn: (message) => void process.stderr.write(message.endsWith('\n') ? message : `${message}\n`) });
         if (out) writeOutput(spec.input ? (options.out as string | undefined) : undefined, out.endsWith('\n') ? out : `${out}\n`);
       });
     }

@@ -1,4 +1,4 @@
-import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue } from '@iark/kernel';
+import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue, ViewRef } from '@iark/kernel';
 import { looksLikeMermaid } from '@iark/kernel';
 import { integrationAiSpec } from './ai/generation';
 import { integrationCommands } from './commands';
@@ -9,6 +9,7 @@ import { fromMermaid } from './import/fromMermaid';
 import { analyzeIntegration } from './issues';
 import { integrationDocumentSchema, integrationJsonSchema } from './schema';
 import { INTEGRATION_DOCUMENT_VERSION, type IntegrationDocument } from './types';
+import { listViews } from './views';
 
 const mermaidImporter: Importer<IntegrationDocument> = {
   id: 'mermaid',
@@ -60,5 +61,6 @@ export const integrationModule: DomainModule<IntegrationDocument> = {
   exporters: [mermaidExporter, svgExporter, drawioExporter],
   ai: integrationAiSpec,
   entities: (doc): EntityRef[] => doc.nodes.map((n) => ({ id: n.id, name: n.name, kind: n.kind })),
+  views: (doc): ViewRef[] => listViews(doc).map((v) => ({ id: v.id, title: v.title })),
   cliCommands: integrationCommands,
 };

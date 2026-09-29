@@ -1,4 +1,4 @@
-import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue } from '@iark/kernel';
+import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue, ViewRef } from '@iark/kernel';
 import { c4AiSpec } from './ai/spec';
 import { toDrawio, type DrawioNotation } from './export/drawio/toDrawio';
 import type { DrawioLocale } from './export/drawio/styles';
@@ -76,4 +76,5 @@ export const c4Module: DomainModule<C4Document> = {
   exporters: [drawioExporter, mermaidExporter],
   ai: c4AiSpec,
   entities: (document): EntityRef[] => document.model.elements.map((e) => ({ id: e.id, name: e.name, kind: e.type })),
+  views: (document): ViewRef[] => document.views.map((v) => ({ id: v.id, title: v.title ?? v.id })),
 };

@@ -165,13 +165,14 @@ export const enterpriseCommands: CommandSpec[] = [
   },
   {
     name: 'from-integration',
+    kind: 'convert',
     description: 'Crea el inventario de aplicaciones a partir de un mapa de integración: sistemas → aplicaciones, almacenes → bases de datos, responsables → unidades, con referencia urn:iark:integration:<id>',
     input: { description: 'documento de integración en JSON' },
     options: [{ flags: '--name <nombre>', description: 'nombre del documento empresarial' }],
-    run: ({ input, options }) => {
+    run: ({ input, options, warn }) => {
       const { document, warnings } = fromIntegrationJson(parseJson(input, 'documento de integración'), { name: options.name as string | undefined });
-      for (const w of warnings) process.stderr.write(`aviso: ${w}\n`);
-      process.stderr.write(`Convertido "${document.workspace.name}": ${document.applications.length} aplicaciones, ${document.technologies.length} tecnologías.\n`);
+      for (const w of warnings) warn?.(`aviso: ${w}`);
+      warn?.(`Convertido "${document.workspace.name}": ${document.applications.length} aplicaciones, ${document.technologies.length} tecnologías.`);
       return `${JSON.stringify(document, null, 2)}\n`;
     },
   },

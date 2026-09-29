@@ -142,28 +142,30 @@ export const securityCommands: CommandSpec[] = [
   },
   {
     name: 'from-integration',
+    kind: 'convert',
     description: 'Crea el modelo de seguridad a partir de un mapa de integración: sistemas → procesos o entidades externas, almacenes → almacenes de datos, interacciones → flujos, con zonas propuestas por heurística y referencia urn:iark:integration:<id>',
     input: { description: 'documento de integración en JSON' },
     options: [{ flags: '--name <nombre>', description: 'nombre del documento de seguridad' }],
-    run: ({ input, options }) => {
+    run: ({ input, options, warn }) => {
       const { document, warnings } = fromIntegrationJson(parseJson(input, 'documento de integración'), { name: options.name as string | undefined });
-      for (const w of warnings) process.stderr.write(`aviso: ${w}\n`);
-      process.stderr.write(`Convertido "${document.workspace.name}": ${document.zones.length} zonas, ${document.assets.length} activos, ${document.flows.length} flujos.\n`);
+      for (const w of warnings) warn?.(`aviso: ${w}`);
+      warn?.(`Convertido "${document.workspace.name}": ${document.zones.length} zonas, ${document.assets.length} activos, ${document.flows.length} flujos.`);
       return `${JSON.stringify(document, null, 2)}\n`;
     },
   },
   {
     name: 'from-platform',
+    kind: 'convert',
     description: 'Crea el modelo de seguridad de un entorno a partir de un documento de plataforma: redes → zonas de confianza (según su exposición), servicios y recursos → activos, dependencias → flujos, con referencia urn:iark:platform:<id>',
     input: { description: 'documento de plataforma en JSON' },
     options: [
       { flags: '--env <entorno>', description: 'entorno a modelar (por defecto, el de producción)' },
       { flags: '--name <nombre>', description: 'nombre del documento de seguridad' },
     ],
-    run: ({ input, options }) => {
+    run: ({ input, options, warn }) => {
       const { document, warnings } = fromPlatformJson(parseJson(input, 'documento de plataforma'), { name: options.name as string | undefined, env: options.env as string | undefined });
-      for (const w of warnings) process.stderr.write(`aviso: ${w}\n`);
-      process.stderr.write(`Convertido "${document.workspace.name}": ${document.zones.length} zonas, ${document.assets.length} activos, ${document.flows.length} flujos.\n`);
+      for (const w of warnings) warn?.(`aviso: ${w}`);
+      warn?.(`Convertido "${document.workspace.name}": ${document.zones.length} zonas, ${document.assets.length} activos, ${document.flows.length} flujos.`);
       return `${JSON.stringify(document, null, 2)}\n`;
     },
   },
