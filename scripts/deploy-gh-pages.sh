@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Publica la app compilada (dist/app) en la rama `gh-pages`, para GitHub Pages con
-# origen "Deploy from a branch" → gh-pages / raíz. Útil cuando no se pueden ejecutar
-# workflows de GitHub Actions. Uso: npm run deploy:pages
+# origen "Deploy from a branch" → gh-pages / raíz. Es el método de despliegue del proyecto (sin
+# GitHub Actions). Uso: npm run deploy:pages
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)
