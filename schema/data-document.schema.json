@@ -1,0 +1,293 @@
+{
+  "$id": "https://github.com/juliancardonagaleano/diagramador-c4model/schema/data-document.schema.json",
+  "title": "Documento de datos (IArk - DIAgrams)",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "default": "1.0",
+      "type": "string",
+      "const": "1.0"
+    },
+    "workspace": {
+      "default": {
+        "name": "Arquitectura de datos"
+      },
+      "type": "object",
+      "properties": {
+        "name": {
+          "default": "Arquitectura de datos",
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "domains": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      }
+    },
+    "assets": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "source",
+              "database",
+              "warehouse",
+              "lake",
+              "stream",
+              "table",
+              "view",
+              "file",
+              "report",
+              "model"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "technology": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "steward": {
+            "type": "string"
+          },
+          "domainId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "parentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "restricted"
+            ]
+          },
+          "pii": {
+            "type": "boolean"
+          },
+          "retention": {
+            "type": "string"
+          },
+          "external": {
+            "type": "boolean"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "type": {
+                  "type": "string"
+                },
+                "keys": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "pk",
+                      "fk",
+                      "uk"
+                    ]
+                  }
+                },
+                "nullable": {
+                  "type": "boolean"
+                },
+                "pii": {
+                  "type": "boolean"
+                },
+                "description": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name"
+        ]
+      }
+    },
+    "pipelines": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "batch",
+              "elt",
+              "cdc",
+              "streaming",
+              "replication",
+              "api",
+              "manual"
+            ]
+          },
+          "inputs": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "outputs": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "tool": {
+            "type": "string"
+          },
+          "schedule": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "anonymizes": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "inputs",
+          "outputs"
+        ]
+      }
+    },
+    "relations": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "sourceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "targetId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "cardinality": {
+            "type": "string",
+            "enum": [
+              "1:1",
+              "1:N",
+              "N:1",
+              "N:M"
+            ]
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sourceId",
+          "targetId",
+          "cardinality"
+        ]
+      }
+    }
+  }
+}

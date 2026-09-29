@@ -1,0 +1,159 @@
+import { parseUrn } from '@iark/kernel';
+import { z } from 'zod';
+import {
+  ASSET_KINDS,
+  CARDINALITIES,
+  CLASSIFICATIONS,
+  COLUMN_KEYS,
+  DATA_DOCUMENT_VERSION,
+  ENTITY_KINDS,
+  KIND_LABELS,
+  PARENT_KINDS,
+  PIPELINE_KINDS,
+  type DataDocument,
+} from './types';
+
+const idSchema = z.string().min(1, 'El id no puede estar vacío').max(120);
+
+export const columnSchema = z.object({
+  name: z.string().min(1, 'El nombre de la columna no puede estar vacío'),
+  type: z.string().optional(),
+  keys: z.array(z.enum(COLUMN_KEYS)).optional(),
+  nullable: z.boolean().optional(),
+  pii: z.boolean().optional(),
+  description: z.string().optional(),
+});
+
+export const domainSchema = z.object({
+  id: idSchema,
+  name: z.string().min(1, 'El nombre no puede estar vacío'),
+  description: z.string().optional(),
+  owner: z.string().optional(),
+});
+
+export const assetSchema = z.object({
+  id: idSchema,
+  kind: z.enum(ASSET_KINDS),
+  name: z.string().min(1, 'El nombre no puede estar vacío'),
+  description: z.string().optional(),
+  technology: z.string().optional(),
+  owner: z.string().optional(),
+  steward: z.string().optional(),
+  domainId: idSchema.optional(),
+  parentId: idSchema.optional(),
+  classification: z.enum(CLASSIFICATIONS).optional(),
+  pii: z.boolean().optional(),
+  retention: z.string().optional(),
+  external: z.boolean().optional(),
+  ref: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  columns: z.array(columnSchema).optional(),
+});
+
+export const pipelineSchema = z.object({
+  id: idSchema,
+  name: z.string().min(1, 'El nombre no puede estar vacío'),
+  kind: z.enum(PIPELINE_KINDS),
+  inputs: z.array(idSchema).min(1, 'Un pipeline necesita al menos una entrada'),
+  outputs: z.array(idSchema).min(1, 'Un pipeline necesita al menos una salida'),
+  tool: z.string().optional(),
+  schedule: z.string().optional(),
+  description: z.string().optional(),
+  owner: z.string().optional(),
+  anonymizes: z.boolean().optional(),
+});
+
+export const relationSchema = z.object({
+  id: idSchema,
+  sourceId: idSchema,
+  targetId: idSchema,
+  cardinality: z.enum(CARDINALITIES),
+  description: z.string().optional(),
+});
+
+/** Esquema estructural + reglas de integridad (referencias, jerarquía y relaciones entre entidades). */
+export const dataDocumentSchema = z
+  .object({
+    version: z.literal(DATA_DOCUMENT_VERSION).default(DATA_DOCUMENT_VERSION),
+    workspace: z.object({ name: z.string().default('Arquitectura de datos'), description: z.string().optional() }).default({ name: 'Arquitectura de datos' }),
+    domains: z.array(domainSchema).default([]),
+    assets: z.array(assetSchema).default([]),
+    pipelines: z.array(pipelineSchema).default([]),
+    relations: z.array(relationSchema).default([]),
+  })
+  .superRefine((doc, ctx) => {
+    const issue = (path: Array<string | number>, message: string): void => void ctx.addIssue({ code: 'custom', path, message });
+
+    const domains = new Set<string>();
+    doc.domains.forEach((d, i) => {
+      if (domains.has(d.id)) issue(['domains', i, 'id'], `Id de dominio duplicado: "${d.id}"`);
+      domains.add(d.id);
+    });
+
+    const assets = new Map<string, (typeof doc.assets)[number]>();
+    doc.assets.forEach((a, i) => {
+      if (assets.has(a.id)) issue(['assets', i, 'id'], `Id de activo duplicado: "${a.id}"`);
+      assets.set(a.id, a);
+    });
+    doc.assets.forEach((a, i) => {
+      if (a.domainId !== undefined && !domains.has(a.domainId)) issue(['assets', i, 'domainId'], `El activo "${a.id}" referencia un dominio inexistente: "${a.domainId}"`);
+      if (a.parentId !== undefined) {
+        const parent = assets.get(a.parentId);
+        const allowed = PARENT_KINDS[a.kind];
+        if (!parent) issue(['assets', i, 'parentId'], `El activo "${a.id}" referencia un padre inexistente: "${a.parentId}"`);
+        else if (!allowed) issue(['assets', i, 'parentId'], `Un activo de tipo "${a.kind}" no puede tener padre`);
+        else if (!allowed.includes(parent.kind)) {
+          issue(['assets', i, 'parentId'], `El padre de "${a.id}" (${a.kind}) debe ser de tipo ${allowed.map((k) => `"${k}"`).join(', ')}, pero "${parent.id}" es "${parent.kind}"`);
+        }
+      }
+      if (a.ref !== undefined && !parseUrn(a.ref)) issue(['assets', i, 'ref'], `La referencia de "${a.id}" no es una URN válida (urn:iark:<módulo>:<id>): "${a.ref}"`);
+      const names = new Set<string>();
+      (a.columns ?? []).forEach((c, j) => {
+        if (names.has(c.name)) issue(['assets', i, 'columns', j, 'name'], `Columna duplicada en "${a.id}": "${c.name}"`);
+        names.add(c.name);
+      });
+    });
+
+    const pipelines = new Set<string>();
+    doc.pipelines.forEach((p, i) => {
+      if (pipelines.has(p.id)) issue(['pipelines', i, 'id'], `Id de pipeline duplicado: "${p.id}"`);
+      pipelines.add(p.id);
+      p.inputs.forEach((id, j) => {
+        if (!assets.has(id)) issue(['pipelines', i, 'inputs', j], `El pipeline "${p.id}" lee un activo inexistente: "${id}"`);
+      });
+      p.outputs.forEach((id, j) => {
+        if (!assets.has(id)) issue(['pipelines', i, 'outputs', j], `El pipeline "${p.id}" escribe un activo inexistente: "${id}"`);
+        else if (p.inputs.includes(id)) issue(['pipelines', i, 'outputs', j], `El pipeline "${p.id}" no puede leer y escribir el mismo activo: "${id}"`);
+      });
+    });
+
+    const relations = new Set<string>();
+    doc.relations.forEach((r, i) => {
+      if (relations.has(r.id)) issue(['relations', i, 'id'], `Id de relación duplicado: "${r.id}"`);
+      relations.add(r.id);
+      if (r.sourceId === r.targetId) issue(['relations', i, 'targetId'], `La relación "${r.id}" no puede unir un activo consigo mismo`);
+      for (const [field, id] of [['sourceId', r.sourceId], ['targetId', r.targetId]] as const) {
+        const asset = assets.get(id);
+        if (!asset) issue(['relations', i, field], `La relación "${r.id}" referencia un activo inexistente: "${id}"`);
+        else if (!ENTITY_KINDS.includes(asset.kind)) {
+          issue(['relations', i, field], `La relación "${r.id}" une "${id}" (${KIND_LABELS[asset.kind].toLowerCase()}): solo se relacionan ${ENTITY_KINDS.map((k) => KIND_LABELS[k].toLowerCase()).join(', ')}`);
+        }
+      }
+    });
+  });
+
+export type DataValidation = { ok: true; document: DataDocument } | { ok: false; issues: Array<{ path: string; message: string }> };
+
+export function validateDataDocument(input: unknown): DataValidation {
+  const result = dataDocumentSchema.safeParse(input);
+  if (result.success) return { ok: true, document: result.data as DataDocument };
+  return { ok: false, issues: result.error.issues.map((i) => ({ path: i.path.map(String).join('.'), message: i.message })) };
+}
+
+export function formatDataIssues(issues: Array<{ path: string; message: string }>): string {
+  return issues.map((i) => `- ${i.path ? `${i.path}: ` : ''}${i.message}`).join('\n');
+}
+
+export function dataJsonSchema(): Record<string, unknown> {
+  return z.toJSONSchema(dataDocumentSchema, { target: 'draft-2020-12', io: 'input' }) as Record<string, unknown>;
+}

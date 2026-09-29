@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectMermaidKind, looksLikeMermaid, parseFlowchart, parseSequence, preprocessMermaid, splitLabel } from './index';
+import { detectMermaidKind, erEndIsMany, looksLikeMermaid, parseEr, parseFlowchart, parseSequence, preprocessMermaid, splitLabel } from './index';
 
 const body = (src: string) => preprocessMermaid(src).lines.slice(1);
 
@@ -64,5 +64,41 @@ describe('parseSequence', () => {
     expect(ev[1]).toMatchObject({ type: 'participant', alias: 'U', label: 'Usuario', actor: true });
     expect(ev.filter((e) => e.type === 'message').map((e) => (e as { arrow: string }).arrow)).toEqual(['sync', 'reply', 'async']);
     expect(ev).toHaveLength(5);
+  });
+});
+
+describe('parseEr', () => {
+  it('emite entidades, atributos con claves y comentario, y relaciones con sus extremos', () => {
+    const events = parseEr(
+      body(`erDiagram
+        CLIENTE ||--o{ PEDIDO : realiza
+        pedido["Pedido de venta"] {
+          int id PK
+          int cliente_id FK, UK "cliente que compra"
+          text nota
+        }
+        "TABLA RARA"
+        SUELTA`),
+    );
+    expect(events.filter((e) => e.type === 'entity').map((e) => (e.type === 'entity' ? e.entity.alias : ''))).toEqual(['CLIENTE', 'PEDIDO', 'pedido', 'TABLA RARA', 'SUELTA']);
+    const rel = events.find((e) => e.type === 'relation');
+    expect(rel).toMatchObject({ from: { alias: 'CLIENTE' }, to: { alias: 'PEDIDO' }, left: '||', right: 'o{', identifying: true, label: 'realiza' });
+    expect(events.find((e) => e.type === 'entity' && e.entity.label)).toMatchObject({ entity: { alias: 'pedido', label: 'Pedido de venta' } });
+    const attrs = events.filter((e) => e.type === 'attribute');
+    expect(attrs).toHaveLength(3);
+    expect(attrs[0]).toMatchObject({ entity: 'pedido', attrType: 'int', name: 'id', keys: ['PK'] });
+    expect(attrs[1]).toMatchObject({ name: 'cliente_id', keys: ['FK', 'UK'], comment: 'cliente que compra' });
+    expect(attrs[2]).toMatchObject({ name: 'nota', keys: [], raw: 'text nota' });
+  });
+
+  it('avisa de lo que no entiende y mantiene la línea rara de un bloque como atributo sin campos', () => {
+    const events = parseEr(body('erDiagram\n A ||--o{ B\n esto no es nada útil: ni válido\n C {\n solo\n }'));
+    expect(events.find((e) => e.type === 'warning')).toMatchObject({ message: expect.stringContaining('línea 3') });
+    expect(events.find((e) => e.type === 'attribute')).toMatchObject({ entity: 'C', raw: 'solo', keys: [] });
+  });
+
+  it('erEndIsMany distingue los extremos con varios', () => {
+    expect(['||', '|o', 'o|'].map(erEndIsMany)).toEqual([false, false, false]);
+    expect(['}o', '}|', 'o{', '|{'].map(erEndIsMany)).toEqual([true, true, true, true]);
   });
 });
