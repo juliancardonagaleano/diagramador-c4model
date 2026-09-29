@@ -2,6 +2,7 @@ import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue, ViewRef 
 import { looksLikeMermaid } from '@iark/kernel';
 import { integrationAiSpec } from './ai/generation';
 import { integrationCommands } from './commands';
+import { integrationEditor } from './editor';
 import { toDrawio } from './export/drawio';
 import { toMermaid, type IntegrationMermaidFormat } from './export/mermaid';
 import { toSvg } from './export/render';
@@ -63,4 +64,5 @@ export const integrationModule: DomainModule<IntegrationDocument> = {
   entities: (doc): EntityRef[] => doc.nodes.map((n) => ({ id: n.id, name: n.name, kind: n.kind })),
   views: (doc): ViewRef[] => listViews(doc).map((v) => ({ id: v.id, title: v.title })),
   cliCommands: integrationCommands,
+  editor: integrationEditor,
 };

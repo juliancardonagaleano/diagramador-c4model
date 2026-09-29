@@ -16,3 +16,4 @@ export { fromC4Json } from './import/fromC4';
 export { integrationAiSpec, generatedIntegrationSchema, type GeneratedIntegration } from './ai/generation';
 export { integrationCommands } from './commands';
 export { integrationModule } from './module';
+export { integrationEditor } from './editor';

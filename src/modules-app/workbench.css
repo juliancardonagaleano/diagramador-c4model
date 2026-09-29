@@ -440,3 +440,7 @@ pre.wb-out {
 .wb-link:hover {
   text-decoration: underline;
 }
+
+/* Con el lienzo activo, este ocupa todo el ancho y el JSON se ve en las demás pestañas. */
+.wb-main[data-mode='canvas'] { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+.wb-main[data-mode='canvas'] .wb-editor { display: none; }
