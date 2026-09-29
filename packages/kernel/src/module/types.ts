@@ -1,4 +1,5 @@
 import type { ZodType } from 'zod';
+import type { EditorSpec } from './editor';
 
 /**
  * Contrato que cumple cada especialidad de la suite (C4 hoy; integraciones, datos, empresarial, plataforma…).
@@ -160,4 +161,6 @@ export interface DomainModule<TDoc = unknown> {
   /** Vistas bajo demanda de un elemento. */
   traceViews?: TraceViewSpec[];
   cliCommands?: CommandSpec[];
+  /** Edición interactiva: notación, proyección a grafo, formularios y operaciones. Sin él, el módulo solo se ve y se edita como JSON. */
+  editor?: EditorSpec<TDoc>;
 }

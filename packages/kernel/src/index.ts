@@ -1,4 +1,5 @@
 export * from './module/types';
+export * from './module/editor';
 export { ModuleRegistry, UnknownModuleError } from './module/registry';
 export * from './module/operations';
 export * from './module/trace';

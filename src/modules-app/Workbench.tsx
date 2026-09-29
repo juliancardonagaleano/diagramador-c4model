@@ -1,10 +1,12 @@
-import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { WorkbenchController } from './controller';
 import { countBySeverity, locateId } from '@iark/kernel';
 import { readFile } from './files';
+import { DiagramCanvas } from './canvas/DiagramCanvas';
+import { EditHistory } from './canvas/history';
 import { DiagramPanel, ExportPanel, FilePicker, ImportPanel, IssuesPanel, ReportsPanel } from './panels';
 
-type PanelId = 'diagram' | 'issues' | 'reports' | 'export' | 'import';
+type PanelId = 'canvas' | 'diagram' | 'issues' | 'reports' | 'export' | 'import';
 
 export interface WorkbenchProps {
   controller: WorkbenchController;
@@ -21,10 +23,11 @@ const LINE_HEIGHT = 18;
 
 export function Workbench({ controller, embed = false, ui = 'full', dialog, onDismissDialog, onSave, onExit }: WorkbenchProps) {
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
-  const [panel, setPanel] = useState<PanelId>('diagram');
+  const [panel, setPanel] = useState<PanelId | undefined>();
+  const history = useMemo(() => new EditHistory(), [state.moduleId]);
   const [toast, setToast] = useState<string | undefined>();
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const editor = useRef<HTMLTextAreaElement>(null);
+  const jsonEditor = useRef<HTMLTextAreaElement>(null);
 
   const notify = useCallback((message: string) => {
     setToast(message);
@@ -34,7 +37,7 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
 
   const reveal = useCallback(
     (id: string) => {
-      const el = editor.current;
+      const el = jsonEditor.current;
       const found = locateId(controller.getState().text, id);
       if (!el || !found) return;
       el.focus();
@@ -63,8 +66,12 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
   const problemCount = analysis.status === 'ok' ? analysis.issues.length : analysis.status === 'schema' ? analysis.issues.length : analysis.status === 'syntax' ? 1 : 0;
   const panelProps = { controller, state, reveal, notify };
 
+  const editor = module?.editor;
+  const active: PanelId = panel ?? (editor ? 'canvas' : 'diagram');
+  const canvasMode = active === 'canvas' && !!editor;
   const tabs: Array<[PanelId, string]> = [
-    ['diagram', 'Diagrama'],
+    ...(editor ? ([['canvas', 'Lienzo']] as Array<[PanelId, string]>) : []),
+    ['diagram', editor ? 'Vista SVG' : 'Diagrama'],
     ['issues', `Problemas${problemCount ? ` (${problemCount})` : ''}`],
     ['reports', 'Informes'],
     ['export', 'Exportar'],
@@ -114,14 +121,14 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
           </div>
       </header>
 
-      <main className="wb-main">
+      <main className="wb-main" data-mode={canvasMode ? 'canvas' : undefined}>
         <section className="wb-editor" aria-label="Documento">
           <div className="wb-bar">
             <strong>{module ? `${module.name} · v${module.version}` : state.loading ? 'Cargando módulo…' : 'Elige un módulo'}</strong>
             <span>{state.readOnly ? 'Solo lectura' : state.modified ? 'Sin guardar' : ''}</span>
           </div>
           <textarea
-            ref={editor}
+            ref={jsonEditor}
             aria-label="Documento JSON"
             spellCheck={false}
             value={state.text}
@@ -150,16 +157,31 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
         <section className="wb-side">
           <div className="wb-tabs" role="tablist" aria-label="Paneles">
             {tabs.map(([id, label]) => (
-              <button key={id} type="button" role="tab" aria-selected={panel === id} onClick={() => setPanel(id)}>
+              <button key={id} type="button" role="tab" aria-selected={active === id} onClick={() => setPanel(id)}>
                 {label}
               </button>
             ))}
           </div>
-          {panel === 'diagram' && <DiagramPanel {...panelProps} />}
-          {panel === 'issues' && <IssuesPanel {...panelProps} />}
-          {panel === 'reports' && <ReportsPanel {...panelProps} />}
-          {panel === 'export' && <ExportPanel {...panelProps} />}
-          {panel === 'import' && <ImportPanel {...panelProps} />}
+          {canvasMode && (
+            <DiagramCanvas
+              moduleId={module!.id}
+              spec={editor as never}
+              document={analysis.status === 'ok' ? analysis.document : undefined}
+              text={state.text}
+              viewId={state.viewId}
+              views={state.choices.views}
+              onView={(id) => controller.setView(id)}
+              readOnly={state.readOnly}
+              history={history}
+              onText={(t) => controller.setText(t)}
+              notify={notify}
+            />
+          )}
+          {active === 'diagram' && <DiagramPanel {...panelProps} />}
+          {active === 'issues' && <IssuesPanel {...panelProps} />}
+          {active === 'reports' && <ReportsPanel {...panelProps} />}
+          {active === 'export' && <ExportPanel {...panelProps} />}
+          {active === 'import' && <ImportPanel {...panelProps} />}
         </section>
       </main>
 

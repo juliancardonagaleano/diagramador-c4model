@@ -5,10 +5,18 @@ const example = (file: string): string => readFileSync(new URL(`../../examples/$
 
 const diagram = (page: Page) => page.locator('[data-testid="diagram-stage"] img');
 
+/** Los módulos con lienzo interactivo abren en «Lienzo»; estas pruebas miran la vista SVG y el JSON. */
+async function showSvg(page: Page): Promise<void> {
+  const tab = page.getByRole('tab', { name: 'Vista SVG' });
+  if (await tab.isVisible().catch(() => false)) await tab.click();
+}
+
 async function open(page: Page, module: string): Promise<string[]> {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`/modulos.html?module=${module}`, { waitUntil: 'networkidle' });
+  await expect(page.getByRole('tablist', { name: 'Paneles' })).toBeVisible({ timeout: 20000 });
+  await showSvg(page);
   await expect(diagram(page)).toBeVisible({ timeout: 20000 });
   return errors;
 }
@@ -42,6 +50,8 @@ test.describe('banco de trabajo de módulos', () => {
       const errors = await open(page, id === 'integration' ? 'data' : 'integration');
       await page.getByRole('tab', { name: label }).click();
       await expect(page.getByRole('tab', { name: label })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByRole('tab', { name: /^(Diagrama|Vista SVG)$/ })).toBeVisible();
+      await showSvg(page);
       await expect(page.getByTestId('editor-status')).toContainText('Válido');
       await expect(diagram(page)).toBeVisible();
       expect(await diagram(page).evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 100)).toBe(true);
@@ -61,7 +71,7 @@ test.describe('banco de trabajo de módulos', () => {
     await expect(page.getByText('No es JSON válido')).toBeVisible();
     await editor.fill(original);
     await expect(page.getByTestId('editor-status')).toContainText('Válido');
-    await page.getByRole('tab', { name: 'Diagrama' }).click();
+    await page.getByRole('tab', { name: /^(Diagrama|Vista SVG)$/ }).click();
     await expect(page.getByText('se muestra el último dibujo válido')).toHaveCount(0);
   });
 
@@ -131,7 +141,7 @@ test.describe('banco de trabajo de módulos', () => {
     await page.getByRole('button', { name: 'Importar', exact: true }).click();
     await expect(page.getByLabel('Documento JSON')).toHaveValue(/"assets"/);
     expect(await page.getByLabel('Documento JSON').inputValue()).toContain('Almacén');
-    await page.getByRole('tab', { name: 'Diagrama' }).click();
+    await page.getByRole('tab', { name: /^(Diagrama|Vista SVG)$/ }).click();
     await expect(diagram(page)).toBeVisible();
 
     await page.getByRole('tab', { name: 'Importar' }).click();
@@ -154,6 +164,8 @@ test.describe('banco de trabajo de módulos', () => {
     doc.workspace.name = 'Mi borrador';
     await editor.fill(JSON.stringify(doc, null, 2));
     await page.reload({ waitUntil: 'networkidle' });
+    await expect(page.getByRole('tablist', { name: 'Paneles' })).toBeVisible({ timeout: 20000 });
+    await showSvg(page);
     await expect(page.getByLabel('Documento JSON')).toHaveValue(/Mi borrador/);
     await page.getByRole('button', { name: 'Cargar ejemplo' }).click();
     await expect(page.getByLabel('Documento JSON')).not.toHaveValue(/Mi borrador/);
