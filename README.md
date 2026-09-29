@@ -2,7 +2,7 @@
 
 Editor web de diagramas del **modelo C4** (Contexto, Contenedores y Componentes) con:
 
-- **JSON limpio y estable** como formato nativo, convertible 1‑a‑1 a **`.drawio`** (usa la librería C4 oficial de draw.io, con placeholders `%c4Name%`, `%c4Type%`, `%c4Description%`, `%c4Technology%`) y **importable desde `.drawio`** (web y CLI).
+- **JSON limpio y estable** como formato nativo, convertible 1‑a‑1 a **`.drawio`** (usa la librería C4 oficial de draw.io, con placeholders `%c4Name%`, `%c4Type%`, `%c4Description%`, `%c4Technology%`) y **importable desde `.drawio` y desde el DSL de Structurizr** (web y CLI).
 - **Autolayout jerárquico** (ELK, algoritmo *layered* con boundaries anidados) como característica central: el mismo motor se usa en el navegador y en el CLI.
 - **Editor interactivo** con la estética de [drawdb.app](https://www.drawdb.app/): cabecera con menús, toolbar flotante, panel lateral con pestañas y cards, panel de problemas, tema claro/oscuro, deshacer/rehacer, minimapa.
 - **CLI `c4diagram`** para generar diagramas a partir de **instrucciones en lenguaje natural** (Claude, salida estructurada), aplicar autolayout y convertir a `.drawio` sin abrir un navegador. Se puede usar sin clave de API con cualquier otra IA o agente.
@@ -162,7 +162,7 @@ Los archivos [`examples/banca-c4.drawio`](examples/banca-c4.drawio) y [`examples
 
 ## Importar un `.drawio`
 
-Un diagrama de draw.io se puede convertir en un documento C4 (cada **página** pasa a ser una **vista**), tanto en la web (**Archivo ▸ Importar .drawio…**, pide confirmación si hay cambios sin guardar) como en el CLI:
+Un diagrama de draw.io se puede convertir en un documento C4 (cada **página** pasa a ser una **vista**), tanto en la web (**Archivo ▸ Importar .drawio…**, pide confirmación si hay cambios sin guardar) como en el CLI (`c4diagram import` deduce el formato de la extensión o del contenido; también hay un [DSL de Structurizr](#importar-un-dsl-de-structurizr)):
 
 ```bash
 npx c4diagram import examples/banca-c4.drawio --out banca.json     # el nombre del diagrama sale del archivo (o --name)
@@ -188,13 +188,35 @@ Lo que **no** se importa (siempre se avisa, sin detener la importación): notas 
 - No se importan `tags`, `layout` ni la descripción del espacio de trabajo: `.drawio` no los guarda.
 - Los `.drawio.svg` / `.drawio.png` (con el XML incrustado) no se leen; expórtalos antes como `.drawio`.
 
+## Importar un DSL de Structurizr
+
+Un modelo escrito en el [DSL de Structurizr](https://docs.structurizr.com/dsl) se importa con el mismo flujo y las mismas garantías que un `.drawio`: en la web con **Archivo ▸ Importar Structurizr DSL…** (pide confirmación si hay cambios sin guardar, deja el diagrama como "sin guardar" y lista los avisos en un modal) y en el CLI con `c4diagram import`, que deduce el formato de la extensión (`.dsl`) o del contenido (`--format dsl|drawio` lo fuerza). Siempre produce un documento válido o un error de una línea (código de salida 2), con el número de línea del DSL cuando el fallo es de sintaxis.
+
+```bash
+npx c4diagram import examples/banca.dsl --layout --out banca.json     # --layout coloca con ELK las vistas sin coordenadas
+npx c4diagram import examples/banca.dsl --layout | npx c4diagram convert --stdin --out banca.drawio   # DSL → .drawio
+```
+
+Un DSL no tiene coordenadas, así que las vistas quedan sin posicionar: la app las coloca sola al abrirlas (o `--layout` en el CLI). [`examples/banca.dsl`](examples/banca.dsl) es el ejemplo de banca escrito en DSL y produce el mismo modelo y las mismas vistas que `examples/banca.json`.
+
+Qué importa:
+
+- **Modelo:** `person`, `softwareSystem`, `container` y `component` con su jerarquía (un contenedor dentro de su sistema, un componente dentro de su contenedor), descripción, tecnología y etiquetas; `group` y `enterprise` solo aportan su contenido.
+- **Relaciones:** `origen -> destino "descripción" "tecnología" "etiquetas"`, también dentro de un elemento (`-> otro`, `this -> otro`), con identificador (`r = a -> b`) y adelantadas (pueden apuntar a elementos definidos más abajo).
+- **Identificadores** planos y jerárquicos (`!identifiers hierarchical`, con referencias como `sistema.contenedor` o por ámbito); el identificador pasa a ser el `id` del elemento. También `!const`/`!var` con `${NOMBRE}`, comentarios (`#`, `//`, `/* */`), líneas continuadas con `\`, y cadenas `"…"` y `"""…"""`.
+- **Vistas:** `systemLandscape`, `systemContext`, `container` y `component`, con su clave, descripción, `title`, `autoLayout tb|bt|lr|rl [separación de rangos] [separación de nodos]` (dirección y separaciones de la vista) y `include`/`exclude` con `*` (los elementos que C4 muestra por defecto en ese nivel), identificadores, `->x->`, `x->`, `->x`, y `element.tag`, `element.type` y `element.parent` (`==` y `!=`). Si el DSL no define vistas se crean las de por defecto (contexto, contenedores y componentes de cada sistema).
+- **Estilos** (`styles { element "Etiqueta" { … } }`): `shape cylinder|pipe|webbrowser|mobiledevice…` pasa a la forma del elemento (base de datos, cola, navegador, móvil), `background` a color propio del elemento cuando no es el color estándar de C4, y las etiquetas `External` / `Existing System` (o el gris `#999999`) marcan el elemento como externo.
+- **`!include`** de otros archivos en el CLI (relativos al archivo que incluye, con detección de ciclos); solo se leen archivos **dentro del directorio del archivo de entrada** (también siguiendo enlaces simbólicos), así que un DSL de origen desconocido no puede leer nada fuera de su carpeta. En la web y por stdin no hay otros archivos: el `!include` se omite con un aviso.
+
+Qué **no** se importa (siempre se avisa, agrupado por sentencia, sin detener la importación): despliegue (`deploymentEnvironment`, `deploymentNode`…), vistas `dynamic`, `filtered`, `deployment`, `custom` e `image`, `!docs`, `!adrs`, `!ref`, `!script`, `url`, `properties`, `perspectives`, las expresiones de relaciones en `include`/`exclude` (`relationship==…`) y `workspace extends`; y un elemento en un sitio que C4 no admite (un contenedor fuera de un sistema, una persona dentro de uno…) se omite con su contenido. Los temas, la marca (`branding`) y la configuración se ignoran sin avisar, y los estilos de relaciones no se aplican.
+
 ## CLI `c4diagram`
 
 ```
 c4diagram generate "<instrucción>" [--from base.json] [--out d.drawio] [--json d.json] [--model claude-opus-5] [--effort high] [--direction DOWN]
 c4diagram layout   [archivo.json | --stdin] [--out out.json] [--direction auto|down|right|left|up] [--distribution auto|centered|elk] [--density auto|compact|spacious] [--fast] [--force] [--view id]
 c4diagram convert  [archivo.json | --stdin] [--out out.drawio] [--notation c4|card] [--no-waypoints] [--locale es|en] [--view id...]
-c4diagram import   [archivo.drawio | --stdin] [--out out.json] [--name nombre]
+c4diagram import   [archivo.drawio|archivo.dsl | --stdin] [--format auto|drawio|dsl] [--out out.json] [--name nombre] [--layout]
 c4diagram validate [archivo.json | --stdin] [--strict]
 c4diagram schema   [--generation]
 c4diagram prompt   "<instrucción>" [--from base.json]
@@ -254,15 +276,16 @@ La pestaña **IA** del editor web hace lo mismo sin llamar a ningún servicio: "
 ### Uso programático
 
 ```ts
-import { generateDocument, autoLayoutDocument, toDrawio, fromDrawio, validateDocument, deriveView } from 'diagramador-c4model/core';
+import { generateDocument, autoLayoutDocument, toDrawio, fromDrawio, fromStructurizrDsl, validateDocument, deriveView } from 'diagramador-c4model/core';
 
 const { document } = await generateDocument({ instruction: 'Un sistema de tickets…' }); // Claude + autolayout
 const laid = await autoLayoutDocument(validateDocument(json).document, { direction: 'RIGHT', force: true });
 const xml = toDrawio(laid, { locale: 'en' });
 const { document: imported, warnings } = await fromDrawio(xml, { name: 'Tickets' }); // .drawio → documento C4 (lanza DrawioImportError si no es utilizable)
+const fromDsl = fromStructurizrDsl(dslText, { resolveInclude });                       // DSL de Structurizr → documento C4 (lanza DslImportError, con la línea)
 ```
 
-`core` no depende del DOM: funciona en Node y en el navegador. `fromDrawio` descomprime las páginas comprimidas con `DecompressionStream` (Node 20.12+ y los navegadores actuales); un archivo sin comprimir no lo necesita.
+`core` no depende del DOM: funciona en Node y en el navegador. `fromStructurizrDsl` es síncrono y solo lee otros archivos si le das un `resolveInclude`. `fromDrawio` descomprime las páginas comprimidas con `DecompressionStream` (Node 20.12+ y los navegadores actuales); un archivo sin comprimir no lo necesita.
 
 ## Embebido en otra aplicación (iframe + postMessage)
 
@@ -330,7 +353,7 @@ Demo completa: [`examples/embed-host.html`](examples/embed-host.html) (en desarr
 ## Estructura del proyecto
 
 ```
-src/core/     modelo, esquema zod, derivación de vistas, autolayout ELK, export/import .drawio, IA (sin DOM)
+src/core/     modelo, esquema zod, derivación de vistas, autolayout ELK, export/import .drawio, import del DSL de Structurizr, IA (sin DOM)
 src/cli/      comandos de c4diagram (commander)
 src/embed/    protocolo postMessage y SDK de anfitrión
 src/app/      editor React (Vite, React Flow, Semi UI, Tailwind)
@@ -367,4 +390,4 @@ y comprobar que `validate` no reporta errores, que todas las vistas tienen coord
 
 ## Fuera de alcance (v1)
 
-Servidor MCP, exportación PNG/SVG desde el modo embebido, vistas de despliegue/código, colaboración en tiempo real, importar `.drawio` desde el modo embebido (el anfitrión puede usar `fromDrawio` del núcleo).
+Servidor MCP, exportación PNG/SVG desde el modo embebido, vistas de despliegue/código, colaboración en tiempo real, importar `.drawio` o DSL desde el modo embebido (el anfitrión puede usar `fromDrawio` / `fromStructurizrDsl` del núcleo), exportar a DSL de Structurizr.

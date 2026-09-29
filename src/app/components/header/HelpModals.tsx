@@ -39,7 +39,7 @@ export function AboutModal({ visible, onClose }: { visible: boolean; onClose: ()
       <div className="space-y-2 text-sm">
         <p>Editor de diagramas del modelo C4 (Contexto, Contenedores, Componentes) con autolayout, exportación a draw.io y generación asistida por IA.</p>
         <ul className="list-disc pl-5 text-color-2">
-          <li>El documento se guarda como JSON limpio, convertible 1‑a‑1 a <code>.drawio</code>; un <code>.drawio</code> se puede volver a importar (Archivo ▸ Importar .drawio).</li>
+          <li>El documento se guarda como JSON limpio, convertible 1‑a‑1 a <code>.drawio</code>; un <code>.drawio</code> o un DSL de Structurizr se pueden importar (Archivo ▸ Importar).</li>
           <li>
             El mismo motor funciona como CLI: <code>npx c4diagram generate "…"</code>, <code>layout</code>, <code>convert</code>, <code>import</code>.
           </li>

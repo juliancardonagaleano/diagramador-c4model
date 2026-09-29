@@ -1,5 +1,6 @@
-import { readFileSync, readSync, writeFileSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { readFileSync, readSync, realpathSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import type { IncludeResolver } from '../core/import/structurizr/fromStructurizrDsl';
 import { parseDocument } from '../core/model/schema';
 import { extractJson } from '../core/util/extractJson';
 import type { C4Document } from '../core/model/types';
@@ -46,6 +47,29 @@ export function readInput(file: string | undefined, useStdin: boolean): string {
   } catch (error) {
     throw new CliError(`No se pudo leer "${file}": ${(error as Error).message}`);
   }
+}
+
+/**
+ * Soporte de `!include` para importar un DSL desde un archivo: las rutas se resuelven respecto al archivo que
+ * las incluye y solo se leen archivos que estén dentro del directorio del archivo de entrada (siguiendo enlaces
+ * simbólicos), de modo que un DSL de origen desconocido no pueda leer nada fuera de su carpeta.
+ */
+export function dslIncludeOptions(entryFile: string): { file: string; resolveInclude: IncludeResolver } {
+  const entry = realpathSync(resolve(entryFile));
+  const root = dirname(entry);
+  return {
+    file: entry,
+    resolveInclude: (target, fromFile) => {
+      try {
+        const file = realpathSync(resolve(fromFile ? dirname(fromFile) : root, target));
+        const inside = relative(root, file);
+        if (inside === '' || inside.startsWith('..') || isAbsolute(inside)) return undefined;
+        return { file, text: readFileSync(file, 'utf8') };
+      } catch {
+        return undefined; // no existe, es un directorio o no se puede leer
+      }
+    },
+  };
 }
 
 export function readDocument(file: string | undefined, useStdin: boolean): C4Document {

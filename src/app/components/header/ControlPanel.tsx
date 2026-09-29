@@ -80,7 +80,7 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
     return () => clearInterval(t);
   }, []);
 
-  // Descartar el documento actual (Nuevo/Cargar ejemplo/Abrir JSON/Importar .drawio) sin guardar antes pide
+  // Descartar el documento actual (Nuevo/Cargar ejemplo/Abrir JSON/Importar .drawio o DSL) sin guardar antes pide
   // confirmación, igual que ya hace `useEmbedBridge.exit()` cuando hay cambios sin guardar.
   const confirmDiscard = (proceed: () => void) => {
     if (!modified) {
@@ -113,6 +113,7 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
         { key: 'sample', label: 'Cargar ejemplo (banca en línea)', onClick: () => confirmDiscard(loadSample) },
         { key: 'open', label: 'Abrir JSON…', onClick: () => confirmDiscard(actions.openJson), shortcut: 'Ctrl+O' },
         { key: 'import-drawio', label: 'Importar .drawio…', onClick: () => confirmDiscard(actions.importDrawio) },
+        { key: 'import-dsl', label: 'Importar Structurizr DSL…', onClick: () => confirmDiscard(actions.importDsl) },
         { key: 'd1', label: '', divider: true },
         { key: 'save', label: 'Guardar JSON', onClick: actions.saveJson, shortcut: 'Ctrl+S' },
         { key: 'export', label: 'Exportar .drawio (notación C4)', onClick: () => void actions.exportDrawio('c4'), shortcut: 'Ctrl+E' },

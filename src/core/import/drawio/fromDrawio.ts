@@ -1,5 +1,7 @@
 import { classifyFill, CARD_FILL, parseC4TypeLabel, type C4CellKind } from '../../export/drawio/styles';
 import { slugify } from '../../model/factories';
+import { MAX_ID_LENGTH, pickId } from '../ids';
+import { Warnings } from '../warnings';
 import { formatIssues, validateDocument } from '../../model/schema';
 import {
   DEFAULT_SIZES,
@@ -32,7 +34,6 @@ export interface DrawioImportResult {
   warnings: string[];
 }
 
-const MAX_WARNINGS = 50;
 /**
  * Id "escrito a propósito" (kebab-case en minúsculas): distingue los ids de un documento C4 de los aleatorios que
  * genera draw.io (`qKL8bDKQnnmqKWi-3zvG-1`) o los numéricos de versiones antiguas (`2`, `3`).
@@ -45,19 +46,6 @@ const RELATIONSHIP_PREFIX = /^rel-(.+)$/;
 const MAX_READABLE_LENGTH = 60;
 /** Id de una arista implícita (`relación@origen->destino`, la que dibuja una vista cuando un extremo está oculto). */
 const IMPLIED_EDGE = /^(.+?)@(.+)->(.+)$/;
-const MAX_ID_LENGTH = 120;
-
-class Warnings {
-  private list: string[] = [];
-  private dropped = 0;
-  add(message: string): void {
-    if (this.list.length < MAX_WARNINGS) this.list.push(message);
-    else this.dropped += 1;
-  }
-  result(): string[] {
-    return this.dropped > 0 ? [...this.list, `… y ${this.dropped} aviso(s) más`] : this.list;
-  }
-}
 
 interface Explicit {
   type: ElementType;
@@ -127,15 +115,6 @@ const normalizeName = (name: string): string =>
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
-
-/** Primer id libre a partir de `base` (`base`, `base-2`, `base-3`…), evitando también los `reserved`. */
-function pickId(base: string, taken: Set<string>, reserved: Set<string> = new Set()): string {
-  const root = base.slice(0, MAX_ID_LENGTH - 6) || 'item';
-  let candidate = root;
-  for (let i = 2; taken.has(candidate) || reserved.has(candidate); i += 1) candidate = `${root}-${i}`;
-  taken.add(candidate);
-  return candidate;
-}
 
 /** Nivel jerárquico que corresponde a una forma sin tipo declarado, según lo que la contiene. */
 function typeByDepth(parentType: ElementType | undefined): ElementType {

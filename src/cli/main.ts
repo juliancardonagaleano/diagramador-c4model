@@ -1,17 +1,18 @@
-import { basename } from 'node:path';
+import { basename, extname } from 'node:path';
 import { Command, InvalidArgumentError } from 'commander';
 import { applyLayoutToView, autoLayoutDocumentWithQuality, layoutView } from '../core/layout/elkLayout';
 import { formatQuality, type LayoutQuality } from '../core/layout/quality';
 import { sampleDocument } from '../core/model/sample';
 import { toDrawio, DrawioExportError, type DrawioNotation } from '../core/export/drawio/toDrawio';
 import { fromDrawio, DrawioImportError } from '../core/import/drawio/fromDrawio';
+import { fromStructurizrDsl, DslImportError } from '../core/import/structurizr/fromStructurizrDsl';
 import { documentJsonSchema, DocumentValidationError, formatIssues, validateDocument } from '../core/model/schema';
 import type { LayoutDensity, LayoutDirectionOption, LayoutDistribution } from '../core/model/types';
 import { generationJsonSchema } from '../core/ai/generationSchema';
 import { standalonePrompt } from '../core/ai/prompt';
 import { DEFAULT_AI_MODEL, generateDocument, GenerationError, type Effort } from '../core/ai/generate';
 import { analyzeDocument } from '../core/model/issues';
-import { CliError, extractJson, info, readDocument, readInput, writeOutput } from './io';
+import { CliError, dslIncludeOptions, extractJson, info, readDocument, readInput, writeOutput } from './io';
 
 const DIRECTIONS: LayoutDirectionOption[] = ['auto', 'DOWN', 'RIGHT', 'LEFT', 'UP'];
 const DISTRIBUTIONS: LayoutDistribution[] = ['auto', 'centered', 'elk'];
@@ -49,6 +50,25 @@ function parseDensity(value: string): LayoutDensity {
   const v = value.toLowerCase() as LayoutDensity;
   if (!DENSITIES.includes(v)) throw new InvalidArgumentError(`Densidad inválida. Use: ${DENSITIES.join(', ')}`);
   return v;
+}
+
+const IMPORT_FORMATS = ['auto', 'drawio', 'dsl'] as const;
+
+function parseImportFormat(value: string): (typeof IMPORT_FORMATS)[number] {
+  const v = value.toLowerCase() as (typeof IMPORT_FORMATS)[number];
+  if (!IMPORT_FORMATS.includes(v)) throw new InvalidArgumentError(`Formato inválido. Use: ${IMPORT_FORMATS.join(', ')}`);
+  return v;
+}
+
+/** Deduce el formato de un archivo a importar: primero por la extensión y, si no basta (stdin, otra extensión), por el contenido. */
+function detectImportFormat(file: string | undefined, text: string): 'drawio' | 'dsl' {
+  const ext = file ? extname(file).toLowerCase() : '';
+  if (ext === '.dsl') return 'dsl';
+  if (ext === '.drawio' || ext === '.xml') return 'drawio';
+  const head = text.replace(/^﻿/, '').trimStart();
+  if (head.startsWith('<')) return 'drawio';
+  if (/\bworkspace\b/.test(head)) return 'dsl';
+  throw new CliError(`No se reconoce el formato${file ? ` de "${file}"` : ' de la entrada'}: use --format drawio o --format dsl.`, 2);
 }
 
 function parseNotation(value: string): DrawioNotation {
@@ -215,19 +235,34 @@ export function buildProgram(): Command {
 
   program
     .command('import')
-    .description('Importa un diagrama de draw.io (.drawio) y lo convierte en un documento C4 en JSON')
-    .argument('[archivo.drawio]', 'archivo de entrada (o "-" para stdin)')
+    .description('Importa un diagrama de draw.io (.drawio) o un DSL de Structurizr (.dsl) y lo convierte en un documento C4 en JSON')
+    .argument('[archivo]', 'archivo de entrada: .drawio o .dsl (o "-" para stdin)')
     .option('--stdin', 'leer el archivo de la entrada estándar')
+    .option('--format <formato>', `formato de entrada: ${IMPORT_FORMATS.join('|')} (auto lo deduce de la extensión o del contenido)`, parseImportFormat, 'auto')
     .option('-o, --out <archivo.json>', 'archivo de salida (por defecto stdout)')
-    .option('--name <nombre>', 'nombre del diagrama (por defecto, el nombre del archivo)')
+    .option('--name <nombre>', 'nombre del diagrama (por defecto, el del workspace del DSL o el nombre del archivo)')
+    .option('--layout', 'aplica autolayout (ELK) a las vistas sin coordenadas (un DSL no las tiene)', false)
     .action(async (file: string | undefined, opts) => {
       const raw = readInput(file, opts.stdin);
-      const fallbackName = file && file !== '-' ? basename(file).replace(/\.(drawio|xml)$/i, '') : undefined;
-      const { document, warnings } = await fromDrawio(raw, { name: opts.name ?? fallbackName });
-      for (const warning of warnings) info(`aviso: ${warning}`);
+      const fromFile = !opts.stdin && file !== undefined && file !== '-';
+      const format = opts.format === 'auto' ? detectImportFormat(fromFile ? file : undefined, raw) : opts.format;
+      const fallbackName = fromFile ? basename(file).replace(/\.(drawio|xml|dsl|txt)$/i, '') : undefined;
+
+      const imported =
+        format === 'dsl'
+          ? fromStructurizrDsl(raw, { name: opts.name, fallbackName, ...(fromFile ? dslIncludeOptions(file) : {}) })
+          : await fromDrawio(raw, { name: opts.name ?? fallbackName });
+      let { document } = imported;
+      for (const warning of imported.warnings) info(`aviso: ${warning}`);
+
+      if (opts.layout) {
+        const laid = await autoLayoutDocumentWithQuality(document, {});
+        document = laid.document;
+        reportQuality(laid.qualities);
+      }
       info(
         `Importado "${document.workspace.name}": ${document.model.elements.length} elementos, ${document.model.relationships.length} relaciones, ` +
-          `${document.views.length} vistas${warnings.length > 0 ? `, ${warnings.length} aviso(s)` : ''}.`,
+          `${document.views.length} vistas${imported.warnings.length > 0 ? `, ${imported.warnings.length} aviso(s)` : ''}.`,
       );
       writeOutput(opts.out, jsonOut(document));
       if (opts.out) info(`Documento C4 escrito en ${opts.out}`);
@@ -308,6 +343,11 @@ export async function run(argv = process.argv): Promise<void> {
     }
     if (error instanceof DrawioImportError) {
       process.stderr.write(`No se pudo importar el .drawio: ${error.message}\n`);
+      process.exitCode = 2;
+      return;
+    }
+    if (error instanceof DslImportError) {
+      process.stderr.write(`No se pudo importar el DSL: ${error.message}\n`);
       process.exitCode = 2;
       return;
     }

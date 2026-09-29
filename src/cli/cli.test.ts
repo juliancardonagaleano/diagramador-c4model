@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { XMLParser } from 'fast-xml-parser';
@@ -199,5 +199,110 @@ describe('c4diagram import', () => {
     expect(r3.status).toBe(1);
     expect(r3.stderr).toMatch(/No se pudo leer/);
     expect(r3.stderr).not.toMatch(/\n\s+at /);
+  });
+  it('importa un DSL de Structurizr: formato deducido de la extensión, nombre del workspace y vistas con alcance', () => {
+    const r = run(['import', 'examples/banca.dsl']);
+    expect(r.status).toBe(0);
+    const doc = JSON.parse(r.stdout);
+    expect(doc.workspace.name).toBe('Banca en línea');
+    expect(doc.model.elements).toHaveLength(13);
+    expect(doc.model.relationships).toHaveLength(19);
+    expect(doc.views.map((v: { id: string; type: string; scopeId: string }) => [v.id, v.type, v.scopeId])).toEqual([
+      ['contexto', 'systemContext', 'banca'],
+      ['contenedores', 'container', 'banca'],
+      ['componentes-api', 'component', 'api'],
+    ]);
+    expect(r.stderr).toMatch(/Importado "Banca en línea": 13 elementos, 19 relaciones, 3 vistas\./);
+    // Un DSL no trae coordenadas.
+    expect(doc.views.every((v: { elements: Array<{ x?: number }> }) => v.elements.every((e) => e.x === undefined))).toBe(true);
+  });
+
+  it('--name sustituye al del workspace; sin nombre en el DSL se usa el del archivo', () => {
+    expect(JSON.parse(run(['import', 'examples/banca.dsl', '--name', 'Otro']).stdout).workspace.name).toBe('Otro');
+    const file = join(dir, 'mi-tienda.dsl');
+    writeFileSync(file, 'workspace { model { s = softwareSystem "Tienda" } }');
+    expect(JSON.parse(run(['import', file]).stdout).workspace.name).toBe('mi-tienda');
+  });
+
+  it('--layout coloca las vistas sin coordenadas; sin él quedan sin colocar', () => {
+    const laid = JSON.parse(run(['import', 'examples/banca.dsl', '--layout']).stdout);
+    for (const v of laid.views) for (const e of v.elements) expect(typeof e.x).toBe('number');
+    // Y el resultado se encadena con el resto de comandos: DSL → JSON con posiciones → .drawio.
+    const drawio = run(['convert', '--stdin'], JSON.stringify(laid));
+    expect(drawio.status).toBe(0);
+    expect((drawio.stdout.match(/<diagram /g) ?? []).length).toBe(3);
+  });
+
+  it('deduce el formato del contenido cuando no hay extensión (stdin) y --format lo fuerza', () => {
+    const fromDsl = run(['import', '--stdin'], readFileSync('examples/banca.dsl', 'utf8'));
+    expect(fromDsl.status).toBe(0);
+    expect(JSON.parse(fromDsl.stdout).model.elements).toHaveLength(13);
+    const fromDrawio = run(['import', '--stdin'], readFileSync('examples/banca-c4.drawio', 'utf8'));
+    expect(JSON.parse(fromDrawio.stdout).model.elements).toHaveLength(13);
+
+    const odd = join(dir, 'sin-extension');
+    writeFileSync(odd, '\n\n# nada que ver con la extensión\nworkspace "Raro" { model { s = softwareSystem "S" } }');
+    expect(JSON.parse(run(['import', odd]).stdout).workspace.name).toBe('Raro');
+    expect(run(['import', odd, '--format', 'drawio']).status).toBe(2);
+    expect(run(['import', odd, '--format', 'nope']).stderr).toMatch(/Formato inválido/);
+  });
+
+  it('un archivo que no es ni draw.io ni DSL pide indicar el formato', () => {
+    const json = join(dir, 'datos.json');
+    writeFileSync(json, '{"a": 1}');
+    const r = run(['import', json]);
+    expect(r.status).toBe(2);
+    expect(r.stderr.trim()).toMatch(/^No se reconoce el formato de ".*datos\.json": use --format drawio o --format dsl\./);
+    expect(r.stderr).not.toMatch(/\n\s+at /);
+  });
+
+  it('un DSL inválido termina con código 2 y el motivo con su línea, sin stack', () => {
+    const bad = join(dir, 'roto.dsl');
+    writeFileSync(bad, 'workspace "x" {\n  model {\n    s = softwareSystem "sin cerrar\n  }\n}\n');
+    const r = run(['import', bad]);
+    expect(r.status).toBe(2);
+    expect(r.stderr.trim()).toBe('No se pudo importar el DSL: línea 3: cadena sin cerrar (falta la comilla de cierre)');
+
+    const empty = join(dir, 'vacio.dsl');
+    writeFileSync(empty, '# solo un comentario\n');
+    const r2 = run(['import', empty]);
+    expect(r2.status).toBe(2);
+    expect(r2.stderr).toMatch(/No se encontró el bloque «workspace/);
+  });
+
+  it('avisa por stderr de lo que no puede importar de un DSL, sin ensuciar el JSON de stdout', () => {
+    const file = join(dir, 'con-despliegue.dsl');
+    writeFileSync(file, 'workspace "D" {\n  model {\n    s = softwareSystem "S"\n    live = deploymentEnvironment "Live" {\n    }\n  }\n  views {\n    systemContext s "c" { include * }\n  }\n}\n');
+    const r = run(['import', file]);
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout).model.elements).toHaveLength(1);
+    expect(r.stderr).toMatch(/aviso: Se ignoró 1 sentencia «despliegue \(deploymentEnvironment/);
+    expect(r.stderr).toMatch(/1 vistas, 1 aviso\(s\)/);
+  });
+
+  it('resuelve !include relativos al archivo, pero no lee nada fuera de su directorio (ni por enlace simbólico)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'c4dsl-'));
+    const project = join(root, 'proyecto');
+    mkdirSync(join(project, 'partes'), { recursive: true });
+    writeFileSync(join(root, 'secreto.dsl'), 'secreto = person "Secreto"');
+    writeFileSync(join(project, 'partes', 'modelo.dsl'), 's = softwareSystem "Sistema"\n!include personas.dsl');
+    writeFileSync(join(project, 'partes', 'personas.dsl'), 'u = person "Usuario"');
+    symlinkSync(join(root, 'secreto.dsl'), join(project, 'enlace.dsl'));
+    writeFileSync(
+      join(project, 'main.dsl'),
+      'workspace "Con includes" {\n  model {\n    !include partes/modelo.dsl\n    !include ../secreto.dsl\n    !include enlace.dsl\n    u -> s "Usa"\n  }\n}\n',
+    );
+    const r = run(['import', join(project, 'main.dsl')]);
+    expect(r.status).toBe(0);
+    const doc = JSON.parse(r.stdout);
+    expect(doc.model.elements.map((e: { name: string }) => e.name)).toEqual(['Sistema', 'Usuario']);
+    expect(doc.model.relationships).toHaveLength(1);
+    expect(r.stderr).toMatch(/no se pudo leer el !include «\.\.\/secreto\.dsl» \(no existe o está fuera del directorio del archivo\)/);
+    expect(r.stderr).toMatch(/no se pudo leer el !include «enlace\.dsl»/);
+    expect(r.stdout).not.toContain('Secreto');
+
+    // Por stdin no hay directorio de referencia: los !include se omiten con un aviso.
+    const viaStdin = run(['import', '--stdin', '--format', 'dsl'], 'workspace "x" { model { s = softwareSystem "S"\n !include partes/modelo.dsl } }');
+    expect(viaStdin.stderr).toMatch(/no se puede resolver aquí/);
   });
 });
