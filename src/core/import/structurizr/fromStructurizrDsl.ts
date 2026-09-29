@@ -14,6 +14,7 @@ import {
   type ElementType,
   type ViewType,
 } from '../../model/types';
+import { defaultViews } from '../defaultViews';
 import { pickId } from '../ids';
 import { Warnings } from '../warnings';
 import { DslImportError, parseDsl, type DslStatement, type DslToken, type IncludeResolver } from './parse';
@@ -489,7 +490,7 @@ class Interpreter {
     }
     if (views.length === 0) {
       this.warnings.add('El DSL no define vistas que se puedan importar: se crearon las vistas por defecto (contexto, contenedores y componentes).');
-      return this.defaultViews(modelDoc);
+      return defaultViews(this.elements, this.relationships);
     }
     return views;
   }
@@ -609,32 +610,6 @@ class Interpreter {
       if (before && r.targetId === el.id) ids.push(r.sourceId);
     }
     return ids;
-  }
-
-  /** Sin vistas en el DSL: contexto y contenedores de cada sistema con contenedores, y componentes de cada contenedor con ellos. */
-  private defaultViews(modelDoc: C4Document): C4View[] {
-    const views: C4View[] = [];
-    const ids = new Set<string>();
-    const push = (type: ViewType, scope: C4Element | undefined, title: string): void => {
-      const view = createView(type, { scopeId: scope?.id, title, elements: suggestViewElements(modelDoc, type, scope?.id).filter((id) => type === 'systemContext' || id !== scope?.id).map((id) => ({ id })) }, ids);
-      ids.add(view.id);
-      views.push(view);
-    };
-    const systems = this.elements.filter((e) => e.type === 'softwareSystem' && this.elements.some((c) => c.type === 'container' && c.parentId === e.id));
-    if (systems.length === 0) {
-      push('systemContext', undefined, 'Panorama de sistemas');
-      return views;
-    }
-    for (const system of systems) {
-      push('systemContext', system, `${VIEW_TYPE_LABELS.systemContext} - ${system.name}`);
-      push('container', system, `${VIEW_TYPE_LABELS.container} - ${system.name}`);
-      for (const container of this.elements.filter((e) => e.type === 'container' && e.parentId === system.id)) {
-        if (this.elements.some((c) => c.type === 'component' && c.parentId === container.id)) {
-          push('component', container, `${VIEW_TYPE_LABELS.component} - ${container.name}`);
-        }
-      }
-    }
-    return views;
   }
 }
 

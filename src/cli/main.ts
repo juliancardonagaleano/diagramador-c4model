@@ -6,8 +6,10 @@ import { sampleDocument } from '../core/model/sample';
 import { toDrawio, DrawioExportError, type DrawioNotation } from '../core/export/drawio/toDrawio';
 import { fromDrawio, DrawioImportError } from '../core/import/drawio/fromDrawio';
 import { fromStructurizrDsl, DslImportError } from '../core/import/structurizr/fromStructurizrDsl';
+import { fromMermaid, looksLikeMermaid, MermaidImportError } from '../core/import/mermaid/fromMermaid';
+import { toMermaid, MermaidExportError, type MermaidFormat } from '../core/export/mermaid/toMermaid';
 import { documentJsonSchema, DocumentValidationError, formatIssues, validateDocument } from '../core/model/schema';
-import type { LayoutDensity, LayoutDirectionOption, LayoutDistribution } from '../core/model/types';
+import type { C4Document, LayoutDensity, LayoutDirectionOption, LayoutDistribution } from '../core/model/types';
 import { generationJsonSchema } from '../core/ai/generationSchema';
 import { standalonePrompt } from '../core/ai/prompt';
 import { DEFAULT_AI_MODEL, generateDocument, GenerationError, type Effort } from '../core/ai/generate';
@@ -52,7 +54,7 @@ function parseDensity(value: string): LayoutDensity {
   return v;
 }
 
-const IMPORT_FORMATS = ['auto', 'drawio', 'dsl'] as const;
+const IMPORT_FORMATS = ['auto', 'drawio', 'dsl', 'mermaid'] as const;
 
 function parseImportFormat(value: string): (typeof IMPORT_FORMATS)[number] {
   const v = value.toLowerCase() as (typeof IMPORT_FORMATS)[number];
@@ -61,14 +63,45 @@ function parseImportFormat(value: string): (typeof IMPORT_FORMATS)[number] {
 }
 
 /** Deduce el formato de un archivo a importar: primero por la extensión y, si no basta (stdin, otra extensión), por el contenido. */
-function detectImportFormat(file: string | undefined, text: string): 'drawio' | 'dsl' {
+function detectImportFormat(file: string | undefined, text: string): 'drawio' | 'dsl' | 'mermaid' {
   const ext = file ? extname(file).toLowerCase() : '';
   if (ext === '.dsl') return 'dsl';
+  if (ext === '.mmd' || ext === '.mermaid') return 'mermaid';
   if (ext === '.drawio' || ext === '.xml') return 'drawio';
   const head = text.replace(/^﻿/, '').trimStart();
   if (head.startsWith('<')) return 'drawio';
+  if (looksLikeMermaid(text)) return 'mermaid';
   if (/\bworkspace\b/.test(head)) return 'dsl';
-  throw new CliError(`No se reconoce el formato${file ? ` de "${file}"` : ' de la entrada'}: use --format drawio o --format dsl.`, 2);
+  throw new CliError(`No se reconoce el formato${file ? ` de "${file}"` : ' de la entrada'}: use --format drawio, dsl o mermaid.`, 2);
+}
+
+/** Documento base de `generate`/`prompt --from`: un JSON del modelo o cualquier fuente importable (.drawio, .dsl, .mmd). */
+async function readBaseDocument(file: string): Promise<C4Document> {
+  const raw = readInput(file, false);
+  if (extname(file).toLowerCase() === '.json' || raw.trimStart().startsWith('{')) return readDocument(file, false);
+  const format = detectImportFormat(file, raw);
+  const fallbackName = basename(file).replace(/\.(drawio|xml|dsl|txt|mmd|mermaid|md)$/i, '');
+  const imported =
+    format === 'dsl'
+      ? fromStructurizrDsl(raw, { fallbackName, ...dslIncludeOptions(file) })
+      : format === 'mermaid'
+        ? fromMermaid(raw, { fallbackName })
+        : await fromDrawio(raw, { name: fallbackName });
+  for (const warning of imported.warnings) info(`aviso: ${warning}`);
+  info(`Documento base importado de ${format}: ${imported.document.model.elements.length} elementos, ${imported.document.model.relationships.length} relaciones.`);
+  return imported.document;
+}
+
+function parseTarget(value: string): 'drawio' | 'mermaid' {
+  const v = value.toLowerCase();
+  if (v !== 'drawio' && v !== 'mermaid') throw new InvalidArgumentError('Formato de salida inválido. Use: drawio, mermaid');
+  return v;
+}
+
+function parseMermaidFormat(value: string): MermaidFormat {
+  const v = value.toLowerCase();
+  if (v !== 'c4' && v !== 'flowchart') throw new InvalidArgumentError('Formato de Mermaid inválido. Use: c4, flowchart');
+  return v;
 }
 
 function parseNotation(value: string): DrawioNotation {
@@ -123,7 +156,7 @@ export function buildProgram(): Command {
     .argument('<instrucción>', 'descripción del sistema o instrucción de refinamiento')
     .option('-o, --out <archivo.drawio>', 'archivo .drawio de salida')
     .option('-j, --json <archivo.json>', 'archivo JSON de salida (documento C4 con coordenadas)')
-    .option('-f, --from <archivo.json>', 'documento existente a refinar')
+    .option('-f, --from <archivo>', 'documento existente a refinar: JSON, .drawio, .dsl (Structurizr) o .mmd (Mermaid)')
     .option('-p, --provider <plataforma>', 'plataforma: auto|anthropic (API de Anthropic)|foundry (Claude en Foundry)|openai (cualquier modelo de Foundry / API compatible con OpenAI)', parseProvider, 'auto')
     .option('-m, --model <modelo>', `modelo (por defecto ${DEFAULT_AI_MODEL}; en Foundry, el nombre de tu despliegue o AI_MODEL / ANTHROPIC_FOUNDRY_MODEL)`)
     .option('-e, --effort <nivel>', `esfuerzo de razonamiento (${EFFORTS.join('|')})`, parseEffort)
@@ -134,7 +167,7 @@ export function buildProgram(): Command {
     .option('--distribution <auto|centered|elk>', 'distribución del autolayout', parseDistribution)
     .option('--notation <c4|card>', 'notación de las figuras en el .drawio', parseNotation, 'c4')
     .action(async (instruction: string, opts) => {
-      const base = opts.from ? readDocument(opts.from, false) : undefined;
+      const base = opts.from ? await readBaseDocument(opts.from) : undefined;
       const result = await generateDocument({
         instruction,
         base,
@@ -218,8 +251,15 @@ export function buildProgram(): Command {
     .option('--notation <c4|card>', 'notación de las figuras: librería C4 de draw.io o tarjetas', parseNotation, 'c4')
     .option('--no-waypoints', 'no incluir los quiebres de ruta del autolayout')
     .option('--view <id...>', 'solo estas vistas')
+    .option('--to <formato>', 'formato de salida: drawio|mermaid (mermaid exporta una vista por ejecución, la primera de --view)', parseTarget, 'drawio')
+    .option('--mermaid-format <c4|flowchart>', 'con --to mermaid: diagrama C4 nativo de Mermaid o diagrama de flujo con subgraph', parseMermaidFormat, 'c4')
     .action(async (file: string | undefined, opts) => {
       const doc = readDocument(file, opts.stdin);
+      if (opts.to === 'mermaid') {
+        writeOutput(opts.out, toMermaid(doc, { viewId: opts.view?.[0], format: opts.mermaidFormat }));
+        if (opts.out) info(`Diagrama Mermaid escrito en ${opts.out}`);
+        return;
+      }
       const laid = await autoLayoutDocumentWithQuality(doc, {
         direction: opts.direction,
         distribution: opts.distribution,
@@ -235,23 +275,25 @@ export function buildProgram(): Command {
 
   program
     .command('import')
-    .description('Importa un diagrama de draw.io (.drawio) o un DSL de Structurizr (.dsl) y lo convierte en un documento C4 en JSON')
-    .argument('[archivo]', 'archivo de entrada: .drawio o .dsl (o "-" para stdin)')
+    .description('Importa un diagrama de draw.io (.drawio), un DSL de Structurizr (.dsl) o un diagrama de Mermaid (.mmd) y lo convierte en un documento C4 en JSON')
+    .argument('[archivo]', 'archivo de entrada: .drawio, .dsl o .mmd (o "-" para stdin)')
     .option('--stdin', 'leer el archivo de la entrada estándar')
     .option('--format <formato>', `formato de entrada: ${IMPORT_FORMATS.join('|')} (auto lo deduce de la extensión o del contenido)`, parseImportFormat, 'auto')
     .option('-o, --out <archivo.json>', 'archivo de salida (por defecto stdout)')
     .option('--name <nombre>', 'nombre del diagrama (por defecto, el del workspace del DSL o el nombre del archivo)')
-    .option('--layout', 'aplica autolayout (ELK) a las vistas sin coordenadas (un DSL no las tiene)', false)
+    .option('--layout', 'aplica autolayout (ELK) a las vistas sin coordenadas (un DSL o Mermaid no las tienen)', false)
     .action(async (file: string | undefined, opts) => {
       const raw = readInput(file, opts.stdin);
       const fromFile = !opts.stdin && file !== undefined && file !== '-';
       const format = opts.format === 'auto' ? detectImportFormat(fromFile ? file : undefined, raw) : opts.format;
-      const fallbackName = fromFile ? basename(file).replace(/\.(drawio|xml|dsl|txt)$/i, '') : undefined;
+      const fallbackName = fromFile ? basename(file).replace(/\.(drawio|xml|dsl|txt|mmd|mermaid|md)$/i, '') : undefined;
 
       const imported =
         format === 'dsl'
           ? fromStructurizrDsl(raw, { name: opts.name, fallbackName, ...(fromFile ? dslIncludeOptions(file) : {}) })
-          : await fromDrawio(raw, { name: opts.name ?? fallbackName });
+          : format === 'mermaid'
+            ? fromMermaid(raw, { name: opts.name, fallbackName })
+            : await fromDrawio(raw, { name: opts.name ?? fallbackName });
       let { document } = imported;
       for (const warning of imported.warnings) info(`aviso: ${warning}`);
 
@@ -310,9 +352,9 @@ export function buildProgram(): Command {
     .command('prompt')
     .description('Imprime un prompt autocontenido para generar el modelo con cualquier IA/agente (sin clave de API)')
     .argument('<instrucción>', 'descripción del sistema o instrucción de refinamiento')
-    .option('-f, --from <archivo.json>', 'documento existente a refinar')
-    .action((instruction: string, opts) => {
-      const base = opts.from ? readDocument(opts.from, false) : undefined;
+    .option('-f, --from <archivo>', 'documento existente a refinar: JSON, .drawio, .dsl (Structurizr) o .mmd (Mermaid)')
+    .action(async (instruction: string, opts) => {
+      const base = opts.from ? await readBaseDocument(opts.from) : undefined;
       process.stdout.write(standalonePrompt(instruction, base));
     });
 
@@ -349,6 +391,16 @@ export async function run(argv = process.argv): Promise<void> {
     if (error instanceof DslImportError) {
       process.stderr.write(`No se pudo importar el DSL: ${error.message}\n`);
       process.exitCode = 2;
+      return;
+    }
+    if (error instanceof MermaidImportError) {
+      process.stderr.write(`No se pudo importar el diagrama de Mermaid: ${error.message}\n`);
+      process.exitCode = 2;
+      return;
+    }
+    if (error instanceof MermaidExportError) {
+      process.stderr.write(`${error.message}\n`);
+      process.exitCode = 3;
       return;
     }
     if (error instanceof GenerationError) {

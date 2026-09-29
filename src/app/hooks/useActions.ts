@@ -4,6 +4,8 @@ import { toDrawio, type DrawioNotation } from '../../core/export/drawio/toDrawio
 import { autoLayoutDocument } from '../../core/layout/elkLayout';
 import { DrawioImportError, fromDrawio } from '../../core/import/drawio/fromDrawio';
 import { DslImportError, fromStructurizrDsl } from '../../core/import/structurizr/fromStructurizrDsl';
+import { fromMermaid, MermaidImportError } from '../../core/import/mermaid/fromMermaid';
+import { toMermaid, type MermaidFormat } from '../../core/export/mermaid/toMermaid';
 import type { C4Document } from '../../core/model/types';
 import { validateDocument, formatIssues } from '../../core/model/schema';
 import type { LayoutDirectionOption, LayoutDistribution } from '../../core/model/types';
@@ -112,7 +114,7 @@ export function useActions() {
           });
         }
       } catch (error) {
-        const known = error instanceof DrawioImportError || error instanceof DslImportError;
+        const known = error instanceof DrawioImportError || error instanceof DslImportError || error instanceof MermaidImportError;
         const reason = known ? error.message : `error inesperado (${(error as Error).message})`;
         Toast.error({ content: `No se pudo importar "${file.name}": ${reason}`, duration: 8 });
       }
@@ -130,6 +132,39 @@ export function useActions() {
   const importDsl = useCallback(
     () => importFrom('.dsl,.txt,text/plain', (file) => fromStructurizrDsl(file.content, { fallbackName: file.name.replace(/\.(dsl|txt)$/i, '') })),
     [importFrom],
+  );
+
+  /** Importa un diagrama de Mermaid (C4 nativo, flowchart, sequenceDiagram o erDiagram). Sin coordenadas: se colocan con el autolayout. */
+  const importMermaid = useCallback(
+    () =>
+      importFrom('.mmd,.mermaid,.md,.txt,text/plain,text/markdown', (file) =>
+        fromMermaid(file.content, { fallbackName: file.name.replace(/\.(mmd|mermaid|md|txt)$/i, '') }),
+      ),
+    [importFrom],
+  );
+
+  /** Exporta la vista activa como texto de Mermaid: descarga un `.mmd` o lo copia al portapapeles. */
+  const exportMermaid = useCallback(
+    async (format: MermaidFormat = 'c4', target: 'file' | 'clipboard' = 'file') => {
+      const { doc, activeViewId } = store.getState();
+      if (doc.views.length === 0) {
+        Toast.warning('No hay vistas que exportar');
+        return;
+      }
+      try {
+        const text = toMermaid(doc, { viewId: activeViewId ?? undefined, format });
+        if (target === 'clipboard') {
+          await navigator.clipboard.writeText(text);
+          Toast.success('Mermaid copiado al portapapeles');
+        } else {
+          downloadText(safeFilename(`${doc.workspace.name}${format === 'flowchart' ? '-flujo' : ''}`, 'mmd'), text, 'text/plain');
+          Toast.success(`Archivo Mermaid exportado (${format === 'flowchart' ? 'diagrama de flujo' : 'C4 nativo'})`);
+        }
+      } catch (error) {
+        Toast.error(`No se pudo exportar a Mermaid: ${(error as Error).message}`);
+      }
+    },
+    [store],
   );
 
   const autoLayout = useCallback(
@@ -171,5 +206,5 @@ export function useActions() {
   const undo = useCallback(() => store.temporal.getState().undo(), [store]);
   const redo = useCallback(() => store.temporal.getState().redo(), [store]);
 
-  return { exportDrawio, saveJson, openJson, importDrawio, importDsl, importJsonText, autoLayout, deleteSelection, undo, redo };
+  return { exportDrawio, exportMermaid, saveJson, openJson, importDrawio, importDsl, importMermaid, importJsonText, autoLayout, deleteSelection, undo, redo };
 }

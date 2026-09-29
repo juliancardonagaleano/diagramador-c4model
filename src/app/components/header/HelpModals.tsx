@@ -39,7 +39,7 @@ export function AboutModal({ visible, onClose }: { visible: boolean; onClose: ()
       <div className="space-y-2 text-sm">
         <p>IArk - DIAgrams: suite de diagramación de arquitectura. Hoy edita diagramas del modelo C4 (Contexto, Contenedores, Componentes) con autolayout, exportación a draw.io y generación asistida por IA.</p>
         <ul className="list-disc pl-5 text-color-2">
-          <li>El documento se guarda como JSON limpio, convertible 1‑a‑1 a <code>.drawio</code>; un <code>.drawio</code> o un DSL de Structurizr se pueden importar (Archivo ▸ Importar).</li>
+          <li>El documento se guarda como JSON limpio, convertible 1‑a‑1 a <code>.drawio</code>; un <code>.drawio</code>, un DSL de Structurizr o un diagrama de Mermaid se pueden importar (Archivo ▸ Importar), y cada vista se puede exportar a Mermaid.</li>
           <li>
             El mismo motor funciona como CLI: <code>npx iark generate "…"</code>, <code>layout</code>, <code>convert</code>, <code>import</code>.
           </li>

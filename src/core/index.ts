@@ -46,6 +46,8 @@ export { toDrawio, DrawioExportError, type DrawioOptions, type DrawioNotation } 
 export type { DrawioLocale } from './export/drawio/styles';
 export { fromDrawio, DrawioImportError, type DrawioImportOptions, type DrawioImportResult } from './import/drawio/fromDrawio';
 export { fromStructurizrDsl, DslImportError, type DslImportOptions, type DslImportResult, type IncludeResolver } from './import/structurizr/fromStructurizrDsl';
+export { toMermaid, MermaidExportError, type MermaidOptions, type MermaidFormat } from './export/mermaid/toMermaid';
+export { fromMermaid, looksLikeMermaid, MermaidImportError, MERMAID_DIAGRAM_KINDS, type MermaidImportOptions, type MermaidImportResult } from './import/mermaid/fromMermaid';
 export {
   generatedDocumentSchema,
   generatedToDocument,

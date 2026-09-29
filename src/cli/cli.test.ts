@@ -268,7 +268,7 @@ describe('iark import', () => {
     writeFileSync(json, '{"a": 1}');
     const r = run(['import', json]);
     expect(r.status).toBe(2);
-    expect(r.stderr.trim()).toMatch(/^No se reconoce el formato de ".*datos\.json": use --format drawio o --format dsl\./);
+    expect(r.stderr.trim()).toMatch(/^No se reconoce el formato de ".*datos\.json": use --format drawio, dsl o mermaid\./);
     expect(r.stderr).not.toMatch(/\n\s+at /);
   });
 
@@ -320,5 +320,45 @@ describe('iark import', () => {
     // Por stdin no hay directorio de referencia: los !include se omiten con un aviso.
     const viaStdin = run(['import', '--stdin', '--format', 'dsl'], 'workspace "x" { model { s = softwareSystem "S"\n !include partes/modelo.dsl } }');
     expect(viaStdin.stderr).toMatch(/no se puede resolver aquí/);
+  });
+});
+
+describe('iark: Mermaid', () => {
+  it('importa un .mmd (C4 nativo) a JSON válido con el nombre del título', () => {
+    const r = run(['import', 'examples/banca.mmd']);
+    expect(r.status).toBe(0);
+    const doc = JSON.parse(r.stdout);
+    expect(doc.workspace.name).toBe('Banca en línea');
+    expect(doc.model.elements).toHaveLength(6);
+    expect(doc.model.relationships).toHaveLength(4);
+    expect(r.stderr).toMatch(/Importado "Banca en línea": 6 elementos, 4 relaciones/);
+    expect(run(['validate', '--stdin'], r.stdout).status).toBe(0);
+  });
+
+  it('detecta Mermaid por el contenido cuando llega por stdin', () => {
+    const r = run(['import', '--stdin'], 'flowchart LR\n  A[Web] --> B[(BD)]');
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout).model.elements).toHaveLength(2);
+  });
+
+  it('un tipo de diagrama no soportado falla con un mensaje claro', () => {
+    const r = run(['import', '--stdin', '--format', 'mermaid'], 'pie title x\n "a": 1');
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/No se pudo importar el diagrama de Mermaid: No se reconoce/);
+  });
+
+  it('convert --to mermaid exporta una vista y se puede volver a importar', () => {
+    const out = run(['convert', example, '--to', 'mermaid', '--view', 'contenedores']);
+    expect(out.status).toBe(0);
+    expect(out.stdout.startsWith('C4Container')).toBe(true);
+    const back = run(['import', '--stdin'], out.stdout);
+    expect(back.status).toBe(0);
+    expect(JSON.parse(back.stdout).model.elements.length).toBeGreaterThan(3);
+  });
+
+  it('prompt --from acepta un .mmd como documento base', () => {
+    const r = run(['prompt', 'Añade una caché', '--from', 'examples/banca.mmd']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('Aplicación web');
   });
 });

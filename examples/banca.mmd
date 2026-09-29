@@ -1,0 +1,13 @@
+C4Container
+  title Banca en línea
+  Person(cliente, "Cliente", "Titular de cuentas")
+  System_Ext(correo, "Sistema de correo", "Envía avisos por email")
+  System_Boundary(banca, "Banca en línea") {
+    Container(web, "Aplicación web", "React", "Interfaz para consultar y operar")
+    Container(api, "API", "Node.js", "Lógica de negocio")
+    ContainerDb(bd, "Base de datos", "PostgreSQL", "Cuentas y movimientos")
+  }
+  Rel(cliente, web, "Usa", "HTTPS")
+  Rel(web, api, "Llama a", "JSON/HTTPS")
+  Rel(api, bd, "Lee y escribe", "SQL")
+  Rel(api, correo, "Envía avisos con", "SMTP")

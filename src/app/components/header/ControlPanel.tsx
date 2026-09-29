@@ -104,6 +104,7 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
         { key: 'd1', label: '', divider: true },
         { key: 'export', label: 'Exportar .drawio (notación C4)…', onClick: () => void actions.exportDrawio('c4') },
         { key: 'export-card', label: 'Exportar .drawio (tarjetas)…', onClick: () => void actions.exportDrawio('card') },
+        { key: 'export-mermaid', label: 'Exportar Mermaid (.mmd)…', onClick: () => void actions.exportMermaid('c4') },
         { key: 'json', label: 'Descargar JSON…', onClick: actions.saveJson },
         { key: 'd2', label: '', divider: true },
         { key: 'exit', label: 'Salir sin guardar', onClick: onEmbedExit },
@@ -114,10 +115,14 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
         { key: 'open', label: 'Abrir JSON…', onClick: () => confirmDiscard(actions.openJson), shortcut: 'Ctrl+O' },
         { key: 'import-drawio', label: 'Importar .drawio…', onClick: () => confirmDiscard(actions.importDrawio) },
         { key: 'import-dsl', label: 'Importar Structurizr DSL…', onClick: () => confirmDiscard(actions.importDsl) },
+        { key: 'import-mermaid', label: 'Importar Mermaid…', onClick: () => confirmDiscard(actions.importMermaid) },
         { key: 'd1', label: '', divider: true },
         { key: 'save', label: 'Guardar JSON', onClick: actions.saveJson, shortcut: 'Ctrl+S' },
         { key: 'export', label: 'Exportar .drawio (notación C4)', onClick: () => void actions.exportDrawio('c4'), shortcut: 'Ctrl+E' },
         { key: 'export-card', label: 'Exportar .drawio (tarjetas)', onClick: () => void actions.exportDrawio('card') },
+        { key: 'export-mermaid', label: 'Exportar Mermaid (.mmd)', onClick: () => void actions.exportMermaid('c4') },
+        { key: 'export-mermaid-flow', label: 'Exportar Mermaid (diagrama de flujo)', onClick: () => void actions.exportMermaid('flowchart') },
+        { key: 'copy-mermaid', label: 'Copiar vista como Mermaid', onClick: () => void actions.exportMermaid('c4', 'clipboard') },
       ];
 
   const editMenu: MenuProps['items'] = [
