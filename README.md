@@ -96,7 +96,7 @@ Reglas que se derivan automáticamente (no se almacenan):
 - **Boundaries**: el `scopeId` de una vista de contenedores/componentes y cualquier elemento visible con hijos visibles.
 - **Relaciones**: se dibujan las que unen dos elementos visibles; si un extremo no está visible pero sí su ancestro, se dibuja una relación *implícita* (una por par).
 
-El JSON Schema está en [`schema/c4-document.schema.json`](schema/c4-document.schema.json) (`npm run schema` lo regenera; `iark schema` lo imprime). Los módulos de integraciones y de datos tienen los suyos en `schema/integration-*.schema.json` y `schema/data-*.schema.json`.
+El JSON Schema está en [`schema/c4-document.schema.json`](schema/c4-document.schema.json) (`npm run schema` lo regenera; `iark schema` lo imprime). Los módulos de integraciones, datos y empresarial tienen los suyos en `schema/integration-*.schema.json`, `schema/data-*.schema.json` y `schema/enterprise-*.schema.json`.
 
 ## Notación del lienzo
 
@@ -280,6 +280,40 @@ iark data from-integration mapa.json                                     # almac
 
 Al importar un `flowchart`, `[( )]` es una base de datos, `([ ])` un stream y el resto tablas; cada arista (`A & B --> C`) es un pipeline (continua = por lotes, punteada = streaming, gruesa = CDC, o el tipo entre corchetes al final de la etiqueta) y un `subgraph` es un contenedor cuyo tipo se toma del prefijo que pone el exportador («Data lake: …»). Del `erDiagram` se conservan tipos, claves y multiplicidad, no la opcionalidad. La interfaz web todavía no edita este módulo.
 
+## Módulo empresarial
+
+Cuarta especialidad de la suite (`--module enterprise`): un subconjunto pequeño de ArchiMate/TOGAF para responder **qué sabe hacer la empresa, con qué aplicaciones y sobre qué tecnología**. Vive en `packages/domain-enterprise`, sin depender del código de los demás módulos; se enlaza con ellos por URN (`urn:iark:integration:<id>`).
+
+Documento JSON (ejemplo completo en [`examples/empresa-arquitectura.json`](examples/empresa-arquitectura.json), esquema con `iark schema --module enterprise`):
+
+| Parte | Contenido |
+|---|---|
+| `units` | la organización (direcciones, equipos, terceros): son los responsables y no se dibujan |
+| `capabilities` | capacidades de negocio en árbol (`parentId`), con `importance` (`differentiating`, `core`, `supporting`), `maturity` de 1 a 5 y `ownerId` (se hereda del padre) |
+| `processes` | procesos de negocio |
+| `applications` | `lifecycle` (`planned`, `active`, `sunset`, `retired`), `criticality`, `technology`, `vendor`, `external`, `ownerId` de negocio y `ref` a otro módulo |
+| `technologies` | plataformas y tecnología (`platform`, `infrastructure`, `database`, `runtime`, `middleware`, `service`), con `version`, `lifecycle` y `endOfLife` |
+| `relations` | `supports` (aplicación → capacidad o proceso), `realizes` (proceso → capacidad), `runs-on` (aplicación → tecnología) y `depends-on` (aplicación → aplicación, o tecnología → tecnología) |
+
+No se guardan coordenadas: las vistas se derivan del modelo. `capabilities` es el **mapa de capacidades** (cuadrícula anidada; el color indica la madurez, el borde la importancia y una línea discontinua marca las que no tienen aplicación), `landscape` el **paisaje** capacidad → proceso → aplicación → tecnología y `unit:<id>` una por unidad con lo que tiene a su cargo (lo demás, en discontinuo). El impacto de un elemento se pide por su id: `impact:<id>` (lo que se apoya en él), `depends:<id>` (de qué depende) y `focus:<id>` (ambos). Las flechas van de quien se apoya a aquello en lo que se apoya.
+
+`validate` comprueba la estructura (ids únicos entre tipos, jerarquías sin ciclos, responsables que son unidades, relaciones que encajan con sus extremos) y aplica reglas de **gobierno**: capacidades sin aplicación (aviso si son esenciales o diferenciadoras), aplicaciones sin responsable de negocio (aviso si son críticas), sin uso o sin tecnología, aplicaciones en retirada que nadie sustituye, elementos vivos que se apoyan en algo en retirada o retirado, tecnologías fuera de soporte (o que lo estarán en menos de 12 meses), capacidades con tres o más aplicaciones (posible duplicidad), procesos que no realizan ninguna capacidad y críticas que dependen de aplicaciones de criticidad baja.
+
+```bash
+iark validate  empresa.json --module enterprise
+iark convert   empresa.json --module enterprise --out mapa.svg                       # mapa de capacidades; también .mmd y .drawio (una página por vista)
+iark convert   empresa.json --module enterprise --out paisaje.svg --view landscape
+iark convert   empresa.json --module enterprise --out impacto.svg --view impact:hana
+iark import    paisaje.mmd  --module enterprise --out empresa.json                   # flowchart → documento
+iark generate  "Comercio con tienda online, ERP, CRM y almacenes" --module enterprise --json empresa.json
+iark enterprise coverage  empresa.json                                               # capacidades con sus aplicaciones y las que no tienen ninguna
+iark enterprise impact    hana empresa.json [--direction dependencies|both]         # qué se ve afectado si cambia o se retira, con los responsables a avisar
+iark enterprise lifecycle empresa.json [--today 2026-06-15]                          # obsolescencia: retiradas y fin de soporte, con las capacidades afectadas
+iark enterprise from-integration mapa.json                                           # sistemas de un mapa de integración → aplicaciones con URN
+```
+
+Al importar un `flowchart`, el tipo de cada nodo sale de su clase (`:::application`, `class A capability`; también en español), del título de la capa que lo contiene («Capacidades», «Aplicaciones»…), de su forma (`([ ])` = proceso, `[( )]` = tecnología) y, por último, de que esté dentro de un `subgraph` (capacidad) o no (aplicación). Un `subgraph` que no es una capa es una capacidad que contiene a las suyas. Cada flecha se convierte en la relación que admiten sus extremos, en cualquier sentido. La segunda línea del texto de una aplicación es su tecnología y la de una tecnología, su versión. La interfaz web todavía no edita este módulo.
+
 ## CLI `iark`
 
 ```
@@ -433,6 +467,7 @@ packages/kernel/       @iark/kernel: contrato de módulo (DomainModule), registr
 packages/domain-c4/    @iark/domain-c4: módulo `c4` (modelo, esquema zod, vistas, autolayout ELK, import/export draw.io, Structurizr y Mermaid, prompts de IA; sin DOM)
 packages/domain-integration/  @iark/domain-integration: módulo `integration` (nodos, contratos, interacciones y flujos; import Mermaid, export Mermaid/SVG/draw.io, IA)
 packages/domain-data/  @iark/domain-data: módulo `data` (activos, dominios, pipelines y linaje, modelo entidad-relación y gobierno del dato; import Mermaid, export Mermaid/SVG/draw.io, IA)
+packages/domain-enterprise/  @iark/domain-enterprise: módulo `enterprise` (capacidades, procesos, aplicaciones y tecnología con ciclo de vida; mapa de capacidades, paisaje, impacto y obsolescencia; import Mermaid, export Mermaid/SVG/draw.io, IA)
 src/cli/               comandos de iark (commander); carga los módulos del registro
 src/embed/             protocolo postMessage y SDK de anfitrión
 src/app/               editor React (Vite, React Flow, Semi UI, Tailwind)

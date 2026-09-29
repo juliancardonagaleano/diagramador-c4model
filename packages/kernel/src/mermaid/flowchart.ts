@@ -7,6 +7,8 @@ export interface FlowNodeRef {
   /** Texto entre los delimitadores del nodo (`A[Texto]`); sin definir si el nodo solo se menciona. */
   label?: string;
   shape?: FlowShape;
+  /** Clases asignadas con `A:::clase` o con `class A clase`, en el orden en que aparecen. Ausente si no tiene ninguna. */
+  classes?: string[];
 }
 
 export type FlowLineStyle = 'solid' | 'dotted' | 'thick';
@@ -19,7 +21,10 @@ export type FlowchartEvent =
   | { type: 'edge'; from: FlowNodeRef[]; to: FlowNodeRef[]; label?: string; line: FlowLineStyle; bidirectional: boolean; where: string }
   | { type: 'warning'; message: string };
 
+/** Sentencias de estilo o de interacción: no aportan nada al modelo. (`class` con otra forma que la de abajo también se ignora.) */
 const SILENT = /^(classDef|class|style|linkStyle|click|direction|accTitle|accDescr)\b/;
+/** `class A,B nombre` */
+const CLASS_STATEMENT = /^class\s+(\S+)\s+([\w-]+)$/;
 
 interface Opener {
   open: string;
@@ -77,8 +82,12 @@ function readNode(s: string): { node: FlowNodeRef; rest: string } | undefined {
     shape = opener.shape;
     rest = after;
   }
-  rest = rest.replace(/^:::[\w-]+/, '');
-  return { node: { alias, label, shape }, rest };
+  const classes: string[] = [];
+  for (let m = /^:::([\w-]+)/.exec(rest); m; m = /^:::([\w-]+)/.exec(rest)) {
+    classes.push(m[1]);
+    rest = rest.slice(m[0].length);
+  }
+  return { node: { alias, label, shape, ...(classes.length > 0 ? { classes } : {}) }, rest };
 }
 
 /** Lee `A & B & C` y devuelve los nodos y lo que sobra. */
@@ -125,6 +134,8 @@ function readEdge(s: string): EdgeOp | undefined {
 /** Analiza el cuerpo (sin la cabecera) de un `flowchart` / `graph`. */
 export function parseFlowchart(lines: MermaidLine[]): FlowchartEvent[] {
   const events: FlowchartEvent[] = [];
+  const refs: FlowNodeRef[] = [];
+  const assigned = new Map<string, string[]>();
   for (const { no, text } of lines) {
     const where = `línea ${no}`;
     for (const stmt of splitStatements(text)) {
@@ -139,6 +150,11 @@ export function parseFlowchart(lines: MermaidLine[]): FlowchartEvent[] {
         events.push({ type: 'subgraph-start', alias, label: m?.[2] ?? alias, where });
         continue;
       }
+      const cls = CLASS_STATEMENT.exec(stmt);
+      if (cls) {
+        for (const alias of cls[1].split(',').filter(Boolean)) assigned.set(alias, [...(assigned.get(alias) ?? []), cls[2]]);
+        continue;
+      }
       if (SILENT.test(stmt) || /^(flowchart|graph)\b/.test(stmt)) continue;
 
       let group = readNodeGroup(stmt);
@@ -146,7 +162,10 @@ export function parseFlowchart(lines: MermaidLine[]): FlowchartEvent[] {
         events.push({ type: 'warning', message: `${where}: no se entiende «${truncate(stmt)}»; se omite.` });
         continue;
       }
-      group.nodes.forEach((node) => events.push({ type: 'node', node, where }));
+      group.nodes.forEach((node) => {
+        refs.push(node);
+        events.push({ type: 'node', node, where });
+      });
       let rest = group.rest;
       while (rest.trim() !== '') {
         const edge = readEdge(rest);
@@ -159,12 +178,20 @@ export function parseFlowchart(lines: MermaidLine[]): FlowchartEvent[] {
           events.push({ type: 'warning', message: `${where}: falta el nodo de destino después de la flecha; se omite.` });
           break;
         }
-        next.nodes.forEach((node) => events.push({ type: 'node', node, where }));
+        next.nodes.forEach((node) => {
+          refs.push(node);
+          events.push({ type: 'node', node, where });
+        });
         events.push({ type: 'edge', from: group.nodes, to: next.nodes, label: edge.label, line: edge.line, bidirectional: edge.bidirectional, where });
         group = next;
         rest = next.rest;
       }
     }
+  }
+  // `class A nombre` puede ir después de la definición del nodo: se aplica a todas sus menciones.
+  for (const node of refs) {
+    const extra = assigned.get(node.alias);
+    if (extra) node.classes = [...new Set([...(node.classes ?? []), ...extra])];
   }
   return events;
 }

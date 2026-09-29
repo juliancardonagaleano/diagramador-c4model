@@ -48,6 +48,30 @@ describe('parseFlowchart', () => {
     const ev = parseFlowchart(body('flowchart LR\n \"suelto\"\n A --> '));
     expect(ev.filter((e) => e.type === 'warning')).toHaveLength(2);
   });
+
+  it('conserva las clases de los nodos (`:::x` y `class A,B x`, también si van después de la definición)', () => {
+    const ev = parseFlowchart(
+      body(`flowchart LR
+        A["Uno"]:::app --> B("Dos") & C
+        class B,C otra
+        classDef app fill:#fff
+        class Z ignorada
+        class W forma rara`),
+    );
+    const classesOf = (alias: string) => {
+      const found = ev.filter((e): e is Extract<typeof e, { type: 'node' }> => e.type === 'node' && e.node.alias === alias);
+      return found.map((e) => e.node.classes);
+    };
+    expect(classesOf('A')).toEqual([['app']]);
+    expect(classesOf('B')).toEqual([['otra']]);
+    expect(classesOf('C')).toEqual([['otra']]);
+    // Un nodo sin clases no lleva el campo; las aristas comparten las referencias de los nodos.
+    const edge = ev.find((e) => e.type === 'edge');
+    expect(edge && edge.type === 'edge' ? edge.to.map((n) => n.classes) : []).toEqual([['otra'], ['otra']]);
+    expect(ev.filter((e) => e.type === 'warning')).toHaveLength(0);
+    const plain = parseFlowchart(body('flowchart LR\n A --> B'));
+    expect(plain.find((e) => e.type === 'node')).toEqual({ type: 'node', node: { alias: 'A', label: undefined, shape: undefined }, where: 'línea 2' });
+  });
 });
 
 describe('parseSequence', () => {

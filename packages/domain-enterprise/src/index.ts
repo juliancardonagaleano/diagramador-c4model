@@ -1,0 +1,13 @@
+export * from './types';
+export { enterpriseDocumentSchema, enterpriseJsonSchema, validateEnterpriseDocument, formatEnterpriseIssues, type EnterpriseValidation } from './schema';
+export { analyzeEnterprise, REDUNDANCY_THRESHOLD, type AnalyzeOptions } from './issues';
+export { dependencyGraph, reach, ownership, unitTree, applicationsByCapability, capabilityChildren, type DependencyGraph, type Reach, type ReachStep } from './graph';
+export { listViews, findView, traceView, type EnterpriseView } from './views';
+export { toMermaid } from './export/mermaid';
+export { toSvg, layoutView, layoutCapabilityMap, KIND_COLORS } from './export/render';
+export { toDrawio } from './export/drawio';
+export { fromMermaid, EnterpriseImportError, type EnterpriseImportOptions, type EnterpriseImportResult } from './import/fromMermaid';
+export { fromIntegrationJson } from './import/fromIntegration';
+export { enterpriseAiSpec, generatedEnterpriseSchema, type GeneratedEnterprise } from './ai/generation';
+export { enterpriseCommands } from './commands';
+export { enterpriseModule } from './module';
