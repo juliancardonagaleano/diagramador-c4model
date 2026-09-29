@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Demo: módulos de la suite embebidos</title>
+    <style>
+      :root { font-family: Inter, -apple-system, Segoe UI, Roboto, sans-serif; color: #222; }
+      body { margin: 0; display: grid; grid-template-rows: auto 1fr; height: 100vh; background: #f3f4f6; }
+      header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+      header h1 { font-size: 15px; margin: 0 12px 0 0; }
+      button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; }
+      button:hover { background: #f9fafb; }
+      main { display: grid; grid-template-columns: 1fr 380px; min-height: 0; }
+      #editor { min-height: 0; background: #fff; }
+      aside { display: flex; flex-direction: column; border-left: 1px solid #e5e7eb; background: #fff; min-height: 0; }
+      aside h2 { font-size: 13px; margin: 0; padding: 8px 12px; border-bottom: 1px solid #e5e7eb; color: #374151; }
+      #log { flex: 1; overflow: auto; margin: 0; padding: 8px 12px; font: 11px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
+      .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #e0f2fe; color: #075985; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Mi aplicación anfitriona</h1>
+      <span class="badge" id="state">conectando…</span>
+      <button id="btn-caps">Capacidades</button>
+      <button id="btn-view">Vista: alcance de «Pedidos»</button>
+      <button id="btn-svg">Exportar SVG</button>
+      <button id="btn-risks">Informe de riesgos</button>
+      <button id="btn-validate">Validar</button>
+      <button id="btn-data">Abrir módulo de datos (desde Mermaid)</button>
+      <button id="btn-save">Guardar</button>
+    </header>
+    <main>
+      <div id="editor"></div>
+      <aside>
+        <h2>Eventos recibidos por postMessage</h2>
+        <pre id="log"></pre>
+      </aside>
+    </main>
+    <script type="module">
+      // En producción: import { createIarkModuleEmbed } from 'iark-diagrams/embed'
+      // o <script src="dist/embed/iark-embed.global.js"> y window.IArkEmbed.createIarkModuleEmbed(...)
+      import { createIarkModuleEmbed } from '../src/embed/iark-module-embed.ts';
+
+      const log = document.getElementById('log');
+      const state = document.getElementById('state');
+      const print = (label, payload) => {
+        const line = document.createElement('div');
+        line.textContent = `${new Date().toLocaleTimeString()}  ${label}${payload !== undefined ? '  ' + JSON.stringify(payload).slice(0, 180) : ''}`;
+        log.prepend(line);
+      };
+
+      const initial = {
+        version: '1.0',
+        workspace: { name: 'Tienda en línea' },
+        zones: [
+          { id: 'internet', name: 'Internet', trust: 'untrusted' },
+          { id: 'interna', name: 'Red interna', trust: 'internal' },
+          { id: 'datos', name: 'Zona de datos', trust: 'restricted', parentId: 'interna' },
+        ],
+        assets: [
+          { id: 'cliente', name: 'Cliente', kind: 'actor', zoneId: 'internet' },
+          { id: 'web', name: 'Tienda web', kind: 'process', zoneId: 'interna', classification: 'confidential' },
+          { id: 'pedidos', name: 'Pedidos', kind: 'process', zoneId: 'interna', classification: 'restricted' },
+          { id: 'pedidos-db', name: 'Base de pedidos', kind: 'datastore', zoneId: 'datos', classification: 'confidential', encryptedAtRest: true },
+        ],
+        flows: [
+          { id: 'cliente-web', sourceId: 'cliente', targetId: 'web', protocol: 'HTTPS', encrypted: true, authentication: 'token' },
+          { id: 'web-pedidos', sourceId: 'web', targetId: 'pedidos', protocol: 'HTTPS', classification: 'confidential', encrypted: true, authentication: 'mtls' },
+          { id: 'pedidos-a-db', sourceId: 'pedidos', targetId: 'pedidos-db', protocol: 'SQL', classification: 'confidential', encrypted: false, authentication: 'password' },
+        ],
+        threats: [
+          { id: 'inyeccion', title: 'Inyección SQL en pedidos', category: 'tampering', targetId: 'pedidos', likelihood: 'medium', impact: 'critical', status: 'open' },
+        ],
+      };
+
+      const embed = createIarkModuleEmbed({
+        container: '#editor',
+        url: new URL('../modulos.html', location.href).href, // el banco de trabajo (misma carga en dev y en dist/app)
+        module: 'security',
+        document: initial,
+        autosave: true,
+        onInit: (caps) => { state.textContent = 'init'; print('init', { modulos: caps.available, cargados: caps.modules.map((m) => m.id) }); },
+        onLoad: ({ module, document, viewId, issues }) => { state.textContent = 'cargado'; print('load', { module, viewId, problemas: issues.length, activos: document?.assets?.length }); },
+        onChange: ({ module, document, issues }) => print('change', { module, problemas: issues.length, activos: document.assets?.length }),
+        onViewChange: (v) => print('viewChange', v),
+        onSave: ({ module, exit }) => print('save', { module, exit }),
+        onExit: ({ modified }) => { state.textContent = 'salió'; print('exit', { modified }); },
+        onError: (e) => print('error', e),
+      });
+      window.embed = embed; // útil para depurar desde la consola
+
+      document.getElementById('btn-caps').onclick = async () => {
+        const caps = await embed.capabilities();
+        print('capabilities', caps.modules.map((m) => ({ id: m.id, exporta: m.exportFormats.map((f) => f.id), informes: m.commands.map((c) => c.name) })));
+      };
+      document.getElementById('btn-view').onclick = () => embed.setView('blast:pedidos');
+      document.getElementById('btn-svg').onclick = async () => {
+        const svg = await embed.export('svg');
+        print('export svg', { bytes: svg.length });
+      };
+      document.getElementById('btn-risks').onclick = async () => {
+        const { output } = await embed.run('risks');
+        print('informe risks', { lineas: output.split('\n').length });
+      };
+      document.getElementById('btn-validate').onclick = async () => {
+        const r = await embed.validate();
+        print('validate', { valido: r.valid, problemas: r.issues.length });
+      };
+      document.getElementById('btn-data').onclick = () =>
+        embed.load('flowchart LR\n  crm[(CRM)] --> dwh[(Almacén)]\n  dwh --> panel[Panel de ventas]', { module: 'data', importer: 'mermaid' });
+      document.getElementById('btn-save').onclick = () => embed.save(false);
+    </script>
+  </body>
+</html>

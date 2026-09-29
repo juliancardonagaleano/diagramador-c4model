@@ -3,6 +3,10 @@ import type { EmbedEvent, ExportFormat, HostAction, LoadAction } from './protoco
 
 export type { EmbedEvent, ExportFormat, HostAction, C4Document };
 
+// SDK de los demás módulos de la suite (integración, datos, empresarial, plataforma, seguridad…): mismo paquete y mismo global.
+export { createIarkModuleEmbed } from './iark-module-embed';
+export type { IarkModuleEmbed, IarkModuleEmbedOptions, ModuleAction, ModuleCapabilitiesInfo, ModuleEvent, ModuleIssueInfo, SuiteCapabilitiesInfo } from './iark-module-embed';
+
 /**
  * SDK de anfitrión: crea un iframe con IArk - DIAgrams en modo embebido y
  * gestiona el protocolo postMessage (handshake `init` → `load`, eventos, acciones).

@@ -28,6 +28,8 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         'embed-host': fileURLToPath(new URL('./examples/embed-host.html', import.meta.url)),
+        modulos: fileURLToPath(new URL('./modulos.html', import.meta.url)),
+        'modules-host': fileURLToPath(new URL('./examples/modules-host.html', import.meta.url)),
       },
     },
   },
