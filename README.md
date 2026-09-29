@@ -222,6 +222,8 @@ Mermaid no guarda coordenadas ni vistas: se crean las vistas por defecto y el au
 
 **Exportar** la vista activa (Archivo ▸ Exportar Mermaid, copiar al portapapeles, o `iark convert doc.json --to mermaid --view contenedores [--mermaid-format c4|flowchart]`). `generate --from` y `prompt --from` aceptan también `.drawio`, `.dsl` y `.mmd` como documento base.
 
+**Vista previa** de cómo dibuja Mermaid la vista activa, sin salir de la aplicación: Archivo ▸ Vista previa de Mermaid… en el editor C4 (en C4 nativo o como diagrama de flujo, con el texto exportado a la vista) y, en el banco de trabajo, Exportar ▸ Mermaid ▸ Ver. El dibujo lo hace la librería [`mermaid`](https://mermaid.js.org), que solo se descarga la primera vez que se pide la vista previa (el resto de la aplicación no la carga) y es una dependencia de desarrollo: forma parte del sitio compilado, no del paquete npm ni del CLI. Es una aproximación para pegar en README, GitHub o Confluence; el diagrama definitivo es el del editor. «Tamaño real» permite leer los diagramas grandes con desplazamiento.
+
 ## Módulo de integraciones
 
 Segunda especialidad de la suite (`--module integration`): modela **cómo se hablan los sistemas** (APIs, gateways, brokers, colas y tópicos, almacenes), con sus contratos y los flujos de extremo a extremo. Vive en `packages/domain-integration` y no depende del código C4: se enlaza con él solo por referencias URN (`urn:iark:c4:<id>`).
@@ -554,7 +556,7 @@ Los cinco módulos nuevos comparten una interfaz genérica que se genera a parti
 
 | Superficie | Dónde | Para qué |
 |---|---|---|
-| Banco de trabajo | `modulos.html?module=security` | Editar el JSON del módulo con validación en vivo (esquema + reglas del dominio), ver las vistas y las vistas de traza, exportar (Mermaid, SVG, draw.io), importar Mermaid, ejecutar informes y conversiones (`from-integration`…). El borrador se guarda en el navegador (no en modo embebido). |
+| Banco de trabajo | `modulos.html?module=security` | Editar el JSON del módulo con validación en vivo (esquema + reglas del dominio), ver las vistas y las vistas de traza, exportar (Mermaid con su vista previa dibujada, SVG, draw.io), importar Mermaid, ejecutar informes y conversiones (`from-integration`…). El borrador se guarda en el navegador (no en modo embebido). |
 | Widget embebible | `modulos.html?embed=1&proto=json&origin=…` | Mismo banco de trabajo dentro de un `<iframe>`, con un protocolo `postMessage` propio (`src/embed/moduleProtocol.ts`). |
 | Trazabilidad | `trazabilidad.html` | Vista transversal: enlaces `urn:iark:…` entre los documentos de varios módulos, referencias sin resolver y alcance de un elemento (ver «Trazabilidad entre módulos»). |
 | Shell de la suite | `suite.html` | Descubre los módulos de una instancia leyendo su manifiesto y monta el editor C4 o el widget del módulo elegido. Acepta una URL de manifiesto de otra instancia. |

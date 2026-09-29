@@ -1,0 +1,44 @@
+.mmd-preview {
+  margin: 0;
+}
+.mmd-actual {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mmd-canvas {
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--wb-border, #d0d5dd);
+  border-radius: 8px;
+  /* El dibujo de Mermaid usa colores para fondo claro, también con el tema oscuro. */
+  background: #fff;
+  color: #1f2937;
+}
+.mmd-canvas img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+.mmd-canvas.actual img {
+  max-width: none;
+  margin: 0;
+}
+.mmd-status,
+.mmd-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--wb-border, #d0d5dd);
+  border-radius: 8px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.mmd-error {
+  border-color: var(--wb-error, #b42318);
+  color: var(--wb-error, #b42318);
+}
