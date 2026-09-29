@@ -2,8 +2,8 @@ import { Button, Tooltip } from '@douyinfe/semi-ui';
 import { IconArrowUp } from '@douyinfe/semi-icons';
 import { useReactFlow } from '@xyflow/react';
 import { useMemo } from 'react';
-import { viewBreadcrumb, viewLevel } from '../../../core/model/factories';
-import { VIEW_TYPE_LABELS } from '../../../core/model/types';
+import { viewBreadcrumb, viewLevel } from '@core/model/factories';
+import { VIEW_TYPE_LABELS } from '@core/model/types';
 import { useDocumentStore } from '../../store/documentStore';
 
 /**

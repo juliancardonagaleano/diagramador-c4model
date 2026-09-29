@@ -5,6 +5,6 @@
     "jsx": "react-jsx",
     "types": ["vite/client"]
   },
-  "include": ["src/app", "src/core", "src/embed", "vite-env.d.ts"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+  "include": ["src/app", "packages/*/src", "src/embed", "vite-env.d.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "packages/*/src/**/*.test.ts"]
 }

@@ -1,11 +1,13 @@
-# Diagramador C4
+# IArk - DIAgrams
+
+> Antes «Diagramador C4». IArk - DIAgrams evoluciona hacia una suite de diagramación de arquitectura (integraciones, datos, empresarial, plataforma…); hoy incluye el editor del **modelo C4**. El comando `c4diagram` se mantiene como alias de `iark`. Hoja de ruta: [`docs/roadmap.md`](docs/roadmap.md).
 
 Editor web de diagramas del **modelo C4** (Contexto, Contenedores y Componentes) con:
 
 - **JSON limpio y estable** como formato nativo, convertible 1‑a‑1 a **`.drawio`** (usa la librería C4 oficial de draw.io, con placeholders `%c4Name%`, `%c4Type%`, `%c4Description%`, `%c4Technology%`) y **importable desde `.drawio` y desde el DSL de Structurizr** (web y CLI).
 - **Autolayout jerárquico** (ELK, algoritmo *layered* con boundaries anidados) como característica central: el mismo motor se usa en el navegador y en el CLI.
 - **Editor interactivo** con la estética de [drawdb.app](https://www.drawdb.app/): cabecera con menús, toolbar flotante, panel lateral con pestañas y cards, panel de problemas, tema claro/oscuro, deshacer/rehacer, minimapa.
-- **CLI `c4diagram`** para generar diagramas a partir de **instrucciones en lenguaje natural** (Claude, salida estructurada), aplicar autolayout y convertir a `.drawio` sin abrir un navegador. Se puede usar sin clave de API con cualquier otra IA o agente.
+- **CLI `iark`** para generar diagramas a partir de **instrucciones en lenguaje natural** (Claude, salida estructurada), aplicar autolayout y convertir a `.drawio` sin abrir un navegador. Se puede usar sin clave de API con cualquier otra IA o agente.
 - **Modo embebido** por `<iframe>` con protocolo **postMessage** al estilo de draw.io (`embed.diagrams.net`) y un SDK de anfitrión.
 
 ## Instalación
@@ -94,7 +96,7 @@ Reglas que se derivan automáticamente (no se almacenan):
 - **Boundaries**: el `scopeId` de una vista de contenedores/componentes y cualquier elemento visible con hijos visibles.
 - **Relaciones**: se dibujan las que unen dos elementos visibles; si un extremo no está visible pero sí su ancestro, se dibuja una relación *implícita* (una por par).
 
-El JSON Schema está en [`schema/c4-document.schema.json`](schema/c4-document.schema.json) (`npm run schema` lo regenera; `c4diagram schema` lo imprime).
+El JSON Schema está en [`schema/c4-document.schema.json`](schema/c4-document.schema.json) (`npm run schema` lo regenera; `iark schema` lo imprime).
 
 ## Notación del lienzo
 
@@ -140,9 +142,9 @@ Se elige el primer candidato limpio (0 cruces, 0 solapes); si ninguno lo es, el 
 Cada vista se convierte en una página de draw.io. Los elementos se envuelven en `<object placeholders="1" c4Name=… c4Type=… c4Description=… c4Technology=…>` con los estilos de la librería C4 (`shape=mxgraph.c4.person2`, `cylinder3` para bases de datos, boundary punteado, relaciones ortogonales). Los hijos de un boundary cuelgan de su celda con geometría relativa, tal como los crea draw.io. El archivo se escribe sin comprimir, así que draw.io / diagrams.net lo abre directamente y se puede versionar en git.
 
 ```bash
-npx c4diagram convert examples/banca.json --out banca.drawio          # aplica autolayout si faltan coordenadas
-npx c4diagram convert examples/banca.json --locale en --view contexto  # etiquetas de tipo en inglés, una sola vista
-npx c4diagram convert examples/banca.json --notation card --out banca-tarjetas.drawio  # tarjetas estilo drawdb
+npx iark convert examples/banca.json --out banca.drawio          # aplica autolayout si faltan coordenadas
+npx iark convert examples/banca.json --locale en --view contexto  # etiquetas de tipo en inglés, una sola vista
+npx iark convert examples/banca.json --notation card --out banca-tarjetas.drawio  # tarjetas estilo drawdb
 ```
 
 Dos **notaciones** de figuras (`--notation`, menú Archivo o `toDrawio(doc, { notation })`):
@@ -154,12 +156,12 @@ Los archivos [`examples/banca-c4.drawio`](examples/banca-c4.drawio) y [`examples
 
 ## Importar un `.drawio`
 
-Un diagrama de draw.io se puede convertir en un documento C4 (cada **página** pasa a ser una **vista**), tanto en la web (**Archivo ▸ Importar .drawio…**, pide confirmación si hay cambios sin guardar) como en el CLI (`c4diagram import` deduce el formato de la extensión o del contenido; también hay un [DSL de Structurizr](#importar-un-dsl-de-structurizr)):
+Un diagrama de draw.io se puede convertir en un documento C4 (cada **página** pasa a ser una **vista**), tanto en la web (**Archivo ▸ Importar .drawio…**, pide confirmación si hay cambios sin guardar) como en el CLI (`iark import` deduce el formato de la extensión o del contenido; también hay un [DSL de Structurizr](#importar-un-dsl-de-structurizr)):
 
 ```bash
-npx c4diagram import examples/banca-c4.drawio --out banca.json     # el nombre del diagrama sale del archivo (o --name)
-npx c4diagram import diagrama.drawio | npx c4diagram layout --stdin --force > reordenado.json   # descartando las posiciones
-cat diagrama.drawio | npx c4diagram import --stdin
+npx iark import examples/banca-c4.drawio --out banca.json     # el nombre del diagrama sale del archivo (o --name)
+npx iark import diagrama.drawio | npx iark layout --stdin --force > reordenado.json   # descartando las posiciones
+cat diagrama.drawio | npx iark import --stdin
 ```
 
 En el CLI lo importado va a stdout (o a `--out`) y el resumen y los avisos a stderr, así que se puede encadenar con `validate`, `layout` y `convert`. Un archivo que no es de draw.io termina con el código 2 y un motivo de una línea.
@@ -182,11 +184,11 @@ Lo que **no** se importa (siempre se avisa, sin detener la importación): notas 
 
 ## Importar un DSL de Structurizr
 
-Un modelo escrito en el [DSL de Structurizr](https://docs.structurizr.com/dsl) se importa con el mismo flujo y las mismas garantías que un `.drawio`: en la web con **Archivo ▸ Importar Structurizr DSL…** (pide confirmación si hay cambios sin guardar, deja el diagrama como "sin guardar" y lista los avisos en un modal) y en el CLI con `c4diagram import`, que deduce el formato de la extensión (`.dsl`) o del contenido (`--format dsl|drawio` lo fuerza). Siempre produce un documento válido o un error de una línea (código de salida 2), con el número de línea del DSL cuando el fallo es de sintaxis.
+Un modelo escrito en el [DSL de Structurizr](https://docs.structurizr.com/dsl) se importa con el mismo flujo y las mismas garantías que un `.drawio`: en la web con **Archivo ▸ Importar Structurizr DSL…** (pide confirmación si hay cambios sin guardar, deja el diagrama como "sin guardar" y lista los avisos en un modal) y en el CLI con `iark import`, que deduce el formato de la extensión (`.dsl`) o del contenido (`--format dsl|drawio` lo fuerza). Siempre produce un documento válido o un error de una línea (código de salida 2), con el número de línea del DSL cuando el fallo es de sintaxis.
 
 ```bash
-npx c4diagram import examples/banca.dsl --layout --out banca.json     # --layout coloca con ELK las vistas sin coordenadas
-npx c4diagram import examples/banca.dsl --layout | npx c4diagram convert --stdin --out banca.drawio   # DSL → .drawio
+npx iark import examples/banca.dsl --layout --out banca.json     # --layout coloca con ELK las vistas sin coordenadas
+npx iark import examples/banca.dsl --layout | npx iark convert --stdin --out banca.drawio   # DSL → .drawio
 ```
 
 Un DSL no tiene coordenadas, así que las vistas quedan sin posicionar: la app las coloca sola al abrirlas (o `--layout` en el CLI). [`examples/banca.dsl`](examples/banca.dsl) es el ejemplo de banca escrito en DSL y produce el mismo modelo y las mismas vistas que `examples/banca.json`.
@@ -202,26 +204,41 @@ Qué importa:
 
 Qué **no** se importa (siempre se avisa, agrupado por sentencia, sin detener la importación): despliegue (`deploymentEnvironment`, `deploymentNode`…), vistas `dynamic`, `filtered`, `deployment`, `custom` e `image`, `!docs`, `!adrs`, `!ref`, `!script`, `url`, `properties`, `perspectives`, las expresiones de relaciones en `include`/`exclude` (`relationship==…`) y `workspace extends`; y un elemento en un sitio que C4 no admite (un contenedor fuera de un sistema, una persona dentro de uno…) se omite con su contenido. Los temas, la marca (`branding`) y la configuración se ignoran sin avisar, y los estilos de relaciones no se aplican.
 
-## CLI `c4diagram`
+## Mermaid
+
+**Importar** (Archivo ▸ Importar Mermaid…, o `iark import diagrama.mmd`). Se admiten:
+
+| Diagrama de Mermaid | Se convierte en |
+|---|---|
+| `C4Context`, `C4Container`, `C4Component`, `C4Dynamic` | `Person`, `System*`, `Container*`, `Component*` (con `_Ext`, `Db`, `Queue`), `System_Boundary` (sistema) y `Container_Boundary` (contenedor), `Rel`/`BiRel`/`Rel_*`; los `UpdateElementStyle`/`UpdateLayoutConfig` se ignoran |
+| `flowchart` / `graph` | nodos y aristas (`-->`, `---`, `-.->`, `==>`, etiquetas `\|texto\|` o `-- texto -->`, cadenas y `A & B`); `subgraph` anidados = sistema › contenedor › componente; `[( )]` = base de datos, `([ ])` = cola |
+| `sequenceDiagram` | `actor` = persona, `participant` = sistema, cada mensaje distinto = relación |
+| `erDiagram` | entidad = sistema con forma de base de datos (atributos en la descripción), relación con su cardinalidad |
+
+Mermaid no guarda coordenadas ni vistas: se crean las vistas por defecto y el autolayout hace el resto. Lo que no se entiende se lista como aviso. También vale un bloque ```` ```mermaid ```` de un Markdown o un archivo con frontmatter `title:`.
+
+**Exportar** la vista activa (Archivo ▸ Exportar Mermaid, copiar al portapapeles, o `iark convert doc.json --to mermaid --view contenedores [--mermaid-format c4|flowchart]`). `generate --from` y `prompt --from` aceptan también `.drawio`, `.dsl` y `.mmd` como documento base.
+
+## CLI `iark`
 
 ```
-c4diagram generate "<instrucción>" [--from base.json] [--out d.drawio] [--json d.json] [--model claude-opus-5] [--effort high] [--direction DOWN]
-c4diagram layout   [archivo.json | --stdin] [--out out.json] [--direction auto|down|right|left|up] [--distribution auto|centered|elk] [--density auto|compact|spacious] [--fast] [--force] [--view id]
-c4diagram convert  [archivo.json | --stdin] [--out out.drawio] [--notation c4|card] [--no-waypoints] [--locale es|en] [--view id...]
-c4diagram import   [archivo.drawio|archivo.dsl | --stdin] [--format auto|drawio|dsl] [--out out.json] [--name nombre] [--layout]
-c4diagram validate [archivo.json | --stdin] [--strict]
-c4diagram schema   [--generation]
-c4diagram prompt   "<instrucción>" [--from base.json]
-c4diagram example
+iark generate "<instrucción>" [--from base.json] [--out d.drawio] [--json d.json] [--model claude-opus-5] [--effort high] [--direction DOWN]
+iark layout   [archivo.json | --stdin] [--out out.json] [--direction auto|down|right|left|up] [--distribution auto|centered|elk] [--density auto|compact|spacious] [--fast] [--force] [--view id]
+iark convert  [archivo.json | --stdin] [--out out.drawio] [--notation c4|card] [--no-waypoints] [--locale es|en] [--view id...]
+iark import   [archivo.drawio|archivo.dsl | --stdin] [--format auto|drawio|dsl] [--out out.json] [--name nombre] [--layout]
+iark validate [archivo.json | --stdin] [--strict]
+iark schema   [--generation]
+iark prompt   "<instrucción>" [--from base.json]
+iark example
 ```
 
-En desarrollo: `npm run cli -- <comando>`; tras `npm run build`: `node dist/cli/index.js` o `npx c4diagram` si el paquete está instalado.
+En desarrollo: `npm run cli -- <comando>`; tras `npm run build`: `node dist/cli/index.js` o `npx iark` si el paquete está instalado.
 
 ### Generar diagramas con IA (Claude)
 
 ```bash
 export ANTHROPIC_API_KEY=…   # o `ant auth login`
-npx c4diagram generate "Sistema de banca en línea con app web (React), API (Node.js), base de datos PostgreSQL y una pasarela de pagos externa. Los clientes consultan saldos y hacen pagos." \
+npx iark generate "Sistema de banca en línea con app web (React), API (Node.js), base de datos PostgreSQL y una pasarela de pagos externa. Los clientes consultan saldos y hacen pagos." \
   --out banca.drawio --json banca.json
 ```
 
@@ -237,7 +254,7 @@ Flujo: la instrucción se envía a Claude (`claude-opus-5` por defecto) con **sa
 export AI_BASE_URL=https://<recurso>.openai.azure.com/openai/v1    # también vale ANTHROPIC_FOUNDRY_BASE_URL
 export AI_API_KEY=…                                                # o ANTHROPIC_FOUNDRY_API_KEY
 export AI_MODEL=<nombre-de-tu-despliegue>                          # o ANTHROPIC_FOUNDRY_MODEL
-npx c4diagram generate "Una tienda en línea con web, API y base de datos" --json tienda.json --out tienda.drawio
+npx iark generate "Una tienda en línea con web, API y base de datos" --json tienda.json --out tienda.drawio
 ```
 
 No todos los modelos garantizan el esquema, así que el JSON Schema va también en el prompt, se pide `json_schema` (o `json_object`, o nada si el modelo no lo admite) y la respuesta se valida con zod; si es ilegible o incumple el esquema se reintenta con el error. Se descartan los bloques `<think>…</think>` de los modelos de razonamiento. La calidad del diagrama depende del modelo.
@@ -254,13 +271,13 @@ En Foundry no se envían los *fallbacks* del servidor (solo existen en la API de
 
 ### Sin clave de API: cualquier IA o agente
 
-`c4diagram prompt` imprime un prompt autocontenido (reglas C4 + JSON Schema + instrucción). Pégalo en el asistente que prefieras (o deja que un agente como Claude Code lo ejecute) y tuberiza la respuesta:
+`iark prompt` imprime un prompt autocontenido (reglas C4 + JSON Schema + instrucción). Pégalo en el asistente que prefieras (o deja que un agente como Claude Code lo ejecute) y tuberiza la respuesta:
 
 ```bash
-npx c4diagram prompt "Plataforma de reservas de hotel con app móvil, backend y pagos" > prompt.txt
+npx iark prompt "Plataforma de reservas de hotel con app móvil, backend y pagos" > prompt.txt
 # … la IA responde con un JSON (se acepta envuelto en ```json) …
-cat respuesta.json | npx c4diagram layout --stdin --out reservas.json
-npx c4diagram convert reservas.json --out reservas.drawio
+cat respuesta.json | npx iark layout --stdin --out reservas.json
+npx iark convert reservas.json --out reservas.drawio
 ```
 
 La pestaña **IA** del editor web hace lo mismo sin llamar a ningún servicio: "Copiar prompt para IA" y "Pegar JSON generado" (valida, aplica autolayout y carga o fusiona el modelo).
@@ -320,8 +337,8 @@ Seguridad: solo se atienden mensajes cuyo `source` es `window.parent`; con `&ori
 ```html
 <div id="editor" style="height: 100vh"></div>
 <script type="module">
-  import { createC4Embed } from 'diagramador-c4model/embed'; // o dist/embed/c4-embed.global.js → window.C4Embed
-  const embed = createC4Embed({
+  import { createIarkEmbed } from 'iark-diagrams/embed'; // o dist/embed/iark-embed.global.js → window.IArkEmbed
+  const embed = createIarkEmbed({
     container: '#editor',
     url: 'https://mi-servidor/diagramador/',
     document: miDocumento,          // opcional; sin coordenadas ⇒ autolayout
@@ -344,15 +361,21 @@ Demo completa: [`examples/embed-host.html`](examples/embed-host.html) (en desarr
 
 ## Estructura del proyecto
 
+Monorepo con workspaces de npm. Los paquetes internos se consumen desde su código fuente; `npm run build` los empaqueta dentro de `dist/`.
+
 ```
-src/core/     modelo, esquema zod, derivación de vistas, autolayout ELK, export/import .drawio, import del DSL de Structurizr, IA (sin DOM)
-src/cli/      comandos de c4diagram (commander)
-src/embed/    protocolo postMessage y SDK de anfitrión
-src/app/      editor React (Vite, React Flow, Semi UI, Tailwind)
-schema/       JSON Schema del documento y del formato de generación
-examples/     documento de ejemplo y página anfitriona de demostración
-tests/e2e/    pruebas Playwright
+packages/kernel/       @iark/kernel: contrato de módulo (DomainModule), registro, URN, manifiesto de federación, cliente de IA y utilidades de importación
+packages/domain-c4/    @iark/domain-c4: módulo `c4` (modelo, esquema zod, vistas, autolayout ELK, import/export draw.io, Structurizr y Mermaid, prompts de IA; sin DOM)
+src/cli/               comandos de iark (commander); carga los módulos del registro
+src/embed/             protocolo postMessage y SDK de anfitrión
+src/app/               editor React (Vite, React Flow, Semi UI, Tailwind)
+schema/                JSON Schema del documento y del formato de generación
+examples/              documento de ejemplo y página anfitriona de demostración
+docs/roadmap.md        hoja de ruta de la suite (integraciones, datos, empresarial, plataforma…)
+tests/e2e/             pruebas Playwright
 ```
+
+`iark modules` lista los módulos instalados y `iark modules --json` emite su manifiesto (`iark.manifest/1`), que es la base de la federación. Cada especialidad nueva es un paquete `@iark/domain-*` que implementa `DomainModule` y se registra en `src/cli/registry.ts`.
 
 ## Decisiones de diseño
 

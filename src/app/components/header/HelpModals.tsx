@@ -35,13 +35,13 @@ export function ShortcutsModal({ visible, onClose }: { visible: boolean; onClose
 
 export function AboutModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   return (
-    <Modal title="Diagramador C4" visible={visible} onCancel={onClose} footer={null} size="small">
+    <Modal title="IArk - DIAgrams" visible={visible} onCancel={onClose} footer={null} size="small">
       <div className="space-y-2 text-sm">
-        <p>Editor de diagramas del modelo C4 (Contexto, Contenedores, Componentes) con autolayout, exportación a draw.io y generación asistida por IA.</p>
+        <p>IArk - DIAgrams: suite de diagramación de arquitectura. Hoy edita diagramas del modelo C4 (Contexto, Contenedores, Componentes) con autolayout, exportación a draw.io y generación asistida por IA.</p>
         <ul className="list-disc pl-5 text-color-2">
-          <li>El documento se guarda como JSON limpio, convertible 1‑a‑1 a <code>.drawio</code>; un <code>.drawio</code> o un DSL de Structurizr se pueden importar (Archivo ▸ Importar).</li>
+          <li>El documento se guarda como JSON limpio, convertible 1‑a‑1 a <code>.drawio</code>; un <code>.drawio</code>, un DSL de Structurizr o un diagrama de Mermaid se pueden importar (Archivo ▸ Importar), y cada vista se puede exportar a Mermaid.</li>
           <li>
-            El mismo motor funciona como CLI: <code>npx c4diagram generate "…"</code>, <code>layout</code>, <code>convert</code>, <code>import</code>.
+            El mismo motor funciona como CLI: <code>npx iark generate "…"</code>, <code>layout</code>, <code>convert</code>, <code>import</code>.
           </li>
           <li>
             Se puede embeber en otra aplicación por iframe con <code>?embed=1&amp;proto=json</code> y postMessage.

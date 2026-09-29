@@ -1,4 +1,4 @@
-export { extractJson } from '../../core/util/extractJson';
+export { extractJson } from '@iark/kernel';
 
 export function downloadText(filename: string, content: string, mime = 'application/octet-stream'): void {
   const blob = new Blob([content], { type: mime });

@@ -1,7 +1,7 @@
 /**
  * API pública del núcleo (sin DOM): válida en navegador y Node.
  *
- *   import { generateDocument, autoLayoutDocument, toDrawio, validateDocument } from 'diagramador-c4model/core';
+ *   import { generateDocument, autoLayoutDocument, toDrawio, validateDocument } from 'iark-diagrams/core';
  */
 export * from './model/types';
 export {
@@ -46,6 +46,8 @@ export { toDrawio, DrawioExportError, type DrawioOptions, type DrawioNotation } 
 export type { DrawioLocale } from './export/drawio/styles';
 export { fromDrawio, DrawioImportError, type DrawioImportOptions, type DrawioImportResult } from './import/drawio/fromDrawio';
 export { fromStructurizrDsl, DslImportError, type DslImportOptions, type DslImportResult, type IncludeResolver } from './import/structurizr/fromStructurizrDsl';
+export { toMermaid, MermaidExportError, type MermaidOptions, type MermaidFormat } from './export/mermaid/toMermaid';
+export { fromMermaid, looksLikeMermaid, MermaidImportError, MERMAID_DIAGRAM_KINDS, type MermaidImportOptions, type MermaidImportResult } from './import/mermaid/fromMermaid';
 export {
   generatedDocumentSchema,
   generatedToDocument,
@@ -54,7 +56,7 @@ export {
   type GeneratedDocument,
 } from './ai/generationSchema';
 export { systemPrompt, userPrompt, standalonePrompt } from './ai/prompt';
-export { createAiClient, resolveModel, resolveProvider, type AiProvider } from './ai/client';
+export { createAiClient, resolveModel, resolveProvider, extractJson, type AiProvider } from '@iark/kernel';
 export { generateDocument, GenerationError, DEFAULT_AI_MODEL, type GenerateOptions, type GenerateResult, type Effort } from './ai/generate';
 export { analyzeDocument, type DocumentIssue } from './model/issues';
-export { extractJson } from './util/extractJson';
+export { c4Module } from './module';

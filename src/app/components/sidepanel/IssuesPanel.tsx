@@ -1,6 +1,6 @@
 import { IconAlertCircle, IconAlertTriangle, IconChevronDown } from '@douyinfe/semi-icons';
 import { useMemo, useState } from 'react';
-import { analyzeDocument } from '../../../core/model/issues';
+import { analyzeDocument } from '@core/model/issues';
 import { useDocumentStore } from '../../store/documentStore';
 
 export function IssuesPanel() {

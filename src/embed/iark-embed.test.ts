@@ -1,18 +1,18 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
-import { sampleDocument } from '../core/model/sample';
-import { createC4Embed } from './c4-embed';
+import { sampleDocument } from '@core/model/sample';
+import { createIarkEmbed } from './iark-embed';
 
 function fromIframe(iframe: HTMLIFrameElement, data: unknown, origin = 'http://localhost') {
   window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(data), source: iframe.contentWindow, origin }));
 }
 
-describe('createC4Embed (SDK de anfitrión)', () => {
+describe('createIarkEmbed (SDK de anfitrión)', () => {
   it('crea el iframe con los parámetros de embebido y responde al handshake con load', async () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const onLoad = vi.fn();
-    const embed = createC4Embed({ container, url: 'http://localhost/app/', document: sampleDocument, autosave: true, theme: 'dark', onLoad });
+    const embed = createIarkEmbed({ container, url: 'http://localhost/app/', document: sampleDocument, autosave: true, theme: 'dark', onLoad });
     const url = new URL(embed.iframe.src);
     expect(url.searchParams.get('embed')).toBe('1');
     expect(url.searchParams.get('proto')).toBe('json');
@@ -38,7 +38,7 @@ describe('createC4Embed (SDK de anfitrión)', () => {
   it('correlaciona export por requestId y rechaza en error', async () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
-    const embed = createC4Embed({ container, url: 'http://localhost/app/' });
+    const embed = createIarkEmbed({ container, url: 'http://localhost/app/' });
     const post = vi.spyOn(embed.iframe.contentWindow!, 'postMessage');
     const promise = embed.export('drawio', 'ctx');
     const sent = JSON.parse(post.mock.calls[0][0] as string);
@@ -57,7 +57,7 @@ describe('createC4Embed (SDK de anfitrión)', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const onEvent = vi.fn();
-    const embed = createC4Embed({ container, url: 'http://localhost/app/', onEvent });
+    const embed = createIarkEmbed({ container, url: 'http://localhost/app/', onEvent });
     window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ event: 'init' }), source: window, origin: 'http://localhost' }));
     fromIframe(embed.iframe, { event: 'init', version: '1.0' }, 'https://evil.example');
     expect(onEvent).not.toHaveBeenCalled();
@@ -69,7 +69,7 @@ describe('createC4Embed (SDK de anfitrión)', () => {
     document.body.appendChild(container);
     const onError = vi.fn();
     const onEvent = vi.fn();
-    const embed = createC4Embed({ container, url: 'http://localhost/app/', onError, onEvent });
+    const embed = createIarkEmbed({ container, url: 'http://localhost/app/', onError, onEvent });
     window.dispatchEvent(new MessageEvent('message', { data: '{"event": "load", roto', source: embed.iframe.contentWindow, origin: 'http://localhost' }));
     expect(onError).toHaveBeenCalledOnce();
     expect(onEvent).not.toHaveBeenCalled();
@@ -80,7 +80,7 @@ describe('createC4Embed (SDK de anfitrión)', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const onError = vi.fn();
-    const embed = createC4Embed({ container, url: 'http://localhost/app/', onError });
+    const embed = createIarkEmbed({ container, url: 'http://localhost/app/', onError });
     window.dispatchEvent(new MessageEvent('message', { data: 'webpackHotUpdate', source: embed.iframe.contentWindow, origin: 'http://localhost' }));
     window.dispatchEvent(new MessageEvent('message', { data: 42, source: embed.iframe.contentWindow, origin: 'http://localhost' }));
     expect(onError).not.toHaveBeenCalled();
@@ -90,7 +90,7 @@ describe('createC4Embed (SDK de anfitrión)', () => {
   it('load()/export() rechazan si el iframe nunca responde, en vez de colgarse', async () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
-    const embed = createC4Embed({ container, url: 'http://localhost/app/', responseTimeout: 30 });
+    const embed = createIarkEmbed({ container, url: 'http://localhost/app/', responseTimeout: 30 });
     await expect(embed.load(sampleDocument)).rejects.toThrow(/no respondió/);
     await expect(embed.export('drawio')).rejects.toThrow(/no respondió/);
     embed.destroy();

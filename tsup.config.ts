@@ -2,7 +2,7 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig([
   {
-    entry: { 'core/index': 'src/core/index.ts' },
+    entry: { 'core/index': 'packages/domain-c4/src/index.ts' },
     format: ['esm'],
     dts: true,
     sourcemap: true,
@@ -28,9 +28,9 @@ export default defineConfig([
     external: ['elkjs', 'zod', '@anthropic-ai/sdk', '@anthropic-ai/foundry-sdk', 'commander', 'nanoid', 'fast-xml-parser'],
   },
   {
-    entry: { 'embed/c4-embed': 'src/embed/c4-embed.ts' },
+    entry: { 'embed/iark-embed': 'src/embed/iark-embed.ts' },
     format: ['esm', 'iife'],
-    globalName: 'C4Embed',
+    globalName: 'IArkEmbed',
     dts: true,
     sourcemap: true,
     splitting: false,

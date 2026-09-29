@@ -3,7 +3,7 @@ import { documentToGenerated, generationJsonSchema } from './generationSchema';
 
 /**
  * Prompt de sistema para generar modelos C4. Se usa tanto con la API de Claude
- * (salida estructurada) como impreso por `c4diagram prompt` para cualquier otro agente.
+ * (salida estructurada) como impreso por `iark prompt` para cualquier otro agente.
  */
 export function systemPrompt(): string {
   return `Eres un arquitecto de software experto en el modelo C4 (c4model.com). Tu tarea es convertir

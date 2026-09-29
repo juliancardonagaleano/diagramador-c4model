@@ -15,12 +15,12 @@ import {
 } from '@xyflow/react';
 import { Toast } from '@douyinfe/semi-ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { deriveView, resolveDropReparent, type DerivedView } from '../../../core/model/viewDerivation';
-import { findChildView } from '../../../core/model/factories';
-import type { Point, Rect } from '../../../core/layout/edgeAnchors';
-import { estimateLabelSize } from '../../../core/layout/labelMetrics';
-import { routeMatchesNodes } from '../../../core/layout/quality';
-import { routeEdges } from '../../../core/layout/router';
+import { deriveView, resolveDropReparent, type DerivedView } from '@core/model/viewDerivation';
+import { findChildView } from '@core/model/factories';
+import type { Point, Rect } from '@core/layout/edgeAnchors';
+import { estimateLabelSize } from '@core/layout/labelMetrics';
+import { routeMatchesNodes } from '@core/layout/quality';
+import { routeEdges } from '@core/layout/router';
 import { useDocumentStore } from '../../store/documentStore';
 import { BoundaryNode, type BoundaryNodeType } from './BoundaryNode';
 import { ElementNode, elementColor, type ElementNodeType } from './ElementNode';

@@ -1,8 +1,8 @@
 import { Button, Empty, Input, Select } from '@douyinfe/semi-ui';
 import { IconDelete, IconPlus, IconTreeTriangleDown, IconTreeTriangleRight } from '@douyinfe/semi-icons';
 import { useEffect, useState } from 'react';
-import { relationshipCreationBlocked } from '../../../core/model/factories';
-import type { C4Relationship } from '../../../core/model/types';
+import { relationshipCreationBlocked } from '@core/model/factories';
+import type { C4Relationship } from '@core/model/types';
 import { useDocumentStore } from '../../store/documentStore';
 
 function RelationshipCard({ rel, selected }: { rel: C4Relationship; selected: boolean }) {

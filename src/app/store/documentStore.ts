@@ -12,11 +12,11 @@ import {
   isValidParentType,
   suggestViewElements,
   typeChangeBlockedReason,
-} from '../../core/model/factories';
-import { sampleDocument } from '../../core/model/sample';
-import { applyLayoutToView, layoutView, type LayoutOptions } from '../../core/layout/elkLayout';
-import type { LayoutQuality } from '../../core/layout/quality';
-import type { LayoutDirection } from '../../core/model/types';
+} from '@core/model/factories';
+import { sampleDocument } from '@core/model/sample';
+import { applyLayoutToView, layoutView, type LayoutOptions } from '@core/layout/elkLayout';
+import type { LayoutQuality } from '@core/layout/quality';
+import type { LayoutDirection } from '@core/model/types';
 
 /** true si el id de ruta (relación o `rel@origen->destino`) toca alguno de los elementos movidos. */
 function touchesAny(routeId: string, moved: Map<string, unknown>): boolean {
@@ -40,7 +40,7 @@ import {
   type LayoutDirectionOption,
   type LayoutDistribution,
   type ViewType,
-} from '../../core/model/types';
+} from '@core/model/types';
 
 export type Selection =
   | { kind: 'element'; id: string }
@@ -126,6 +126,23 @@ const noopStorage: StateStorage = {
   getItem: () => null,
   setItem: () => {},
   removeItem: () => {},
+};
+
+const STORAGE_KEY = 'iark-diagrams';
+/** Clave anterior al cambio de marca: se lee una vez para no perder el diagrama guardado por el usuario. */
+const LEGACY_STORAGE_KEY = 'diagramador-c4model';
+
+const migratingLocalStorage: StateStorage = {
+  getItem: (name) => {
+    const current = localStorage.getItem(name);
+    if (current !== null || name !== STORAGE_KEY) return current;
+    return localStorage.getItem(LEGACY_STORAGE_KEY);
+  },
+  setItem: (name, value) => {
+    localStorage.setItem(name, value);
+    if (name === STORAGE_KEY) localStorage.removeItem(LEGACY_STORAGE_KEY);
+  },
+  removeItem: (name) => localStorage.removeItem(name),
 };
 
 const defaultUi: UiState = {
@@ -516,8 +533,8 @@ export const useDocumentStore = create<DocumentStore>()(
       },
     ),
     {
-      name: 'diagramador-c4model',
-      storage: createJSONStorage(() => (isEmbedMode ? noopStorage : localStorage)),
+      name: STORAGE_KEY,
+      storage: createJSONStorage(() => (isEmbedMode ? noopStorage : migratingLocalStorage)),
       partialize: (state) => ({ doc: state.doc, activeViewId: state.activeViewId, ui: state.ui, lastSavedAt: state.lastSavedAt }),
       // Los ajustes nuevos (p. ej. nodeStyle) conservan su valor por defecto aunque el localStorage sea anterior.
       merge: (persisted, current) => {

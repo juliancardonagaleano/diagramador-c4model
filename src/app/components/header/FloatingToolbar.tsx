@@ -3,8 +3,8 @@ import { IconBolt, IconChevronDown, IconMinus, IconMoon, IconPlus, IconRedo, Ico
 import { useReactFlow, useStore as useFlowStore } from '@xyflow/react';
 import { useActions } from '../../hooks/useActions';
 import { isEmbedMode, useDocumentStore, useTemporalStore } from '../../store/documentStore';
-import { ELEMENT_TYPE_LABELS, type ElementType, type LayoutDirection, type LayoutDirectionOption, type LayoutDistribution } from '../../../core/model/types';
-import { formatQuality } from '../../../core/layout/quality';
+import { ELEMENT_TYPE_LABELS, type ElementType, type LayoutDirection, type LayoutDirectionOption, type LayoutDistribution } from '@core/model/types';
+import { formatQuality } from '@core/layout/quality';
 
 const ADD_BUTTONS: Array<{ type: ElementType; glyph: string }> = [
   { type: 'person', glyph: '👤' },

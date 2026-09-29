@@ -1,4 +1,4 @@
-import type { C4Element, ElementShape } from '../../../core/model/types';
+import type { C4Element, ElementShape } from '@core/model/types';
 
 /**
  * Formas convencionales del modelo C4 (c4model.com / Structurizr) dibujadas en SVG

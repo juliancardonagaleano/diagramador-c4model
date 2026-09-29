@@ -1,7 +1,7 @@
 import { Button, TextArea, Toast, Tooltip } from '@douyinfe/semi-ui';
 import { IconCopy, IconImport, IconTerminal } from '@douyinfe/semi-icons';
 import { useState } from 'react';
-import { standalonePrompt } from '../../../core/ai/prompt';
+import { standalonePrompt } from '@core/ai/prompt';
 import { useActions } from '../../hooks/useActions';
 import { useDocumentStore } from '../../store/documentStore';
 import { downloadText } from '../../utils/files';
@@ -25,7 +25,7 @@ export function AiTab() {
     }
   };
 
-  const cliCommand = `npx c4diagram generate "${(instruction.trim() || 'Describe aquí el sistema').replace(/"/g, '\\"')}" --out diagrama.drawio --json diagrama.json`;
+  const cliCommand = `npx iark generate "${(instruction.trim() || 'Describe aquí el sistema').replace(/"/g, '\\"')}" --out diagrama.drawio --json diagrama.json`;
 
   return (
     <div className="p-3 space-y-3 text-sm">

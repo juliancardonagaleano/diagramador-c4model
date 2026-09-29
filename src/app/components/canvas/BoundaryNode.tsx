@@ -1,6 +1,6 @@
 import type { Node, NodeProps } from '@xyflow/react';
 import { memo } from 'react';
-import { ELEMENT_TYPE_LABELS, type C4Element } from '../../../core/model/types';
+import { ELEMENT_TYPE_LABELS, type C4Element } from '@core/model/types';
 
 export type BoundaryNodeData = { element: C4Element };
 export type BoundaryNodeType = Node<BoundaryNodeData, 'boundary'>;

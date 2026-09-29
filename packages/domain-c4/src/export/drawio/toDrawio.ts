@@ -59,7 +59,7 @@ export function toDrawio(doc: C4Document, options: DrawioOptions = {}): string {
   const waypoints = options.waypoints ?? true;
   const pages = views.map((v) => diagramXml(deriveView(doc, v.id), locale, pageLinks, notation, waypoints));
   return (
-    `<mxfile host="diagramador-c4model" modified="${modified}" agent="diagramador-c4model" version="24.0.0" type="device">\n` +
+    `<mxfile host="iark-diagrams" modified="${modified}" agent="iark-diagrams" version="24.0.0" type="device">\n` +
     pages.join('\n') +
     `\n</mxfile>\n`
   );

@@ -1,7 +1,7 @@
 import { BaseEdge, EdgeLabelRenderer, type Edge, type EdgeProps } from '@xyflow/react';
 import { memo } from 'react';
-import { labelPosition, pathFromPoints, type Point } from '../../../core/layout/edgeAnchors';
-import type { C4Relationship } from '../../../core/model/types';
+import { labelPosition, pathFromPoints, type Point } from '@core/layout/edgeAnchors';
+import type { C4Relationship } from '@core/model/types';
 
 export type RelationshipEdgeData = {
   relationship: C4Relationship;

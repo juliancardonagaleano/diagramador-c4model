@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sampleDocument } from '../core/model/sample';
+import { sampleDocument } from '@core/model/sample';
 import { parseHostAction } from './protocol';
 
 describe('parseHostAction', () => {

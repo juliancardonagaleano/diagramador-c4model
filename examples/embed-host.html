@@ -38,9 +38,9 @@
       </aside>
     </main>
     <script type="module">
-      // En producción: import { createC4Embed } from 'diagramador-c4model/embed'
-      // o <script src="dist/embed/c4-embed.global.js"> y window.C4Embed.createC4Embed(...)
-      import { createC4Embed } from '../src/embed/c4-embed.ts';
+      // En producción: import { createIarkEmbed } from 'iark-diagrams/embed'
+      // o <script src="dist/embed/iark-embed.global.js"> y window.IArkEmbed.createIarkEmbed(...)
+      import { createIarkEmbed } from '../src/embed/iark-embed.ts';
 
       const log = document.getElementById('log');
       const state = document.getElementById('state');
@@ -76,7 +76,7 @@
         ],
       };
 
-      const embed = createC4Embed({
+      const embed = createIarkEmbed({
         container: '#editor',
         url: new URL('../', location.href).href, // la app del diagramador (misma carga en dev y en dist/app)
         document: initial,

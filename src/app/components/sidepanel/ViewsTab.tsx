@@ -1,8 +1,8 @@
 import { Button, Empty, Input, Select, Tag } from '@douyinfe/semi-ui';
 import { IconDelete, IconPlus, IconTreeTriangleDown, IconTreeTriangleRight } from '@douyinfe/semi-icons';
 import { useState } from 'react';
-import { suggestViewElements, viewLevel } from '../../../core/model/factories';
-import { VIEW_SCOPE_TYPE, VIEW_TYPE_LABELS, type C4View, type ViewType } from '../../../core/model/types';
+import { suggestViewElements, viewLevel } from '@core/model/factories';
+import { VIEW_SCOPE_TYPE, VIEW_TYPE_LABELS, type C4View, type ViewType } from '@core/model/types';
 import { useDocumentStore } from '../../store/documentStore';
 
 function ViewCard({ view }: { view: C4View }) {

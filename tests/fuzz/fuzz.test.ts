@@ -2,10 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import { XMLParser } from 'fast-xml-parser';
 import { useDocumentStore } from '../../src/app/store/documentStore';
-import { autoLayoutDocument } from '../../src/core/layout/elkLayout';
-import { toDrawio } from '../../src/core/export/drawio/toDrawio';
-import { validateDocument, formatIssues } from '../../src/core/model/schema';
-import { PARENT_TYPE, type ElementType, type ViewType } from '../../src/core/model/types';
+import { autoLayoutDocument } from '@core/layout/elkLayout';
+import { toDrawio } from '@core/export/drawio/toDrawio';
+import { validateDocument, formatIssues } from '@core/model/schema';
+import { PARENT_TYPE, type ElementType, type ViewType } from '@core/model/types';
 
 function mulberry32(a: number) {
   return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -42,7 +42,7 @@ function structural(xml: string): string[] {
 // .drawio no fallan y producen un XML coherente. Por defecto es ligero; para una pasada profunda:
 //   SEEDS=300 STEPS=40 npx vitest run tests/fuzz
 /** Reconstruye las posiciones absolutas desde el XML y las compara con las de la vista (geometría relativa al padre). */
-function geometryMismatches(xml: string, laid: import('../../src/core/model/types').C4Document): string[] {
+function geometryMismatches(xml: string, laid: import('@core/model/types').C4Document): string[] {
   const out: string[] = [];
   const p = parser.parse(xml);
   for (const d of arr(p.mxfile?.diagram)) {
