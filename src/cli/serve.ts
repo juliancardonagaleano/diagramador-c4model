@@ -15,6 +15,7 @@ import {
   traceReach,
   traceReachReport,
   traceReport,
+  traceSvg,
   viewChoices,
   type AnyModule,
   type ModuleRegistry,
@@ -37,7 +38,7 @@ import { suiteManifest } from './suiteManifest';
  *   POST /api/<módulo>/export?format=svg&view=  cuerpo: documento JSON → el archivo exportado
  *   POST /api/<módulo>/import?importer=&name=   cuerpo: texto (Mermaid…) → { document, warnings, importer }
  *   POST /api/<módulo>/run/<comando>            cuerpo: { input?, args?, options? } → { output, warnings, kind }
- *   POST /api/trace                             cuerpo: { documents: [{ module, document }], from?, direction?, depth? } → grafo de trazabilidad
+ *   POST /api/trace                             cuerpo: { documents: [{ module, document }], from?, direction?, depth? } → { graph, from?, reached?, report, mermaid, svg }
  */
 export interface ServeOptions {
   registry: ModuleRegistry;
@@ -143,7 +144,7 @@ export function createSuiteServer(options: ServeOptions): Server {
   }
 
   /** Trazabilidad entre módulos: reúne los documentos aportados y sigue sus referencias URN. */
-  function trace(raw: string): unknown {
+  async function trace(raw: string): Promise<unknown> {
     let body: { documents?: unknown; from?: unknown; direction?: unknown; depth?: unknown };
     try {
       body = JSON.parse(raw);
@@ -167,6 +168,7 @@ export function createSuiteServer(options: ServeOptions): Server {
         ...(reached ? { from: reached[0].node.urn, reached } : {}),
         report: reached ? traceReachReport(reached, direction) : traceReport(graph),
         mermaid: traceMermaid(graph, reached ? new Set(reached.map((r) => r.node.urn)) : undefined),
+        svg: await traceSvg(graph, { reached }),
       };
     } catch (error) {
       throw new HttpError(400, (error as Error).message);
@@ -181,7 +183,7 @@ export function createSuiteServer(options: ServeOptions): Server {
     }
     if (parts.length === 1 && parts[0] === 'trace') {
       requireMethod(req, 'POST');
-      return sendJson(res, 200, trace(await readBody(req)));
+      return sendJson(res, 200, await trace(await readBody(req)));
     }
     const [id, action, command] = parts;
     if (!id || !action) throw new HttpError(404, 'Ruta de la API desconocida. Ver /api/modules.');

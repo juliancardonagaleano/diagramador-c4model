@@ -1,10 +1,10 @@
 import { InvalidArgumentError, type Command } from 'commander';
-import { buildTraceGraph, formatUrn, parseUrn, traceMermaid, traceReach, traceReachReport, traceReport, type ModuleRegistry, type TraceDirection, type TraceInput } from '@iark/kernel';
+import { buildTraceGraph, formatUrn, parseUrn, traceMermaid, traceReach, traceReachReport, traceReport, traceSvg, type ModuleRegistry, type TraceDirection, type TraceInput } from '@iark/kernel';
 import { readModuleDocument, requireModule } from './generic';
 import { CliError, writeOutput } from './io';
 
 const DIRECTIONS: TraceDirection[] = ['refs', 'referrers', 'both'];
-const FORMATS = ['markdown', 'mermaid', 'json'] as const;
+const FORMATS = ['markdown', 'mermaid', 'svg', 'json'] as const;
 type Format = (typeof FORMATS)[number];
 
 function parseDirection(value: string): TraceDirection {
@@ -48,7 +48,7 @@ export function registerTrace(program: Command, registry: ModuleRegistry): void 
     .option('--format <formato>', `salida: ${FORMATS.join(' | ')}`, parseFormat, 'markdown')
     .option('--strict', 'termina con código 3 si hay referencias mal formadas o a elementos que no existen', false)
     .option('-o, --out <archivo>', 'archivo de salida (por defecto stdout)')
-    .action((specs: string[], opts: { from?: string; direction: TraceDirection; depth?: number; format: Format; strict: boolean; out?: string }) => {
+    .action(async (specs: string[], opts: { from?: string; direction: TraceDirection; depth?: number; format: Format; strict: boolean; out?: string }) => {
       const inputs: TraceInput[] = specs.map((spec) => {
         const eq = spec.indexOf('=');
         if (eq <= 0) throw new CliError(`«${spec}» no tiene la forma módulo=archivo (módulos: ${registry.ids().join(', ')}).`, 2);
@@ -73,6 +73,7 @@ export function registerTrace(program: Command, registry: ModuleRegistry): void 
       }
       let text: string;
       if (opts.format === 'json') text = `${JSON.stringify({ graph, ...(reached ? { from: reached[0].node.urn, reached } : {}) }, null, 2)}\n`;
+      else if (opts.format === 'svg') text = await traceSvg(graph, { reached });
       else if (opts.format === 'mermaid') text = `${traceMermaid(graph, reached ? new Set(reached.map((r) => r.node.urn)) : undefined)}\n`;
       else text = `${reached ? traceReachReport(reached, opts.direction) : traceReport(graph)}\n`;
       writeOutput(opts.out, text);

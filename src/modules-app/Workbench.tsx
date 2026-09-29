@@ -86,6 +86,11 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
                   </button>
                 ))}
               </div>
+              {!embed && (
+                <a className="wb-link" href="trazabilidad.html" title="Enlaces entre los documentos de varios módulos">
+                  Trazabilidad
+                </a>
+              )}
             </>
           )}
           <div className="wb-actions">

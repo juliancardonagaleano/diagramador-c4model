@@ -2,6 +2,7 @@ export * from './module/types';
 export { ModuleRegistry, UnknownModuleError } from './module/registry';
 export * from './module/operations';
 export * from './module/trace';
+export * from './module/trace-svg';
 export { carryRefs } from './module/refs';
 export { ModuleError } from './module/errors';
 export { formatUrn, parseUrn, type ParsedUrn } from './module/urn';
