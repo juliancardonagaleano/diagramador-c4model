@@ -44,6 +44,8 @@ export { computeEdgeAnchors, routeEdge, labelPosition, pathFromPoints, chooseSid
 export { estimateLabelSize, type LabelSize } from './layout/labelMetrics';
 export { toDrawio, DrawioExportError, type DrawioOptions, type DrawioNotation } from './export/drawio/toDrawio';
 export type { DrawioLocale } from './export/drawio/styles';
+export { fromDrawio, DrawioImportError, type DrawioImportOptions, type DrawioImportResult } from './import/drawio/fromDrawio';
+export { fromStructurizrDsl, DslImportError, type DslImportOptions, type DslImportResult, type IncludeResolver } from './import/structurizr/fromStructurizrDsl';
 export {
   generatedDocumentSchema,
   generatedToDocument,
