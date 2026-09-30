@@ -1,18 +1,12 @@
-import type { SvgNodeStyle } from '@iark/kernel';
+import { drawioShapeStyle, type SvgNodeStyle } from '@iark/kernel';
 import type { PlatformDocument } from '../types';
 import { listViews } from '../views';
 import { layoutView } from './render';
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
 
-const SHAPES = {
-  cylinder: 'shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;',
-  pill: 'rounded=1;arcSize=50;',
-  rect: 'rounded=1;',
-} as const;
-
 function nodeStyle(s: SvgNodeStyle): string {
-  return `${SHAPES[s.shape ?? 'rect']}whiteSpace=wrap;html=1;fillColor=${s.fill};fontColor=#ffffff;strokeColor=${s.stroke.slice(0, 7)};${s.dashed ? 'dashed=1;' : ''}`;
+  return `${drawioShapeStyle(s.shape)}whiteSpace=wrap;html=1;fillColor=${s.fill};fontColor=#ffffff;strokeColor=${s.stroke.slice(0, 7)};${s.dashed ? 'dashed=1;' : ''}`;
 }
 
 /** Exporta todas las vistas (topología, un entorno cada una y entrega continua) a un `.drawio`, una página por vista, ya colocadas. */

@@ -445,3 +445,6 @@ pre.wb-out {
 /* Con el lienzo activo, este ocupa todo el ancho y el JSON se ve en las demás pestañas. */
 .wb-main[data-mode='canvas'] { grid-template-columns: 1fr; grid-template-rows: 1fr; }
 .wb-main[data-mode='canvas'] .wb-editor { display: none; }
+
+.wb-import-preview { margin: 4px 0 0; }
+.wb-import-preview summary { cursor: pointer; font-size: 12px; color: var(--wb-muted, #64748b); }

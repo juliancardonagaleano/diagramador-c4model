@@ -1,26 +1,26 @@
 import { uniqueId, type EditorSpec, type EdgeNotation, type FieldSpec, type NodeNotation } from '@iark/kernel';
 import { findView } from './views';
 import { CRITICALITIES, INTERACTION_STYLES, KIND_LABELS, NODE_KINDS, PARENT_KIND, PATTERNS, type IntegrationDocument, type IntegrationNode, type InteractionStyle, type NodeKind } from './types';
-import { KIND_COLORS } from './export/render';
+import { KIND_COLORS, NODE_SHAPES } from './export/render';
 
-const node = (kind: NodeKind, glyph: string, shape: NodeNotation['shape'], width: number, height: number): NodeNotation => ({
+const node = (kind: NodeKind, glyph: string, width: number, height: number): NodeNotation => ({
   kind,
   label: KIND_LABELS[kind],
   glyph,
-  shape,
+  shape: NODE_SHAPES[kind],
   fill: KIND_COLORS[kind],
   width,
   height,
 });
 
 const NODE_KIND_NOTATION: NodeNotation[] = [
-  node('system', '▣', 'rect', 200, 88),
-  node('api', '◇', 'rect', 180, 76),
-  node('gateway', '⇄', 'rect', 180, 76),
-  node('broker', '☰', 'rect', 180, 76),
-  node('queue', '⇒', 'pill', 170, 64),
-  node('topic', '≋', 'pill', 170, 64),
-  node('store', '⛁', 'cylinder', 170, 84),
+  node('system', '▣', 200, 88),
+  node('api', '◇', 180, 76),
+  node('gateway', '⇄', 180, 76),
+  node('broker', '☰', 180, 76),
+  node('queue', '⇒', 170, 64),
+  node('topic', '≋', 170, 64),
+  node('store', '⛁', 170, 84),
 ];
 
 const STYLE_LABELS: Record<InteractionStyle, string> = {

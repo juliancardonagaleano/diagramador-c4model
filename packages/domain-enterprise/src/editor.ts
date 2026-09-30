@@ -1,6 +1,6 @@
 import { uniqueId, type EdgeNotation, type EditorGraph, type EditorNode, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
 import { applicationsByCapability, capabilityChildren } from './graph';
-import { CONTEXT_COLOR, IMPORTANCE_STROKE, KIND_COLORS, LIFECYCLE_STROKE, MATURITY_COLORS, MATURITY_UNKNOWN, layoutCapabilityMap } from './export/render';
+import { CONTEXT_COLOR, ELEMENT_SHAPES, IMPORTANCE_STROKE, KIND_COLORS, LIFECYCLE_STROKE, MATURITY_COLORS, MATURITY_UNKNOWN, layoutCapabilityMap } from './export/render';
 import {
   CRITICALITIES,
   CRITICALITY_LABELS,
@@ -39,21 +39,21 @@ import { findView } from './views';
  * flechas anchas, aplicaciones como cajas y tecnología como barras. Las unidades son responsables: no se dibujan, se
  * eligen en las propiedades de cada elemento.
  */
-const node = (kind: DrawnKind, glyph: string, shape: NodeNotation['shape'], width: number, height: number): NodeNotation => ({
+const node = (kind: DrawnKind, glyph: string, width: number, height: number): NodeNotation => ({
   kind,
   label: KIND_LABELS[kind],
   glyph,
-  shape,
+  shape: ELEMENT_SHAPES[kind],
   fill: KIND_COLORS[kind],
   width,
   height,
 });
 
 const NODE_KIND_NOTATION: NodeNotation[] = [
-  node('capability', '◆', 'rounded', 210, 78),
-  node('process', '➔', 'chevron', 210, 70),
-  node('application', '▣', 'rect', 210, 82),
-  node('technology', '▤', 'bar', 210, 78),
+  node('capability', '◆', 210, 78),
+  node('process', '➔', 210, 70),
+  node('application', '▣', 210, 82),
+  node('technology', '▤', 210, 78),
 ];
 
 const EDGE_COLOR = '#475569';

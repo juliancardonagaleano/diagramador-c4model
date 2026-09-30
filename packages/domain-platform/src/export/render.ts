@@ -1,4 +1,4 @@
-import { layoutGraph, renderGraphSvg, type GraphEdgeInput, type GraphGroupInput, type GraphLayout, type GraphLayoutOptions, type GraphNodeInput, type SvgNodeStyle } from '@iark/kernel';
+import { layoutGraph, renderGraphSvg, type GraphEdgeInput, type GraphGroupInput, type GraphLayout, type GraphLayoutOptions, type GraphNodeInput, type ShapeKind, type SvgNodeStyle } from '@iark/kernel';
 import {
   CRITICALITY_LABELS,
   EXPOSURE_LABELS,
@@ -40,6 +40,22 @@ export const RESOURCE_COLORS: Record<ResourceKind, string> = {
   registry: '#495057',
   other: '#495057',
 };
+/** Figuras de servicios y recursos (diagrama de despliegue): las mismas en el lienzo y en el SVG. */
+export const SERVICE_SHAPES: Record<ServiceKind, ShapeKind> = { service: 'rect', worker: 'rounded', job: 'hexagon', frontend: 'card' };
+export const RESOURCE_SHAPES: Record<ResourceKind, ShapeKind> = {
+  cluster: 'rect',
+  vm: 'rect',
+  database: 'cylinder',
+  cache: 'cylinder',
+  storage: 'cylinder',
+  queue: 'pill',
+  'load-balancer': 'hexagon',
+  gateway: 'chevron',
+  dns: 'circle',
+  'secret-store': 'hexagon',
+  registry: 'card',
+  other: 'rect',
+};
 const STAGE_COLORS: Record<EnvironmentKind, string> = { dev: '#2f9e44', test: '#e67700', staging: '#7048e8', prod: '#c92a2a', dr: '#495057' };
 const STEP_COLOR = '#475569';
 const FOCUS_STROKE = '#f59f00';
@@ -77,6 +93,7 @@ export function serviceStyle(s: Service, extra: string[] = []): SvgNodeStyle {
     stroke: DEFAULT_STROKE,
     badge: s.external ? 'Servicio externo' : SERVICE_LABELS[serviceKindOf(s)],
     lines: [s.name, s.technology ?? '', ...extra].filter(Boolean),
+    shape: s.external ? 'rect' : SERVICE_SHAPES[serviceKindOf(s)],
     dashed: s.external === true,
   };
 }
@@ -88,7 +105,7 @@ export function resourceStyle(r: Resource, extra: string[] = []): SvgNodeStyle {
     stroke: status === 'decommissioned' ? '#c92a2a' : DEFAULT_STROKE,
     badge: RESOURCE_LABELS[r.kind],
     lines: [r.name, join(r.technology, r.version), status === 'provisioned' ? '' : STATUS_LABELS[status], ...extra].filter(Boolean),
-    shape: r.kind === 'database' || r.kind === 'cache' || r.kind === 'storage' ? 'cylinder' : r.kind === 'queue' ? 'pill' : 'rect',
+    shape: RESOURCE_SHAPES[r.kind],
     dashed: status !== 'provisioned',
   };
 }

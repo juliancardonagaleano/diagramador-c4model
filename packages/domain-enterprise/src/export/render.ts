@@ -1,4 +1,4 @@
-import { layoutGraph, renderGraphSvg, type Box, type GraphLayout, type GraphLayoutOptions, type SvgNodeStyle } from '@iark/kernel';
+import { layoutGraph, renderGraphSvg, type Box, type GraphLayout, type GraphLayoutOptions, type ShapeKind, type SvgNodeStyle } from '@iark/kernel';
 import { applicationsByCapability, capabilityChildren } from '../graph';
 import {
   CRITICALITY_LABELS,
@@ -28,6 +28,9 @@ export const KIND_COLORS: Record<ElementKind, string> = {
   application: '#1168bd',
   technology: '#2f9e44',
 };
+
+/** Figura de cada tipo de elemento (notación de capas al estilo ArchiMate): la misma en el lienzo y en el SVG. */
+export const ELEMENT_SHAPES: Record<ElementKind, ShapeKind> = { unit: 'rect', capability: 'rounded', process: 'chevron', application: 'rect', technology: 'bar' };
 
 export const CONTEXT_COLOR = '#94a3b8';
 const EDGE_COLOR = '#475569';
@@ -209,7 +212,7 @@ export function graphNodeStyle(e: Element, doc: EnterpriseDocument, context: boo
     stroke: LIFECYCLE_STROKE[life] ?? '#0f172a55',
     badge: KIND_LABELS[e.kind],
     lines: elementLines(e, doc),
-    shape: e.kind === 'technology' ? 'cylinder' : e.kind === 'process' ? 'pill' : 'rect',
+    shape: ELEMENT_SHAPES[e.kind],
     dashed: context || life === 'retired' || (e.kind === 'application' && (e.item as Application).external === true),
   };
 }
@@ -220,6 +223,7 @@ export function capabilityCellStyle(c: Capability, appCount: number): SvgNodeSty
     fill: c.maturity ? MATURITY_COLORS[c.maturity - 1] : MATURITY_UNKNOWN,
     stroke: c.importance ? IMPORTANCE_STROKE[c.importance] : '#868e96',
     textColor: '#0f172a',
+    shape: ELEMENT_SHAPES.capability,
     badge: c.maturity ? `madurez ${c.maturity}/5` : undefined,
     lines: [c.name, c.importance ? IMPORTANCE_LABELS[c.importance] : '', appCount === 0 ? 'sin aplicación' : `${appCount} ${appCount === 1 ? 'aplicación' : 'aplicaciones'}`].filter(Boolean),
     dashed: appCount === 0,

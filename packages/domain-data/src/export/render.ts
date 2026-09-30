@@ -1,4 +1,4 @@
-import { layoutGraph, renderGraphSvg, type GraphLayout, type GraphLayoutOptions } from '@iark/kernel';
+import { layoutGraph, renderGraphSvg, type GraphLayout, type GraphLayoutOptions, type ShapeKind } from '@iark/kernel';
 import {
   CLASSIFICATION_LABELS,
   KIND_LABELS,
@@ -153,6 +153,21 @@ export async function layoutView(doc: DataDocument, viewId?: string, options: Gr
   return { view, layout, assets, pipelineNodes, edges, contextIds: new Set(view.contextIds) };
 }
 
+/** Figura de cada clase de activo: la misma en el lienzo interactivo y en el SVG exportado. */
+export const ASSET_SHAPES: Record<AssetKind, ShapeKind> = {
+  source: 'rect',
+  database: 'cylinder',
+  warehouse: 'cylinder',
+  lake: 'rounded',
+  stream: 'pipe',
+  table: 'card',
+  view: 'card',
+  file: 'document',
+  report: 'rect',
+  model: 'hexagon',
+};
+export const PIPELINE_SHAPE: ShapeKind = 'chevron';
+
 export async function toSvg(doc: DataDocument, viewId?: string): Promise<string> {
   const { view, layout, assets, pipelineNodes, edges, contextIds } = await layoutView(doc, viewId);
   const erd = view.type === 'erd';
@@ -160,7 +175,7 @@ export async function toSvg(doc: DataDocument, viewId?: string): Promise<string>
     title: view.title,
     node: (id) => {
       const p = pipelineNodes.get(id);
-      if (p) return { fill: PIPELINE_COLOR, stroke: '#0f172a55', lines: [p.name, pipelineLine(p), p.tool ?? ''].filter(Boolean), shape: 'pill' };
+      if (p) return { fill: PIPELINE_COLOR, stroke: '#0f172a55', lines: [p.name, pipelineLine(p), p.tool ?? ''].filter(Boolean), shape: PIPELINE_SHAPE };
       const a = assets.get(id)!;
       const context = contextIds.has(id);
       if (erd) {
@@ -171,7 +186,7 @@ export async function toSvg(doc: DataDocument, viewId?: string): Promise<string>
         stroke: strokeOf(a),
         badge: KIND_LABELS[a.kind],
         lines: [a.name, a.technology ?? '', governanceLine(a)].filter(Boolean),
-        shape: a.kind === 'database' || a.kind === 'warehouse' || a.kind === 'lake' ? 'cylinder' : a.kind === 'stream' ? 'pill' : 'rect',
+        shape: ASSET_SHAPES[a.kind],
         dashed: a.external || context,
       };
     },

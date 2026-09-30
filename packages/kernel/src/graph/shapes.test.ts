@@ -1,0 +1,71 @@
+import { describe, expect, it } from 'vitest';
+import { renderGraphSvg } from './svg';
+import { SHAPE_KINDS, drawioShapeStyle, shapeParts, textOffset } from './shapes';
+
+describe('shapeParts', () => {
+  it('toda figura tiene al menos un cuerpo y sus trazados escalan con el tamaño', () => {
+    for (const shape of SHAPE_KINDS) {
+      const small = shapeParts(shape, 100, 50);
+      const big = shapeParts(shape, 300, 150);
+      expect(small.filter((p) => p.role === 'body').length, shape).toBeGreaterThanOrEqual(1);
+      expect(big.filter((p) => p.role === 'body').length, shape).toBeGreaterThanOrEqual(1);
+      for (const p of [...small, ...big]) expect(p.d, shape).toMatch(/^M[\s\d.-]/);
+      // Con el triple de tamaño el trazado no puede ser idéntico (la figura no es de tamaño fijo).
+      expect(big[0].d, shape).not.toBe(small[0].d);
+    }
+  });
+
+  it('cilindro, tubería, barra y ficha llevan detalles además del cuerpo; el actor es cabeza más cuerpo', () => {
+    for (const shape of ['cylinder', 'pipe', 'bar', 'card'] as const) {
+      expect(shapeParts(shape, 160, 80).some((p) => p.role === 'detail'), shape).toBe(true);
+    }
+    expect(shapeParts('actor', 120, 120).filter((p) => p.role === 'body')).toHaveLength(2);
+    expect(shapeParts('rect', 160, 80)).toHaveLength(1);
+  });
+
+  it('el actor reserva la cabeza y desplaza el texto; el resto de figuras no', () => {
+    expect(textOffset('actor', 100)).toBeGreaterThan(0);
+    expect(textOffset('actor', 100)).toBeLessThan(50);
+    expect(textOffset('rect', 100)).toBe(0);
+    expect(textOffset('cylinder', 100)).toBe(0);
+  });
+});
+
+describe('drawioShapeStyle', () => {
+  it('traduce cada figura a un estilo de draw.io y las figuras sin equivalente van con esquinas redondeadas', () => {
+    expect(drawioShapeStyle('cylinder')).toContain('shape=cylinder3');
+    expect(drawioShapeStyle('pipe')).toContain('direction=south');
+    expect(drawioShapeStyle('hexagon')).toContain('shape=hexagon');
+    expect(drawioShapeStyle('chevron')).toContain('shape=step');
+    expect(drawioShapeStyle('actor')).toContain('umlActor');
+    expect(drawioShapeStyle('circle')).toContain('ellipse');
+    expect(drawioShapeStyle(undefined)).toBe('rounded=1;');
+    for (const shape of SHAPE_KINDS) expect(drawioShapeStyle(shape), shape).toMatch(/;$/);
+  });
+});
+
+describe('renderGraphSvg con figuras', () => {
+  it('dibuja cada nodo como trazados de su figura, no como rectángulos genéricos', () => {
+    const layout = {
+      nodes: [
+        { id: 'db', x: 0, y: 0, width: 160, height: 80 },
+        { id: 'p', x: 240, y: 0, width: 120, height: 120 },
+      ],
+      groups: [],
+      edges: [{ id: 'e', points: [{ x: 160, y: 40 }, { x: 240, y: 60 }] }],
+      width: 360,
+      height: 120,
+    };
+    const svg = renderGraphSvg(layout, {
+      node: (id) => (id === 'db' ? { fill: '#123456', stroke: '#000', lines: ['Pedidos'], shape: 'cylinder' as const } : { fill: '#654321', stroke: '#000', lines: ['Cliente'], shape: 'actor' as const }),
+      edge: () => ({ stroke: '#475569' }),
+      group: () => ({ label: '' }),
+    });
+    expect(svg).toContain('<path');
+    expect(svg).toContain('translate(0 0)');
+    expect(svg).toContain('translate(240 0)');
+    expect(svg).toContain('Pedidos');
+    expect(svg).toContain('Cliente');
+    expect((svg.match(/<path/g) ?? []).length).toBeGreaterThanOrEqual(shapeParts('cylinder', 160, 80).length + shapeParts('actor', 120, 120).length);
+  });
+});

@@ -1,4 +1,5 @@
 import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue, ViewRef } from '@iark/kernel';
+import { toSvg } from './export/svg/toSvg';
 import { c4AiSpec } from './ai/spec';
 import { toDrawio, type DrawioNotation } from './export/drawio/toDrawio';
 import type { DrawioLocale } from './export/drawio/styles';
@@ -48,6 +49,14 @@ const drawioExporter: Exporter<C4Document> = {
   },
 };
 
+const svgExporter: Exporter<C4Document> = {
+  id: 'svg',
+  label: 'SVG',
+  extension: '.svg',
+  mime: 'image/svg+xml',
+  export: async (doc, ctx) => toSvg(await autoLayoutDocument(doc), { viewId: ctx.viewId }),
+};
+
 const mermaidExporter: Exporter<C4Document> = {
   id: 'mermaid',
   label: 'Mermaid',
@@ -73,7 +82,7 @@ export const c4Module: DomainModule<C4Document> = {
   },
   // El orden es el de la detección por contenido: draw.io (XML), Mermaid (cabecera reconocible) y por último el DSL.
   importers: [drawioImporter, mermaidImporter, dslImporter],
-  exporters: [drawioExporter, mermaidExporter],
+  exporters: [drawioExporter, svgExporter, mermaidExporter],
   ai: c4AiSpec,
   entities: (document): EntityRef[] => document.model.elements.map((e) => ({ id: e.id, name: e.name, kind: e.type })),
   views: (document): ViewRef[] => document.views.map((v) => ({ id: v.id, title: v.title ?? v.id })),

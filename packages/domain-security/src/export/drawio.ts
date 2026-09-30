@@ -1,18 +1,12 @@
-import type { SvgNodeStyle } from '@iark/kernel';
+import { drawioShapeStyle, type SvgNodeStyle } from '@iark/kernel';
 import type { SecurityDocument } from '../types';
 import { listViews } from '../views';
 import { ZONE_STYLES, layoutView } from './render';
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
 
-const SHAPES = {
-  cylinder: 'shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;',
-  pill: 'rounded=1;arcSize=50;',
-  rect: 'rounded=1;',
-} as const;
-
 function nodeStyle(s: SvgNodeStyle): string {
-  return `${SHAPES[s.shape ?? 'rect']}whiteSpace=wrap;html=1;fillColor=${s.fill};fontColor=#ffffff;strokeColor=${s.stroke.slice(0, 7)};${s.dashed ? 'dashed=1;' : ''}`;
+  return `${drawioShapeStyle(s.shape)}whiteSpace=wrap;html=1;fillColor=${s.fill};fontColor=#ffffff;strokeColor=${s.stroke.slice(0, 7)};${s.dashed ? 'dashed=1;' : ''}`;
 }
 
 /** Exporta todas las vistas (flujos de datos y modelo de amenazas) a un `.drawio`, una página por vista, ya colocadas; cada zona con el color de su nivel de confianza. */

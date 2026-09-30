@@ -371,7 +371,7 @@ describe('iark: módulos de la suite', () => {
     expect(list.stdout).toMatch(/importa: drawio, mermaid, dsl {2}·/);
     const manifest = JSON.parse(run(['modules', '--json']).stdout);
     expect(manifest).toMatchObject({ schema: 'iark.manifest/1', name: 'IArk - DIAgrams' });
-    expect(manifest.modules[0]).toMatchObject({ id: 'c4', importFormats: ['drawio', 'mermaid', 'dsl'], exportFormats: ['drawio', 'mermaid'] });
+    expect(manifest.modules[0]).toMatchObject({ id: 'c4', importFormats: ['drawio', 'mermaid', 'dsl'], exportFormats: ['drawio', 'svg', 'mermaid'] });
   });
 
   it('--module desconocido falla con la lista de módulos disponibles', () => {

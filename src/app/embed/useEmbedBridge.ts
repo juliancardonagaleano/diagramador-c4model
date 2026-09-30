@@ -1,6 +1,8 @@
 import { Modal, Toast } from '@douyinfe/semi-ui';
 import { useEffect, useRef } from 'react';
 import { toDrawio } from '@core/export/drawio/toDrawio';
+import { toSvg } from '@core/export/svg/toSvg';
+import { svgToPngDataUrl } from './rasterize';
 import { autoLayoutDocument } from '@core/layout/elkLayout';
 import { viewLevel } from '@core/model/factories';
 import { formatIssues, validateDocument } from '@core/model/schema';
@@ -134,8 +136,9 @@ export function useEmbedBridge(): { save: (exit: boolean) => Promise<void>; exit
             if (action.format === 'json') data = JSON.stringify(action.viewId ? { ...doc, views: doc.views.filter((v) => v.id === action.viewId) } : doc, null, 2);
             else if (action.format === 'drawio') data = toDrawio(doc, { viewIds: action.viewId ? [action.viewId] : undefined, notation: action.notation });
             else {
-              post({ event: 'error', message: `Formato de exportación no soportado todavía: ${action.format}`, requestId: action.requestId });
-              return;
+              const viewId = action.viewId ?? store.getState().activeViewId ?? doc.views[0]?.id;
+              const svg = toSvg(doc, { viewId });
+              data = action.format === 'svg' ? svg : await svgToPngDataUrl(svg);
             }
             post({ event: 'export', format: action.format, data, viewId: action.viewId, requestId: action.requestId });
           } catch (error) {

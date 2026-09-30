@@ -1,15 +1,10 @@
-import type { IntegrationDocument, NodeKind } from '../types';
+import type { IntegrationDocument } from '../types';
 import { KIND_LABELS } from '../types';
 import { listViews } from '../views';
-import { colorOf, layoutView } from './render';
+import { drawioShapeStyle } from '@iark/kernel';
+import { NODE_SHAPES, colorOf, layoutView } from './render';
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
-
-const SHAPES: Partial<Record<NodeKind, string>> = {
-  store: 'shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;',
-  queue: 'rounded=1;arcSize=50;',
-  topic: 'rounded=1;arcSize=50;',
-};
 
 /** Exporta todas las vistas (mapa y flujos) a un `.drawio`, una página por vista, ya colocadas con el autolayout. */
 export async function toDrawio(doc: IntegrationDocument): Promise<string> {
@@ -26,7 +21,7 @@ export async function toDrawio(doc: IntegrationDocument): Promise<string> {
     for (const b of layout.nodes) {
       const n = nodes.get(b.id)!;
       const value = [`<b>${esc(n.name)}</b>`, n.technology ? esc(n.technology) : '', `<i>${KIND_LABELS[n.kind]}</i>`].filter(Boolean).join('<br>');
-      const style = `${SHAPES[n.kind] ?? 'rounded=1;'}whiteSpace=wrap;html=1;fillColor=${colorOf(n)};fontColor=#ffffff;strokeColor=#0f172a;${n.external ? 'dashed=1;' : ''}`;
+      const style = `${drawioShapeStyle(NODE_SHAPES[n.kind])}whiteSpace=wrap;html=1;fillColor=${colorOf(n)};fontColor=#ffffff;strokeColor=#0f172a;${n.external ? 'dashed=1;' : ''}`;
       cells.push(`<mxCell id="n-${esc(b.id)}" value="${esc(value)}" style="${style}" vertex="1" parent="1"><mxGeometry x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" as="geometry"/></mxCell>`);
     }
     for (const e of layout.edges) {
