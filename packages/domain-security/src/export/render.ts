@@ -1,4 +1,4 @@
-import { layoutGraph, renderGraphSvg, type GraphEdgeInput, type GraphGroupInput, type GraphLayout, type GraphLayoutOptions, type GraphNodeInput, type SvgNodeStyle } from '@iark/kernel';
+import { layoutGraph, renderGraphSvg, type GraphEdgeInput, type GraphGroupInput, type GraphLayout, type GraphLayoutOptions, type GraphNodeInput, type ShapeKind, type SvgNodeStyle } from '@iark/kernel';
 import { zoneChain } from '../graph';
 import {
   ASSET_LABELS,
@@ -35,6 +35,11 @@ export const ZONE_STYLES: Record<TrustLevel, { fill: string; stroke: string }> =
   internal: { fill: '#edf2ff', stroke: '#748ffc' },
   restricted: { fill: '#ebfbee', stroke: '#51cf66' },
 };
+/** Figuras del diagrama de flujo de datos y del modelo de amenazas: las mismas en el lienzo y en el SVG. */
+export const ASSET_SHAPES: Record<AssetKind, ShapeKind> = { actor: 'actor', external: 'rect', process: 'circle', datastore: 'pipe' };
+export const FLOW_SHAPE: ShapeKind = 'pill';
+export const THREAT_SHAPE: ShapeKind = 'hexagon';
+export const CONTROL_SHAPE: ShapeKind = 'rounded';
 const FOCUS_STROKE = '#f59f00';
 const ALERT_STROKE = '#e03131';
 const DEFAULT_STROKE = '#0f172a55';
@@ -122,7 +127,7 @@ function assetNode(doc: SecurityDocument, a: Asset, focus?: string): SceneNode {
     stroke: a.id === focus ? FOCUS_STROKE : serious ? ALERT_STROKE : DEFAULT_STROKE,
     badge: ASSET_LABELS[a.kind],
     lines: assetLines(a),
-    shape: a.kind === 'datastore' ? 'cylinder' : a.kind === 'actor' ? 'pill' : 'rect',
+    shape: ASSET_SHAPES[a.kind],
     dashed: a.kind === 'external',
     cls: a.kind,
     elementId: a.id,
@@ -164,7 +169,7 @@ function threatScene(doc: SecurityDocument, view: SecurityView): Scene {
       stroke: DEFAULT_STROKE,
       badge: 'Flujo de datos',
       lines: [flowName(doc, f), f.protocol ?? ''].filter(Boolean),
-      shape: 'pill',
+      shape: FLOW_SHAPE,
       cls: 'flow',
       elementId: f.id,
     });
@@ -176,6 +181,7 @@ function threatScene(doc: SecurityDocument, view: SecurityView): Scene {
       stroke: DEFAULT_STROKE,
       badge: CONTROL_LABELS[c.kind],
       lines: [c.name, planned ? 'prevista' : ''].filter(Boolean),
+      shape: CONTROL_SHAPE,
       dashed: planned,
       cls: 'control',
       elementId: c.id,
@@ -189,6 +195,7 @@ function threatScene(doc: SecurityDocument, view: SecurityView): Scene {
       stroke: DEFAULT_STROKE,
       badge: `Amenaza · ${STRIDE_LABELS[t.category]}`,
       lines: [t.title, `riesgo ${RATING_LABELS[risk.rating]} (${risk.score}) · ${STATUS_LABELS[status]}`],
+      shape: THREAT_SHAPE,
       dashed: status !== 'open',
       cls: 'threat',
       elementId: t.id,

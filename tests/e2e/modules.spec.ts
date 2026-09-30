@@ -137,7 +137,12 @@ test.describe('banco de trabajo de módulos', () => {
   test('importar Mermaid sustituye el documento y avisa de lo que no encaja', async ({ page }) => {
     await open(page, 'data');
     await page.getByRole('tab', { name: 'Importar' }).click();
+    await expect(page.getByTestId('import-mermaid')).toHaveCount(0);
     await page.getByLabel('Texto a importar').fill('flowchart LR\n  crm[(CRM)] --> dwh[(Almacén)]\n  dwh --> panel[Panel de ventas]');
+    // Con texto que parece Mermaid aparece la vista previa dibujada antes de importar.
+    const preview = page.getByTestId('import-mermaid').getByRole('img', { name: 'Vista previa de Mermaid del texto a importar' });
+    await expect(preview).toBeVisible({ timeout: 20000 });
+    await expect.poll(() => preview.evaluate((el: HTMLImageElement) => (el.complete ? el.naturalWidth : 0))).toBeGreaterThan(0);
     await page.getByRole('button', { name: 'Importar', exact: true }).click();
     await expect(page.getByLabel('Documento JSON')).toHaveValue(/"assets"/);
     expect(await page.getByLabel('Documento JSON').inputValue()).toContain('Almacén');

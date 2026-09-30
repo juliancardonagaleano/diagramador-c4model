@@ -1,15 +1,9 @@
-import { KIND_LABELS, type AssetKind, type DataDocument } from '../types';
+import { drawioShapeStyle } from '@iark/kernel';
+import { KIND_LABELS, type DataDocument } from '../types';
 import { listViews } from '../views';
-import { KIND_COLORS, colorOf, entityLines, governanceLine, isDashed, layoutView, pipelineLine, relationLabel, strokeOf } from './render';
+import { ASSET_SHAPES, KIND_COLORS, colorOf, entityLines, governanceLine, isDashed, layoutView, pipelineLine, relationLabel, strokeOf } from './render';
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
-
-const SHAPES: Partial<Record<AssetKind, string>> = {
-  database: 'shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;',
-  warehouse: 'shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;',
-  lake: 'shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=12;',
-  stream: 'rounded=1;arcSize=50;',
-};
 
 /** Exporta todas las vistas (linaje, ERD y dominios) a un `.drawio`, una página por vista, ya colocadas con el autolayout. */
 export async function toDrawio(doc: DataDocument): Promise<string> {
@@ -40,7 +34,7 @@ export async function toDrawio(doc: DataDocument): Promise<string> {
         const a = assets.get(b.id)!;
         const context = contextIds.has(b.id);
         value = [`<b>${esc(a.name)}</b>`, a.technology ? esc(a.technology) : '', `<i>${KIND_LABELS[a.kind]}</i>`, governanceLine(a) ? esc(governanceLine(a)) : ''].filter(Boolean).join('<br>');
-        style = `${SHAPES[a.kind] ?? 'rounded=1;'}whiteSpace=wrap;html=1;fillColor=${colorOf(a, context)};fontColor=#ffffff;strokeColor=${strokeOf(a).slice(0, 7)};${a.external || context ? 'dashed=1;' : ''}`;
+        style = `${drawioShapeStyle(ASSET_SHAPES[a.kind])}whiteSpace=wrap;html=1;fillColor=${colorOf(a, context)};fontColor=#ffffff;strokeColor=${strokeOf(a).slice(0, 7)};${a.external || context ? 'dashed=1;' : ''}`;
       }
       cells.push(`<mxCell id="n-${esc(b.id)}" value="${esc(value)}" style="${style}" vertex="1" parent="1"><mxGeometry x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" as="geometry"/></mxCell>`);
     }

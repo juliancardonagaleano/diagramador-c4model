@@ -1,5 +1,5 @@
 import { uniqueId, type EdgeNotation, type EditResult, type EditorGraph, type EditorNode, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
-import { DEPENDENCY_STYLES, EXTERNAL_COLOR, RESOURCE_COLORS, SERVICE_COLORS, buildScene } from './export/render';
+import { DEPENDENCY_STYLES, EXTERNAL_COLOR, RESOURCE_COLORS, RESOURCE_SHAPES, SERVICE_COLORS, SERVICE_SHAPES, buildScene } from './export/render';
 import {
   CRITICALITIES,
   CRITICALITY_LABELS,
@@ -43,27 +43,27 @@ import { findView } from './views';
 const STEP_COLOR = '#475569';
 const NETWORK_FILLS: Record<string, string> = { public: '#e03131', private: '#1c7ed6', isolated: '#495057' };
 
-const service = (kind: ServiceKind, glyph: string, shape: NodeNotation['shape']): NodeNotation => ({ kind, label: SERVICE_LABELS[kind], glyph, shape, fill: SERVICE_COLORS[kind], width: 200, height: 78 });
-const resource = (kind: ResourceKind, glyph: string, shape: NodeNotation['shape'], height = 78): NodeNotation => ({ kind, label: RESOURCE_LABELS[kind], glyph, shape, fill: RESOURCE_COLORS[kind], width: 200, height });
+const service = (kind: ServiceKind, glyph: string): NodeNotation => ({ kind, label: SERVICE_LABELS[kind], glyph, shape: SERVICE_SHAPES[kind], fill: SERVICE_COLORS[kind], width: 200, height: 78 });
+const resource = (kind: ResourceKind, glyph: string, height = 78): NodeNotation => ({ kind, label: RESOURCE_LABELS[kind], glyph, shape: RESOURCE_SHAPES[kind], fill: RESOURCE_COLORS[kind], width: 200, height });
 
 const NODE_KIND_NOTATION: NodeNotation[] = [
-  service('service', '▣', 'rect'),
-  service('worker', '⚙', 'rounded'),
-  service('job', '⏱', 'hexagon'),
-  service('frontend', '▭', 'card'),
+  service('service', '▣'),
+  service('worker', '⚙'),
+  service('job', '⏱'),
+  service('frontend', '▭'),
   { kind: 'external', label: 'Servicio externo', glyph: '☁', shape: 'rect', fill: EXTERNAL_COLOR, width: 200, height: 78, addable: false },
-  resource('cluster', '⬢', 'rect'),
-  resource('vm', '▥', 'rect'),
-  resource('database', '⛁', 'cylinder', 84),
-  resource('cache', '⚡', 'cylinder', 84),
-  resource('storage', '▤', 'cylinder', 84),
-  resource('queue', '⇒', 'pill', 64),
-  resource('load-balancer', '⇶', 'hexagon'),
-  resource('gateway', '⇄', 'chevron'),
-  resource('dns', '◎', 'circle'),
-  resource('secret-store', '🔒', 'hexagon'),
-  resource('registry', '▦', 'card'),
-  resource('other', '▢', 'rect'),
+  resource('cluster', '⬢'),
+  resource('vm', '▥'),
+  resource('database', '⛁', 84),
+  resource('cache', '⚡', 84),
+  resource('storage', '▤', 84),
+  resource('queue', '⇒', 64),
+  resource('load-balancer', '⇶'),
+  resource('gateway', '⇄'),
+  resource('dns', '◎'),
+  resource('secret-store', '🔒'),
+  resource('registry', '▦'),
+  resource('other', '▢'),
   { kind: 'network', label: 'Red', glyph: '▦', shape: 'rect', fill: NETWORK_FILLS.private, width: 240, height: 120 },
   { kind: 'pipeline', label: 'Pipeline', glyph: '⛓', shape: 'rect', fill: STEP_COLOR, width: 240, height: 120 },
   { kind: 'step', label: 'Paso', glyph: '·', shape: 'rect', fill: STEP_COLOR, width: 180, height: 70, addable: false },

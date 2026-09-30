@@ -1,5 +1,5 @@
 import { uniqueId, type EdgeNotation, type EditResult, type EditorGraph, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
-import { KIND_COLORS, columnLine, entityLines, governanceLine, pipelineLine, pipelineNodeId } from './export/render';
+import { ASSET_SHAPES, KIND_COLORS, PIPELINE_SHAPE, columnLine, entityLines, governanceLine, pipelineLine, pipelineNodeId } from './export/render';
 import {
   ASSET_KINDS,
   CARDINALITIES,
@@ -33,11 +33,11 @@ const PIPELINE_COLOR = '#334155';
 const CONTEXT_COLOR = '#94a3b8';
 const CLASSIFICATION_STROKE: Partial<Record<string, string>> = { restricted: '#c92a2a', confidential: '#e8590c' };
 
-const asset = (kind: AssetKind, glyph: string, shape: NodeNotation['shape'], width: number, height: number, extra: Partial<NodeNotation> = {}): NodeNotation => ({
+const asset = (kind: AssetKind, glyph: string, width: number, height: number, extra: Partial<NodeNotation> = {}): NodeNotation => ({
   kind,
   label: KIND_LABELS[kind],
   glyph,
-  shape,
+  shape: ASSET_SHAPES[kind],
   fill: KIND_COLORS[kind],
   width,
   height,
@@ -45,17 +45,17 @@ const asset = (kind: AssetKind, glyph: string, shape: NodeNotation['shape'], wid
 });
 
 const NODE_KIND_NOTATION: NodeNotation[] = [
-  asset('source', '⬚', 'rect', 190, 76),
-  asset('database', '⛁', 'cylinder', 190, 84),
-  asset('warehouse', '⛁', 'cylinder', 190, 84),
-  asset('lake', '≈', 'rounded', 190, 84),
-  asset('stream', '⇒', 'pipe', 180, 60),
-  asset('table', '▤', 'card', 180, 68, { fill: '#ffffff', stroke: KIND_COLORS.table }),
-  asset('view', '▤', 'card', 180, 68, { fill: '#ffffff', stroke: KIND_COLORS.view }),
-  asset('file', '▯', 'document', 180, 68),
-  asset('report', '▦', 'rect', 180, 68),
-  asset('model', '⬡', 'hexagon', 180, 68),
-  { kind: PIPELINE_KIND, label: 'Pipeline', glyph: '➤', shape: 'chevron', fill: PIPELINE_COLOR, width: 180, height: 52, addable: false },
+  asset('source', '⬚', 190, 76),
+  asset('database', '⛁', 190, 84),
+  asset('warehouse', '⛁', 190, 84),
+  asset('lake', '≈', 190, 84),
+  asset('stream', '⇒', 180, 60),
+  asset('table', '▤', 180, 68, { fill: '#ffffff', stroke: KIND_COLORS.table }),
+  asset('view', '▤', 180, 68, { fill: '#ffffff', stroke: KIND_COLORS.view }),
+  asset('file', '▯', 180, 68),
+  asset('report', '▦', 180, 68),
+  asset('model', '⬡', 180, 68),
+  { kind: PIPELINE_KIND, label: 'Pipeline', glyph: '➤', shape: PIPELINE_SHAPE, fill: PIPELINE_COLOR, width: 180, height: 52, addable: false },
 ];
 
 /** La relación «pipeline» conecta dos activos creando el pipeline entre ellos, o añade una entrada/salida a uno existente. */

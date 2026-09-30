@@ -6,9 +6,9 @@
  */
 
 import type { GraphLayout } from '../graph/layout';
+import type { ShapeKind } from '../graph/shapes';
 
-/** Figuras que sabe dibujar el lienzo (y, por extensión, cualquier notación de módulo). */
-export type ShapeKind = 'rect' | 'rounded' | 'cylinder' | 'pill' | 'hexagon' | 'chevron' | 'pipe' | 'bar' | 'circle' | 'card' | 'actor' | 'document';
+export type { ShapeKind } from '../graph/shapes';
 
 export type LineKind = 'solid' | 'dashed' | 'dotted';
 

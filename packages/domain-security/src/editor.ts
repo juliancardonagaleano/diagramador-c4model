@@ -1,5 +1,5 @@
 import { uniqueId, type EdgeNotation, type EditResult, type EditorGraph, type EditorNode, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
-import { ASSET_COLORS, CONTROL_COLOR, FLOW_NODE_COLOR, RISK_COLORS, ZONE_STYLES, buildScene } from './export/render';
+import { ASSET_COLORS, ASSET_SHAPES, CONTROL_COLOR, CONTROL_SHAPE, FLOW_NODE_COLOR, FLOW_SHAPE, RISK_COLORS, THREAT_SHAPE, ZONE_STYLES, buildScene } from './export/render';
 import {
   ASSET_KINDS,
   ASSET_LABELS,
@@ -42,17 +42,17 @@ import { findView } from './views';
  * distinguen por color si van cifrados. En el modelo de amenazas, cada amenaza es un hexágono coloreado por su riesgo
  * (STRIDE en la insignia) unido a lo que amenaza, y los controles la mitigan en verde.
  */
-const asset = (kind: AssetKind, glyph: string, shape: NodeNotation['shape'], width: number, height: number): NodeNotation => ({ kind, label: ASSET_LABELS[kind], glyph, shape, fill: ASSET_COLORS[kind], width, height });
+const asset = (kind: AssetKind, glyph: string, width: number, height: number): NodeNotation => ({ kind, label: ASSET_LABELS[kind], glyph, shape: ASSET_SHAPES[kind], fill: ASSET_COLORS[kind], width, height });
 
 const NODE_KIND_NOTATION: NodeNotation[] = [
-  asset('actor', '☺', 'actor', 150, 96),
-  asset('external', '▭', 'rect', 200, 78),
-  asset('process', '◯', 'circle', 170, 96),
-  asset('datastore', '⊐', 'pipe', 200, 78),
+  asset('actor', '☺', 150, 96),
+  asset('external', '▭', 200, 78),
+  asset('process', '◯', 170, 96),
+  asset('datastore', '⊐', 200, 78),
   { kind: 'zone', label: 'Zona de confianza', glyph: '▦', shape: 'rect', fill: ZONE_STYLES.internal.stroke, width: 260, height: 140 },
-  { kind: 'threat', label: 'Amenaza', glyph: '⚠', shape: 'hexagon', fill: RISK_COLORS.medium, width: 260, height: 84 },
-  { kind: 'control', label: 'Control', glyph: '🛡', shape: 'rounded', fill: CONTROL_COLOR, width: 220, height: 78 },
-  { kind: 'flow', label: 'Flujo de datos', glyph: '→', shape: 'pill', fill: FLOW_NODE_COLOR, width: 220, height: 70, addable: false },
+  { kind: 'threat', label: 'Amenaza', glyph: '⚠', shape: THREAT_SHAPE, fill: RISK_COLORS.medium, width: 260, height: 84 },
+  { kind: 'control', label: 'Control', glyph: '🛡', shape: CONTROL_SHAPE, fill: CONTROL_COLOR, width: 220, height: 78 },
+  { kind: 'flow', label: 'Flujo de datos', glyph: '→', shape: FLOW_SHAPE, fill: FLOW_NODE_COLOR, width: 220, height: 70, addable: false },
 ];
 
 const EDGE_KIND_NOTATION: EdgeNotation[] = [

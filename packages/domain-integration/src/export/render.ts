@@ -1,6 +1,9 @@
-import { layoutGraph, renderGraphSvg, type GraphLayout, type GraphLayoutOptions } from '@iark/kernel';
+import { layoutGraph, renderGraphSvg, type GraphLayout, type GraphLayoutOptions, type ShapeKind } from '@iark/kernel';
 import { KIND_LABELS, type IntegrationDocument, type IntegrationNode, type Interaction, type NodeKind } from '../types';
 import { findView, type IntegrationView } from '../views';
+
+/** Figura de cada tipo de nodo: la misma en el lienzo interactivo y en el SVG exportado. */
+export const NODE_SHAPES: Record<NodeKind, ShapeKind> = { system: 'rect', api: 'rect', gateway: 'rect', broker: 'rect', queue: 'pill', topic: 'pill', store: 'cylinder' };
 
 export const KIND_COLORS: Record<NodeKind, string> = {
   system: '#1168bd',
@@ -71,7 +74,7 @@ export async function toSvg(doc: IntegrationDocument, viewId?: string): Promise<
         stroke: '#0f172a55',
         badge: KIND_LABELS[n.kind],
         lines: [n.name, n.technology ?? '', n.owner ? `Responsable: ${n.owner}` : ''].filter(Boolean),
-        shape: n.kind === 'store' ? 'cylinder' : n.kind === 'queue' || n.kind === 'topic' ? 'pill' : 'rect',
+        shape: NODE_SHAPES[n.kind],
         dashed: n.external,
       };
     },

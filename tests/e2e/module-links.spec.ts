@@ -53,8 +53,10 @@ test.describe('enlaces entre diagramas (URN) y pestaña C4', () => {
     await expect(inside.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
     // el banco de trabajo no pinta el editor C4 fuera del iframe
     await expect(page.locator('.react-flow__node')).toHaveCount(0);
-    await page.getByRole('tab', { name: 'JSON' }).click();
+    // C4 ya exporta SVG con las figuras del lienzo, así que la pestaña se llama «Vista SVG» y dibuja la vista activa.
+    await page.getByRole('tab', { name: 'Vista SVG' }).click();
     await expect(page.getByTestId('editor-status')).toContainText('Válido');
+    await expect(page.getByTestId('diagram-stage').locator('img')).toBeVisible({ timeout: 20000 });
     const editor = page.getByLabel('Documento JSON');
     const doc = JSON.parse(await editor.inputValue());
     doc.workspace.name = 'Banca renombrada';

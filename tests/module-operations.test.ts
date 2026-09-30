@@ -150,9 +150,9 @@ describe('capacidades', () => {
     if (analysis.status === 'ok') expect(viewChoices(module, analysis.document).views.length).toBeGreaterThan(0);
   });
 
-  it('C4 no se dibuja en el banco de trabajo: su editor visual es la aplicación principal', () => {
-    expect(canRender(c4Module)).toBe(false);
-    expect(moduleCapabilities(c4Module).render).toBe(false);
+  it('C4 también se dibuja en el banco de trabajo (exportador SVG con las figuras del lienzo), además de su editor principal', () => {
+    expect(canRender(c4Module)).toBe(true);
+    expect(moduleCapabilities(c4Module).render).toBe(true);
   });
 });
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { WorkbenchController, WorkbenchState } from './controller';
-import { commandInfos, countBySeverity, exportFormats, type CommandInfo, type CommandOutput, type ExportedFile } from '@iark/kernel';
+import { commandInfos, countBySeverity, exportFormats, looksLikeMermaid, type CommandInfo, type CommandOutput, type ExportedFile } from '@iark/kernel';
 import { MermaidPreview } from '../mermaid-preview/MermaidPreview';
 import { copyText, downloadText, fileStem, readFile, svgDataUrl } from './files';
 
@@ -361,6 +361,9 @@ export function ImportPanel({ controller, state, notify }: PanelProps) {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | undefined>();
 
+  // Si el texto parece Mermaid se dibuja debajo, para comprobar que es lo que se quiere importar (la librería se descarga la primera vez).
+  const isMermaid = useMemo(() => text.trim().length > 0 && looksLikeMermaid(text) && importers.some((i) => i.id === 'mermaid'), [text, importers]);
+
   if (importers.length === 0) return <div className="wb-panel wb-empty">Este módulo no importa otros formatos.</div>;
 
   const run = async () => {
@@ -395,6 +398,12 @@ export function ImportPanel({ controller, state, notify }: PanelProps) {
           Texto a importar
           <textarea value={text} spellCheck={false} onChange={(e) => setText(e.target.value)} placeholder="Pega aquí el texto (p. ej. un flowchart de Mermaid)" aria-label="Texto a importar" />
         </label>
+        {isMermaid && (
+          <details className="wb-import-preview" open data-testid="import-mermaid">
+            <summary>Cómo dibuja Mermaid lo que vas a importar</summary>
+            <MermaidPreview text={text} label="Vista previa de Mermaid del texto a importar" />
+          </details>
+        )}
         <div className="wb-row">
           <FilePicker
             label="Abrir archivo a importar…"

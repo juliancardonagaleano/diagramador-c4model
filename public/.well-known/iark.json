@@ -16,6 +16,7 @@
       ],
       "exportFormats": [
         "drawio",
+        "svg",
         "mermaid"
       ],
       "endpoints": {

@@ -15,6 +15,14 @@ test('protocolo embebido: handshake, export, setView, autosave, guardar y salir,
   const xmlLen = await page.evaluate(async () => (await (window as any).embed.export('drawio')).length);
   expect(xmlLen).toBeGreaterThan(500);
 
+  // SVG y PNG de la vista activa: el SVG lleva las figuras C4 (persona como actor) y el PNG es una imagen con píxeles.
+  const svg = await page.evaluate(async () => (await (window as any).embed.export('svg')) as string);
+  expect(svg.startsWith('<svg')).toBe(true);
+  expect(svg).toContain('PERSONA');
+  const png = await page.evaluate(async () => (await (window as any).embed.export('png')) as string);
+  expect(png.startsWith('data:image/png;base64,')).toBe(true);
+  expect(png.length).toBeGreaterThan(2000);
+
   // setView desde el anfitrión → evento viewChange.
   await page.evaluate(() => (window as any).embed.setView('cont'));
   await page.waitForTimeout(500);

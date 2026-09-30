@@ -1,4 +1,5 @@
 import type { GraphLayout } from './layout';
+import { shapeParts, textOffset, type ShapeKind } from './shapes';
 
 /** Estilo de un nodo: lo decide el módulo (color por tipo, forma, insignia). */
 export interface SvgNodeStyle {
@@ -8,7 +9,8 @@ export interface SvgNodeStyle {
   lines: string[];
   /** Etiqueta pequeña sobre el título (p. ej. el tipo de nodo). */
   badge?: string;
-  shape?: 'rect' | 'cylinder' | 'pill';
+  /** Figura de la notación (las mismas que dibuja el lienzo interactivo). Por defecto, un rectángulo. */
+  shape?: ShapeKind;
   dashed?: boolean;
   /** Color del texto (por defecto blanco, para fondos oscuros). */
   textColor?: string;
@@ -75,14 +77,14 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
   for (const n of layout.nodes) {
     const s = options.node(n.id);
     const dash = s.dashed ? ' stroke-dasharray="6 4"' : '';
-    if (s.shape === 'cylinder') {
-      const ry = 8;
-      out.push(`<path d="M${n.x} ${n.y + ry} a${n.width / 2} ${ry} 0 0 1 ${n.width} 0 v${n.height - 2 * ry} a${n.width / 2} ${ry} 0 0 1 ${-n.width} 0 z" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1.5"${dash}/>`);
-      out.push(`<path d="M${n.x} ${n.y + ry} a${n.width / 2} ${ry} 0 0 0 ${n.width} 0" fill="none" stroke="${s.stroke}" stroke-width="1.5"/>`);
-    } else {
-      const rx = s.shape === 'pill' ? Math.min(n.height / 2, 28) : 8;
-      out.push(`<rect x="${n.x}" y="${n.y}" width="${n.width}" height="${n.height}" rx="${rx}" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1.5"${dash}/>`);
+    const shape: ShapeKind = s.shape ?? 'rect';
+    out.push(`<g transform="translate(${n.x} ${n.y})">`);
+    for (const part of shapeParts(shape, n.width, n.height)) {
+      if (part.role === 'body') out.push(`<path d="${part.d}" fill="${s.fill}" stroke="${s.stroke}" stroke-width="1.5"${dash}/>`);
+      else out.push(`<path d="${part.d}" fill="none" stroke="${s.stroke}" stroke-width="1.5"${part.opacity !== undefined ? ` stroke-opacity="${part.opacity}"` : ''}/>`);
     }
+    out.push('</g>');
+    const shift = textOffset(shape, n.height);
     const ink = s.textColor ?? '#ffffff';
     const lines = s.lines.slice(0, s.maxLines ?? 3);
     if (s.align === 'left') {
@@ -104,7 +106,7 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
     }
     const cx = n.x + n.width / 2;
     const total = lines.length + (s.badge ? 1 : 0);
-    let y = n.y + n.height / 2 - ((total - 1) * 15) / 2 + 4;
+    let y = n.y + shift + (n.height - shift) / 2 - ((total - 1) * 15) / 2 + 4;
     if (s.badge) {
       out.push(`<text x="${cx}" y="${y}" text-anchor="middle" font-size="10" fill="${ink}" fill-opacity="0.8" letter-spacing="0.5">${esc(fit(s.badge.toUpperCase(), n.width))}</text>`);
       y += 15;

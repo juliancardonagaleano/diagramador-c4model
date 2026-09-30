@@ -43,6 +43,7 @@ export { measureLayout, formatQuality, scoreQuality, type LayoutQuality } from '
 export { computeEdgeAnchors, routeEdge, labelPosition, pathFromPoints, chooseSide, type Rect, type Anchor, type EdgeAnchors, type Side, type Point } from './layout/edgeAnchors';
 export { estimateLabelSize, type LabelSize } from './layout/labelMetrics';
 export { toDrawio, DrawioExportError, type DrawioOptions, type DrawioNotation } from './export/drawio/toDrawio';
+export { toSvg, SvgExportError, type SvgOptions } from './export/svg/toSvg';
 export type { DrawioLocale } from './export/drawio/styles';
 export { fromDrawio, DrawioImportError, type DrawioImportOptions, type DrawioImportResult } from './import/drawio/fromDrawio';
 export { fromStructurizrDsl, DslImportError, type DslImportOptions, type DslImportResult, type IncludeResolver } from './import/structurizr/fromStructurizrDsl';
