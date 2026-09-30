@@ -2,6 +2,7 @@ import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue, ViewRef 
 import { looksLikeMermaid } from '@iark/kernel';
 import { securityAiSpec } from './ai/generation';
 import { securityCommands } from './commands';
+import { securityEditor } from './editor';
 import { toDrawio } from './export/drawio';
 import { toMermaid } from './export/mermaid';
 import { toSvg } from './export/render';
@@ -75,4 +76,5 @@ export const securityModule: DomainModule<SecurityDocument> = {
     { prefix: 'focus', label: 'Contexto', applies: (e) => e.kind === 'asset' },
   ],
   cliCommands: securityCommands,
+  editor: securityEditor,
 };

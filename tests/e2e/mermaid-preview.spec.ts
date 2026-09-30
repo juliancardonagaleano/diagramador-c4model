@@ -43,7 +43,7 @@ test.describe('vista previa renderizada de Mermaid', () => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto('/modulos.html?module=platform', { waitUntil: 'networkidle' });
-    await expect(page.locator('[data-testid="diagram-stage"] img')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId('module-canvas')).toBeVisible({ timeout: 20000 });
     await page.getByRole('tab', { name: 'Exportar' }).click();
     await page.locator('[data-format="json"]').getByRole('button', { name: 'Ver' }).click();
     await expect(page.getByTestId('export-preview')).toBeVisible();

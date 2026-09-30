@@ -88,11 +88,18 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
   // El autolayout solo se recalcula cuando cambia la estructura, no al editar un texto de propiedades.
   const graphRef = useRef(graph);
   graphRef.current = graph;
+  const documentRef = useRef(document);
+  documentRef.current = document;
   const layoutSeq = useRef(0);
   const relayout = useCallback(async () => {
     const g = graphRef.current;
     if (!g) return;
     const seq = ++layoutSeq.current;
+    const own = spec.layout && documentRef.current !== undefined ? await spec.layout(documentRef.current, viewId) : undefined;
+    if (own) {
+      if (seq === layoutSeq.current) setLayout(own);
+      return;
+    }
     const kinds = new Map(spec.nodeKinds.map((k) => [k.kind, k]));
     const parents = new Set(g.nodes.filter((n) => n.parentId).map((n) => n.parentId as string));
     const result = await layoutGraph(
@@ -102,7 +109,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
       { direction: 'RIGHT' },
     );
     if (seq === layoutSeq.current) setLayout(result);
-  }, [spec]);
+  }, [spec, viewId]);
   useEffect(() => {
     void relayout();
   }, [signature, relayout]);
@@ -160,7 +167,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     if (readOnly || document === undefined) return;
     const label = spec.nodeKinds.find((k) => k.kind === kind)?.label ?? kind;
     const parentNode = selected ? graph?.nodes.find((n) => n.id === selected) : undefined;
-    const id = commit(spec.addNode(document, kind, `${label} nuevo`, parentNode?.id));
+    const id = commit(spec.addNode(document, kind, `${label} nuevo`, parentNode?.id, viewId));
     if (!id) return;
     const rect = wrapper.current?.getBoundingClientRect();
     const center = flow.screenToFlowPosition({ x: (rect?.left ?? 0) + (rect?.width ?? 400) / 2 + Math.random() * 60 - 30, y: (rect?.top ?? 0) + (rect?.height ?? 300) / 2 + Math.random() * 60 - 30 });

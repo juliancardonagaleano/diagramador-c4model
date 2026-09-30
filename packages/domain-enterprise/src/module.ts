@@ -2,6 +2,7 @@ import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue, ViewRef 
 import { looksLikeMermaid } from '@iark/kernel';
 import { enterpriseAiSpec } from './ai/generation';
 import { enterpriseCommands } from './commands';
+import { enterpriseEditor } from './editor';
 import { toDrawio } from './export/drawio';
 import { toMermaid } from './export/mermaid';
 import { toSvg } from './export/render';
@@ -75,4 +76,5 @@ export const enterpriseModule: DomainModule<EnterpriseDocument> = {
     { prefix: 'focus', label: 'Entorno', applies: (e) => e.kind !== 'unit' },
   ],
   cliCommands: enterpriseCommands,
+  editor: enterpriseEditor,
 };

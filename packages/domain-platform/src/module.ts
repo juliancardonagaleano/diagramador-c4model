@@ -2,6 +2,7 @@ import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue, ViewRef 
 import { looksLikeMermaid } from '@iark/kernel';
 import { platformAiSpec } from './ai/generation';
 import { platformCommands } from './commands';
+import { platformEditor } from './editor';
 import { toDrawio } from './export/drawio';
 import { toMermaid } from './export/mermaid';
 import { toSvg } from './export/render';
@@ -76,4 +77,5 @@ export const platformModule: DomainModule<PlatformDocument> = {
     { prefix: 'focus', label: 'Entorno', applies: (e) => e.kind === 'service' || e.kind === 'resource' },
   ],
   cliCommands: platformCommands,
+  editor: platformEditor,
 };

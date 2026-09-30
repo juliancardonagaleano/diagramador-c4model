@@ -5,6 +5,8 @@
  * y el deshacer son comunes y no conocen ningún dominio.
  */
 
+import type { GraphLayout } from '../graph/layout';
+
 /** Figuras que sabe dibujar el lienzo (y, por extensión, cualquier notación de módulo). */
 export type ShapeKind = 'rect' | 'rounded' | 'cylinder' | 'pill' | 'hexagon' | 'chevron' | 'pipe' | 'bar' | 'circle' | 'card' | 'actor' | 'document';
 
@@ -101,13 +103,19 @@ export interface EditorSpec<TDoc> {
   fields(target: EditorTarget, document: TDoc): FieldSpec[];
   /** Valores actuales de un nodo o relación, para el formulario. */
   read(document: TDoc, id: string): { type: 'node' | 'edge'; kind: string; values: Record<string, unknown> } | undefined;
-  addNode(document: TDoc, kind: string, name: string, parentId?: string): EditResult<TDoc>;
+  /** `parentId` es el contenedor seleccionado (si encaja); `viewId`, la vista abierta (p. ej. para crear el recurso en el entorno que se está viendo). */
+  addNode(document: TDoc, kind: string, name: string, parentId?: string, viewId?: string): EditResult<TDoc>;
   addEdge(document: TDoc, kind: string, sourceId: string, targetId: string): EditResult<TDoc>;
   update(document: TDoc, id: string, patch: Record<string, unknown>): EditResult<TDoc>;
   /** Borra un nodo o relación y lo que dependa de él. */
   remove(document: TDoc, id: string): EditResult<TDoc>;
   /** Explica por qué no se puede unir ese origen con ese destino con ese tipo de relación; `undefined` si se puede. */
   canConnect?(document: TDoc, kind: string, sourceId: string, targetId: string): string | undefined;
+  /**
+   * Colocación propia de una vista (p. ej. la cuadrícula anidada de un mapa de capacidades). Si devuelve `undefined`, el
+   * lienzo aplica el autolayout común por capas.
+   */
+  layout?(document: TDoc, viewId?: string): GraphLayout | undefined | Promise<GraphLayout | undefined>;
 }
 
 /** Id nuevo y único con la forma `base`, `base-2`, `base-3`… */

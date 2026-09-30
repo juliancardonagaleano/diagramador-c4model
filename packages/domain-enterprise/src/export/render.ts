@@ -29,13 +29,13 @@ export const KIND_COLORS: Record<ElementKind, string> = {
   technology: '#2f9e44',
 };
 
-const CONTEXT_COLOR = '#94a3b8';
+export const CONTEXT_COLOR = '#94a3b8';
 const EDGE_COLOR = '#475569';
-const LIFECYCLE_STROKE: Partial<Record<Lifecycle, string>> = { sunset: '#e8590c', retired: '#c92a2a' };
+export const LIFECYCLE_STROKE: Partial<Record<Lifecycle, string>> = { sunset: '#e8590c', retired: '#c92a2a' };
 /** Madurez 1 (inicial) a 5 (optimizada): del rojo al verde, en tonos claros para que el texto oscuro se lea bien. */
 export const MATURITY_COLORS = ['#ffc9c9', '#ffd8a8', '#fff3bf', '#d8f5a2', '#b2f2bb'];
 export const MATURITY_UNKNOWN = '#e9ecef';
-const IMPORTANCE_STROKE = { differentiating: '#1c7ed6', core: '#495057', supporting: '#adb5bd' } as const;
+export const IMPORTANCE_STROKE = { differentiating: '#1c7ed6', core: '#495057', supporting: '#adb5bd' } as const;
 
 const NODE_HEIGHT = 76;
 

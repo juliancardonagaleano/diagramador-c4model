@@ -10,4 +10,5 @@ export { fromMermaid, PlatformImportError, type PlatformImportOptions, type Plat
 export { fromIntegrationJson } from './import/fromIntegration';
 export { platformAiSpec, generatedPlatformSchema, type GeneratedPlatform } from './ai/generation';
 export { platformCommands } from './commands';
+export { platformEditor, stagesToText, parseStages } from './editor';
 export { platformModule } from './module';
