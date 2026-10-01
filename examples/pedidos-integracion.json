@@ -33,7 +33,8 @@
       "kind": "api",
       "name": "API de pedidos",
       "parentId": "pedidos",
-      "contractId": "pedidos-openapi"
+      "contractId": "pedidos-openapi",
+      "owner": "Equipo Pedidos"
     },
     {
       "id": "kafka",
@@ -97,12 +98,13 @@
       "name": "API de facturación",
       "technology": "gRPC",
       "parentId": "facturacion",
-      "contractId": "facturacion-proto"
+      "contractId": "facturacion-proto",
+      "owner": "Equipo Finanzas"
     },
     {
       "id": "traducir-erp",
       "kind": "pattern",
-      "name": "Traductor al formato del ERP",
+      "name": "Traductor a formato ERP",
       "pattern": "message-translator",
       "domain": "Plataforma"
     },

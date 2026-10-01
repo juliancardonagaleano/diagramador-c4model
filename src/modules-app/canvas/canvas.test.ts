@@ -38,12 +38,17 @@ describe('matchShortcut', () => {
 describe('editor de integración', () => {
   it('proyecta un grafo con sus figuras y agrupa los nodos con padre', () => {
     const graph = integrationEditor.project(doc);
-    expect(graph.nodes.length).toBe(doc.nodes.length);
+    const zones = graph.nodes.filter((n) => n.kind === 'domain');
+    expect(zones.map((z) => z.id).sort()).toEqual(['domain:finanzas', 'domain:pedidos', 'domain:plataforma']);
+    expect(graph.nodes.length).toBe(doc.nodes.length + zones.length);
     const { nodes, edges } = buildFlow(spec, graph, undefined);
     expect(edges.length).toBe(doc.interactions.length);
     expect(edges.every((e) => e.type === 'notation')).toBe(true);
-    const queue = nodes.find((n) => n.data.node.kind === 'queue' || n.data.node.kind === 'topic');
-    expect(queue?.data.notation.shape).toBe('pill');
+    const shapeOf = (kind: string) => nodes.find((n) => n.data.node.kind === kind)?.data.notation.shape;
+    expect([shapeOf('topic'), shapeOf('api'), shapeOf('store'), shapeOf('user'), shapeOf('pattern')]).toEqual(['fan', 'hexagon', 'cylinder', 'actor', 'diamond']);
+    expect(nodes.find((n) => n.id === 'domain:pedidos')?.data.group).toBe(true);
+    expect(nodes.find((n) => n.id === 'pedidos')?.parentId).toBe('domain:pedidos');
+    expect(nodes.find((n) => n.id === 'pedidos-api')?.parentId).toBe('pedidos');
     const parentIds = new Set(nodes.filter((n) => n.parentId).map((n) => n.parentId));
     for (const id of parentIds) {
       expect(nodes.find((n) => n.id === id)?.data.group).toBe(true);

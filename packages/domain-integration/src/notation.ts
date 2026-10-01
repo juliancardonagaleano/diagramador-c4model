@@ -44,10 +44,10 @@ export const NODE_SIZES: Record<NodeKind, { width: number; height: number }> = {
   topic: { width: 180, height: 72 },
   store: { width: 170, height: 84 },
   connector: { width: 170, height: 64 },
-  scheduler: { width: 140, height: 100 },
+  scheduler: { width: 160, height: 124 },
   user: { width: 120, height: 110 },
-  mcp: { width: 190, height: 84 },
-  pattern: { width: 190, height: 100 },
+  mcp: { width: 190, height: 100 },
+  pattern: { width: 210, height: 104 },
 };
 
 /** Carácter corto de cada tipo, para la paleta y los títulos de grupo. */

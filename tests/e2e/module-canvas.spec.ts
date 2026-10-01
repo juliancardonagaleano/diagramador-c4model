@@ -32,8 +32,9 @@ test.describe('lienzo interactivo de módulos', () => {
   test('integración se abre en el lienzo con figuras propias por tipo', async ({ page }) => {
     const errors = await open(page);
     await expect(page.getByRole('tab', { name: 'Lienzo' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('[data-shape="cylinder"]').first()).toBeVisible();
-    await expect(page.locator('[data-shape="pill"]').first()).toBeVisible();
+    for (const shape of ['cylinder', 'fan', 'hexagon', 'chevron', 'actor', 'clock', 'diamond', 'card']) {
+      await expect(page.locator(`[data-shape="${shape}"]`).first(), shape).toBeVisible();
+    }
     await page.screenshot({ path: 'test-results/canvas-integration.png' });
     expect(errors).toEqual([]);
   });
@@ -82,14 +83,96 @@ test.describe('lienzo interactivo de módulos', () => {
     await expect(page.getByRole('status').filter({ hasText: 'no es válido' })).toBeVisible();
   });
 
-  test('cambiar a la vista de un flujo numera sus pasos sobre las relaciones', async ({ page }) => {
+  test('el mapa numera las interacciones por su orden y un flujo, por la posición de sus pasos', async ({ page }) => {
     await open(page);
-    await expect(page.locator('.cv-edge-text', { hasText: /^1\./ })).toHaveCount(0);
-    const select = page.getByTestId('canvas-view');
-    const options = await select.locator('option').allTextContents();
-    expect(options.length).toBeGreaterThan(1);
-    await select.selectOption({ index: 1 });
-    await expect(page.locator('.cv-edge-text', { hasText: /^1\./ }).first()).toBeVisible();
+    await expect(page.locator('.cv-mark-num')).toHaveCount(6);
+    await page.getByTestId('canvas-view').selectOption('flow:crear-pedido');
+    await expect(page.locator('.cv-mark-num')).toHaveText(['1', '2', '3', '4', '5', '6']);
+  });
+});
+
+test.describe('integración: notación EIP, zonas, contratos', () => {
+  test('los patrones salen como icono sobre la línea y las zonas envuelven a sus nodos', async ({ page }) => {
+    const errors = await open(page);
+    const icon = page.getByTestId('edge-mark-fact-pagos-1');
+    await expect(icon).toBeVisible();
+    await expect(icon).toHaveAttribute('aria-label', 'Cortacircuitos');
+    await expect(page.locator('[data-testid="node-domain:pedidos"].cv-group')).toBeVisible();
+    await expect(page.locator('[data-testid="node-domain:finanzas"].cv-group')).toBeVisible();
+    await expect(page.getByTestId('node-pedidos-api')).toContainText('openapi 2.1.0');
+    await page.screenshot({ path: 'test-results/canvas-integration-eip.png' });
+    expect(errors).toEqual([]);
+  });
+
+  test('la vista de un sistema muestra solo a él y a sus vecinos', async ({ page }) => {
+    await open(page);
+    await page.getByTestId('canvas-view').selectOption('system:pedidos');
+    await expect(page.getByTestId('node-pedidos-mcp')).toBeVisible();
+    await expect(page.getByTestId('node-asistente')).toBeVisible();
+    await expect(page.getByTestId('node-erp')).toHaveCount(0);
+    await expect(page.getByTestId('node-pasarela-pagos')).toHaveCount(0);
+  });
+
+  test('seleccionar varios nodos y «Agrupar en dominio» crea la zona, y se deshace de un paso', async ({ page }) => {
+    await open(page);
+    await expect(page.getByTestId('action-group-domain')).toBeDisabled();
+    await page.getByTestId('node-cliente').click();
+    await page.getByTestId('node-tienda-web').click({ modifiers: ['Control'] });
+    await expect(page.getByTestId('inspector')).toContainText('2 elementos seleccionados');
+    await page.getByTestId('action-group-domain').click();
+    await page.getByTestId('action-prompt').getByRole('combobox').fill('Canales');
+    await page.getByTestId('action-prompt').getByRole('button', { name: 'Aceptar' }).click();
+    await expect(page.locator('[data-testid="node-domain:canales"].cv-group')).toBeVisible();
+    expect(await docText(page)).toContain('"domain": "Canales"');
+    await page.keyboard.press('Control+z');
+    await expect(page.getByTestId('node-domain:canales')).toHaveCount(0);
+    expect(await docText(page)).not.toContain('"domain": "Canales"');
+  });
+
+  test('un patrón se puede pasar de insignia a nodo intermedio y volver', async ({ page }) => {
+    await open(page);
+    const nodes = await page.locator('.react-flow__node').count();
+    await page.getByTestId('edge-label-fact-pagos').click({ force: true });
+    await page.getByTestId('action-expand-pattern').click();
+    await expect(page.locator('.react-flow__node')).toHaveCount(nodes + 1);
+    await expect(page.locator('[data-shape="diamond"]')).toHaveCount(2);
+    await expect(page.getByTestId('edge-mark-fact-pagos-1')).toHaveCount(0);
+    await page.getByTestId('node-cortacircuitos').click();
+    await page.getByTestId('action-collapse-pattern').click();
+    await expect(page.locator('.react-flow__node')).toHaveCount(nodes);
+    await expect(page.getByTestId('edge-mark-fact-pagos-1')).toBeVisible();
+  });
+
+  test('desde una figura se abre su contrato, el editor lo valida y el formateador CloudEvents envuelve un payload', async ({ page }) => {
+    await open(page);
+    await page.getByTestId('node-facturacion-api').click();
+    await page.getByTestId('attachment-open').click();
+    await expect(page.getByRole('tab', { name: 'Contratos' })).toHaveAttribute('aria-selected', 'true');
+    const text = page.getByTestId('attachment-text');
+    await expect(text).toHaveValue(/service FacturacionService/);
+    await expect(page.getByTestId('attachment-summary')).toContainText('FacturacionService.ConsultarFactura');
+
+    await page.getByTestId('attachment-pedido-creado-ce').click();
+    await text.fill('{"pedidoId":"1042","total":19.9}');
+    await text.blur();
+    await page.getByTestId('attachment-format').click();
+    await expect(text).toHaveValue(/"specversion": "1\.0"/);
+    await expect(text).toHaveValue(/"data": \{\n    "pedidoId": "1042"/);
+    await expect(page.getByTestId('attachment-diagnostics')).not.toContainText('specversion');
+    await page.getByRole('tab', { name: 'Vista SVG' }).click();
+    expect(await page.getByLabel('Documento JSON').inputValue()).toContain('\\"specversion\\": \\"1.0\\"');
+  });
+
+  test('un diagnóstico de un contrato roto lleva a su línea y «Nuevo contrato» crea uno con el formato que encaja', async ({ page }) => {
+    await open(page);
+    await page.getByTestId('add-mcp').click();
+    await page.getByTestId('attachment-new').click();
+    await expect(page.getByRole('tab', { name: 'Contratos' })).toHaveAttribute('aria-selected', 'true');
+    const text = page.getByTestId('attachment-text');
+    await expect(text).toHaveValue(/"tools"/);
+    await text.fill('{ "name": "x", "tools": [ { "name": "hola" } ] }');
+    await text.blur();
+    await expect(page.getByTestId('attachment-diagnostics')).toContainText('inputSchema');
   });
 });
 

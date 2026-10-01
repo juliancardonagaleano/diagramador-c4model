@@ -31,10 +31,13 @@ export function contractLine(doc: IntegrationDocument, node: IntegrationNode): s
   return contract ? `${contract.format}${contract.version ? ` ${contract.version}` : ''}` : undefined;
 }
 
-/** Líneas de texto de un nodo, de la más a la menos importante: nombre, tecnología, contrato y responsable (caben tres). */
+/** Cuántas líneas caben en las figuras de texto estrecho (el reloj y la figura humana); en el resto caben tres. */
+const MAX_LINES: Partial<Record<IntegrationNode['kind'], number>> = { scheduler: 2, user: 2 };
+
+/** Líneas de texto de un nodo, de la más a la menos importante: nombre, tecnología, contrato y responsable. */
 export function nodeLines(doc: IntegrationDocument, node: IntegrationNode): string[] {
   if (node.kind === 'pattern') return [...new Set([node.name, node.pattern ? PATTERN_INFO[node.pattern].label : ''].filter(Boolean))];
-  return [node.name, node.technology, contractLine(doc, node), node.owner ? `Responsable: ${node.owner}` : undefined].filter((line): line is string => !!line).slice(0, 3);
+  return [node.name, node.technology, contractLine(doc, node), node.owner ? `Responsable: ${node.owner}` : undefined].filter((line): line is string => !!line).slice(0, MAX_LINES[node.kind] ?? 3);
 }
 
 /** Insignias de una línea: el número de paso y, si lo tiene, el icono de su patrón. */

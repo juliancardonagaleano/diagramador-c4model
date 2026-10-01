@@ -80,9 +80,9 @@ export function shapeParts(shape: ShapeKind, w: number, h: number): ShapePart[] 
       // Elipse con una esfera de reloj pequeña arriba; el texto baja (ver `textOffset`).
       const rx = w / 2 - 1;
       const ry = h / 2 - 1;
-      const r = Math.max(4, Math.min(h * 0.09, 10));
+      const r = Math.max(4, Math.min(h * 0.08, 10));
       const cx = w / 2;
-      const cy = h * 0.27;
+      const cy = h * 0.25;
       return [
         { d: `M1 ${n(h / 2)} a${n(rx)} ${n(ry)} 0 1 0 ${n(2 * rx)} 0 a${n(rx)} ${n(ry)} 0 1 0 ${n(-2 * rx)} 0 z`, role: 'body' },
         { d: `M${n(cx - r)} ${n(cy)} a${n(r)} ${n(r)} 0 1 0 ${n(2 * r)} 0 a${n(r)} ${n(r)} 0 1 0 ${n(-2 * r)} 0 z`, role: 'detail', opacity: 0.9 },
@@ -114,7 +114,7 @@ export function shapeParts(shape: ShapeKind, w: number, h: number): ShapePart[] 
 
 /** Cuánto hay que bajar el centro del texto en una figura (la cabeza del actor, la esfera del reloj y la cabecera de la ficha ocupan la parte alta). */
 export function textOffset(shape: ShapeKind, h: number): number {
-  if (shape === 'clock') return h * 0.19;
+  if (shape === 'clock') return h * 0.28;
   if (shape === 'card') return 26;
   if (shape !== 'actor') return 0;
   const r = Math.max(3, Math.min(h * 0.14, 16));

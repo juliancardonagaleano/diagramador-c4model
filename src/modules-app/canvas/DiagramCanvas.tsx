@@ -77,6 +77,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
   const [edgeKind, setEdgeKind] = useState(spec.defaultEdgeKind ?? spec.edgeKinds[0]?.kind ?? '');
   const [showKeys, setShowKeys] = useState(false);
   const wrapper = useRef<HTMLDivElement>(null);
+  const boxSelecting = useRef(false);
 
   const graph = useMemo(() => (document === undefined ? undefined : spec.project(document, viewId)), [spec, document, viewId]);
   const signature = graph ? structureKey(graph) : '';
@@ -93,7 +94,6 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
   useEffect(() => {
     setPrompting(undefined);
   }, [selectionKey, key]);
-  const boxSelecting = useRef(false);
 
   // Al cambiar de módulo o de vista se encuadra el dibujo una vez que ELK lo haya colocado; después la cámara no se toca.
   const fitPending = useRef(true);

@@ -149,6 +149,9 @@ export function buildFlow(
     return d;
   };
 
+  // Cada grupo queda por encima del que lo contiene y todos los elementos por encima de cualquier grupo.
+  const leafZ = Math.max(0, ...graph.nodes.filter((n) => parents.has(n.id)).map((n) => depth(n.id))) + 1;
+
   const nodes: FlowNode[] = [...graph.nodes]
     .sort((a, b) => depth(a.id) - depth(b.id))
     .map((n) => {
@@ -165,7 +168,7 @@ export function buildFlow(
         width: abs.width,
         height: abs.height,
         style: { width: abs.width, height: abs.height },
-        zIndex: group ? 0 : 1,
+        zIndex: group ? depth(n.id) : leafZ,
       };
     });
 

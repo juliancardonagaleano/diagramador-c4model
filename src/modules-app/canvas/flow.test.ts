@@ -79,3 +79,22 @@ describe('arrastre', () => {
     expect(next.get('api')).toEqual({ x: 20, y: 40 });
   });
 });
+
+describe('orden de apilado', () => {
+  it('los grupos anidados quedan por debajo de cualquier elemento, cada uno sobre el que lo contiene', () => {
+    const nested = {
+      nodes: [
+        { id: 'zona', kind: 'zone', label: 'Zona' },
+        { id: 'sistema', kind: 'service', label: 'Sistema', parentId: 'zona' },
+        { id: 'cola', kind: 'queue', label: 'Cola', parentId: 'sistema' },
+        { id: 'suelto', kind: 'service', label: 'Suelto' },
+      ],
+      edges: [],
+    };
+    const z = new Map(buildFlow(spec, nested, undefined).nodes.map((n) => [n.id, n.zIndex]));
+    expect(z.get('zona')).toBe(0);
+    expect(z.get('sistema')).toBe(1);
+    expect(z.get('cola')).toBeGreaterThan(z.get('sistema')!);
+    expect(z.get('suelto')).toBeGreaterThan(z.get('sistema')!);
+  });
+});
