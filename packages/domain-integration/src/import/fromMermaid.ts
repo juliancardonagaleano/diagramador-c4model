@@ -12,7 +12,20 @@ import {
   type FlowNodeRef,
 } from '@iark/kernel';
 import { formatIntegrationIssues, validateIntegrationDocument } from '../schema';
-import { INTEGRATION_DOCUMENT_VERSION, KIND_LABELS, type Flow, type IntegrationDocument, type IntegrationNode, type Interaction, type InteractionStyle } from '../types';
+import { PATTERN_INFO } from '../patterns';
+import {
+  INTEGRATION_DOCUMENT_VERSION,
+  KIND_LABELS,
+  PARENT_KINDS,
+  PATTERNS,
+  type Flow,
+  type IntegrationDocument,
+  type IntegrationNode,
+  type IntegrationPattern,
+  type Interaction,
+  type InteractionStyle,
+  type NodeKind,
+} from '../types';
 
 export class IntegrationImportError extends ModuleError {
   constructor(message: string) {
@@ -40,6 +53,35 @@ const slug = (s: string): string =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 60);
 
+const ZONE_TITLE = /^Dominio:\s+(.+)$/;
+const KIND_BY_LABEL = new Map<string, NodeKind>(Object.entries(KIND_LABELS).map(([kind, label]) => [label, kind as NodeKind]));
+const PATTERN_BY_LABEL = new Map<string, IntegrationPattern>(PATTERNS.map((p) => [PATTERN_INFO[p].label, p]));
+const CONTAINER_KINDS: readonly NodeKind[] = [...new Set(Object.values(PARENT_KINDS).flat())];
+
+/** Quita del texto las marcas «…» que son un tipo de nodo o un patrón; las demás se quedan. */
+function takeMarks(text: string | undefined): { text?: string; kind?: NodeKind; pattern?: IntegrationPattern } {
+  let kind: NodeKind | undefined;
+  let pattern: IntegrationPattern | undefined;
+  const rest = (text ?? '')
+    .replace(/\s*«([^»]*)»/g, (whole, label: string) => {
+      const name = label.trim();
+      if (PATTERN_BY_LABEL.has(name)) pattern = PATTERN_BY_LABEL.get(name);
+      else if (KIND_BY_LABEL.has(name) && KIND_BY_LABEL.get(name) !== 'pattern') kind = KIND_BY_LABEL.get(name);
+      else return whole;
+      return '';
+    })
+    .trim();
+  return { ...(rest ? { text: rest } : {}), ...(kind ? { kind } : {}), ...(pattern ? { pattern } : {}) };
+}
+
+/** Descripción, número de paso («2. Crea el pedido») y patrón («Reintento») de la etiqueta de una línea. */
+function readEdgeLabel(raw: string | undefined): { description?: string; step?: number; pattern?: IntegrationPattern } {
+  const marks = takeMarks(raw ? splitLabel(raw).name : undefined);
+  const numbered = /^(\d+)\.(?:\s+|$)/.exec(marks.text ?? '');
+  const description = (numbered ? marks.text!.slice(numbered[0].length) : marks.text)?.trim();
+  return { ...(description ? { description } : {}), ...(numbered ? { step: Number(numbered[1]) } : {}), ...(marks.pattern ? { pattern: marks.pattern } : {}) };
+}
+
 function styleOf(line: FlowLineStyle): InteractionStyle {
   return line === 'dotted' ? 'async-message' : line === 'thick' ? 'event' : 'request-response';
 }
@@ -47,8 +89,10 @@ function styleOf(line: FlowLineStyle): InteractionStyle {
 /**
  * Importa un diagrama de Mermaid como documento de integración.
  * - `flowchart`: flecha continua = petición-respuesta, punteada = mensaje asíncrono, gruesa = evento; `[( )]` = almacén y
- *   `([ ])` = cola. Un `subgraph` con colas es un broker; con otros nodos, un sistema que expone sus APIs.
- * - `sequenceDiagram`: los participantes son sistemas y los mensajes, los pasos de un flujo.
+ *   `([ ])` = cola. Un `subgraph` con colas es un broker; con otros nodos, un sistema que expone sus APIs; si su título
+ *   empieza por el tipo («Pasarela: Kong») manda el tipo, y «Dominio: X» es una zona que da `domain` a sus miembros. Una
+ *   marca «Tipo» en el texto de un nodo («Conector») fija su tipo, y una de patrón («Reintento») lo hace nodo de patrón.
+ * - `sequenceDiagram`: los participantes son sistemas (usuarios si son `actor`) y los mensajes, los pasos de un flujo.
  */
 export function fromMermaid(source: string, options: IntegrationImportOptions = {}): IntegrationImportResult {
   const { lines, title } = preprocessMermaid(source);

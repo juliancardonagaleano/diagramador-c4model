@@ -155,3 +155,12 @@ export function drawioShapeStyle(shape: ShapeKind | undefined): string {
       return 'rounded=1;';
   }
 }
+
+/** Color de texto legible sobre `fill` (`#rrggbb`): oscuro sobre fondos claros y blanco sobre los demás. */
+export function readableTextColor(fill: string): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(fill);
+  if (!m) return '#ffffff';
+  const n = parseInt(m[1], 16);
+  const luminance = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return luminance > 0.62 ? '#0b1f33' : '#ffffff';
+}

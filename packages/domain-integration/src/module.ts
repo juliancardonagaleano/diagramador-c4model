@@ -45,15 +45,16 @@ const drawioExporter: Exporter<IntegrationDocument> = {
 };
 
 /**
- * Módulo de arquitectura de integraciones: sistemas, APIs, pasarelas, brokers, colas y tópicos, con las interacciones
- * entre ellos (estilo, protocolo, patrón, contrato) y los flujos que las recorren. Sus nodos pueden apuntar a
- * elementos de otros módulos por URN (`ref`), p. ej. un contenedor del modelo C4.
+ * Módulo de arquitectura de integraciones: sistemas, APIs, servidores MCP, pasarelas, brokers, colas y tópicos, conectores,
+ * tareas programadas y usuarios, con las interacciones entre ellos (estilo, protocolo, patrón EIP, contrato, orden) y los
+ * flujos que las recorren. Los contratos (OpenAPI, .proto, CloudEvents, MCP) son la metadata de las figuras y se editan
+ * dentro. Sus nodos pueden apuntar a elementos de otros módulos por URN (`ref`), p. ej. un contenedor del modelo C4.
  */
 export const integrationModule: DomainModule<IntegrationDocument> = {
   id: 'integration',
   name: 'Arquitectura de integraciones',
   version: '0.1.0',
-  description: 'Mapa de integración y flujos: sistemas, APIs, brokers, colas, contratos, patrones EIP; exporta a Mermaid, SVG y draw.io.',
+  description: 'Mapa de integración y flujos con notación EIP: sistemas, APIs, MCP, brokers, colas, contratos editables (OpenAPI, .proto, CloudEvents, MCP) y patrones; exporta a Mermaid, SVG y draw.io.',
   documentVersion: INTEGRATION_DOCUMENT_VERSION,
   schema: integrationDocumentSchema as unknown as DomainModule<IntegrationDocument>['schema'],
   jsonSchema: integrationJsonSchema,

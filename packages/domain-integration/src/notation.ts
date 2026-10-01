@@ -1,5 +1,5 @@
 import type { ShapeKind } from '@iark/kernel';
-import type { NodeKind } from './types';
+import type { InteractionStyle, NodeKind } from './types';
 
 /**
  * Notación de los nodos, la misma en el lienzo, el SVG y draw.io: API hexágono, pasarela flecha, broker barra, cola tubo,
@@ -64,4 +64,12 @@ export const NODE_GLYPHS: Record<NodeKind, string> = {
   user: '☺',
   mcp: '◈',
   pattern: '◇',
+};
+
+export const STYLE_LABELS: Record<InteractionStyle, string> = {
+  'request-response': 'Petición-respuesta',
+  'async-message': 'Mensaje asíncrono',
+  event: 'Evento',
+  batch: 'Lote',
+  stream: 'Flujo continuo',
 };

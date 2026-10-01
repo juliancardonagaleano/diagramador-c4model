@@ -25,16 +25,22 @@ export interface FlowNode {
   selected?: boolean;
 }
 
+export interface FlowEdgeData extends Record<string, unknown> {
+  edge: EditorEdge;
+  notation: EdgeNotation;
+  /** Selección desde la etiqueta de la arista (que se dibuja fuera del SVG de las aristas). */
+  onPick?(id: string, additive: boolean): void;
+}
+
 export interface FlowEdge {
   id: string;
   source: string;
   target: string;
-  type: 'smoothstep';
-  label?: string;
+  type: 'notation';
   style: { stroke: string; strokeWidth: number; strokeDasharray?: string };
   markerEnd?: { type: 'arrowclosed'; color: string };
   markerStart?: { type: 'arrowclosed'; color: string };
-  data: { edge: EditorEdge; notation: EdgeNotation };
+  data: FlowEdgeData;
   selected?: boolean;
 }
 
@@ -42,6 +48,21 @@ const notationOf = (spec: EditorSpec<unknown>, kind: string): NodeNotation => sp
 const edgeNotationOf = (spec: EditorSpec<unknown>, kind: string): EdgeNotation => spec.edgeKinds.find((k) => k.kind === kind) ?? FALLBACK_EDGE;
 
 const DASH: Record<string, string | undefined> = { solid: undefined, dashed: '6 4', dotted: '2 4' };
+
+const MARK_SLOT = 22;
+const CHAR_WIDTH = 6.6;
+
+/** Texto de la etiqueta de una arista: su nombre seguido de las insignias de texto entre «». */
+export function edgeLabelText(edge: EditorEdge): string {
+  return [edge.label, ...(edge.badges ?? []).map((b) => `«${b}»`)].filter(Boolean).join(' ');
+}
+
+/** Texto con el que se reserva el hueco de la etiqueta en el autolayout: el de la etiqueta y espacio para sus insignias gráficas. */
+export function layoutLabelText(edge: EditorEdge): string {
+  const room = '\u00a0'.repeat(Math.ceil(((edge.marks?.length ?? 0) * MARK_SLOT) / CHAR_WIDTH));
+  const text = edgeLabelText(edge);
+  return room ? `${room}${text}` : text;
+}
 
 /** Firma de la estructura del grafo: cambia cuando hay nodos, aristas o padres nuevos (no cuando solo cambia un texto). */
 export function structureKey(graph: EditorGraph): string {
@@ -103,13 +124,11 @@ export function buildFlow(
     .map((e) => {
       const notation = edgeNotationOf(spec, e.kind);
       const width = e.width ?? notation.width ?? 1.5;
-      const label = [e.label, ...(e.badges ?? []).map((b) => `«${b}»`)].filter(Boolean).join(' ');
       return {
         id: e.id,
         source: e.source,
         target: e.target,
-        type: 'smoothstep',
-        ...(label ? { label } : {}),
+        type: 'notation',
         style: { stroke: notation.stroke, strokeWidth: width, strokeDasharray: DASH[notation.line ?? 'solid'] },
         ...(notation.arrowEnd === false ? {} : { markerEnd: { type: 'arrowclosed' as const, color: notation.stroke } }),
         ...(notation.arrowStart ? { markerStart: { type: 'arrowclosed' as const, color: notation.stroke } } : {}),
