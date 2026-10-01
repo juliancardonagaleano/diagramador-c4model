@@ -13,10 +13,13 @@ import '@xyflow/react/dist/style.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { layoutGraph, pretty, type EditResult, type EditorSpec, type GraphLayout } from '@iark/kernel';
 import './canvas.css';
-import { buildFlow, structureKey, type FlowEdge, type FlowNode } from './flow';
+import { ActionPrompt } from './ActionPrompt';
+import { absolutePositions, buildFlow, layoutLabelText, movedByDrag, structureKey, type FlowEdge, type FlowNode } from './flow';
 import type { EditHistory } from './history';
 import { Inspector, type LinkTools } from './Inspector';
+import { NotationEdge } from './NotationEdge';
 import { NotationNode } from './NotationNode';
+import { actionAvailability, applySelectionChanges, describeSelection, focusNodes, NO_SELECTION, removeAll, resolveSelection, toggleSelected, type Selection } from './selection';
 import { ShapeSvg } from './shapes';
 import { CANVAS_SHORTCUTS, matchShortcut } from './shortcuts';
 
@@ -38,11 +41,14 @@ export interface DiagramCanvasProps {
   links?: LinkTools;
   /** Hay un diagrama al que volver (Alt+↑). */
   onBack?(): void;
-  /** Avisa de qué elemento está seleccionado (para la miga de pan al seguir un enlace). */
+  /** Avisa de qué elemento está seleccionado (para la miga de pan al seguir un enlace); `undefined` si no hay uno solo. */
   onSelect?(id: string | undefined): void;
+  /** Abre un adjunto del módulo (un contrato) en su pestaña. */
+  onOpenAttachment?(id: string): void;
 }
 
 const nodeTypes = { notation: NotationNode };
+const edgeTypes = { notation: NotationEdge };
 
 const positionsKey = (moduleId: string, viewId: string | undefined): string => `iark.canvas.${moduleId}.${viewId ?? ''}`;
 const readPositions = (key: string): Map<string, { x: number; y: number }> => {
@@ -61,27 +67,39 @@ const writePositions = (key: string, positions: Map<string, { x: number; y: numb
   }
 };
 
-function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, readOnly, history, onText, notify, focusId, links, onBack, onSelect }: DiagramCanvasProps) {
+function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, readOnly, history, onText, notify, focusId, links, onBack, onSelect, onOpenAttachment }: DiagramCanvasProps) {
   const flow = useReactFlow();
   const key = positionsKey(moduleId, viewId);
   const [moved, setMoved] = useState(() => readPositions(key));
   const [layout, setLayout] = useState<GraphLayout | undefined>();
-  const [selected, setSelected] = useState<string | undefined>();
-  useEffect(() => {
-    onSelect?.(selected);
-  }, [selected, onSelect]);
+  const [selection, setSelection] = useState<Selection>(NO_SELECTION);
+  const [prompting, setPrompting] = useState<{ id: string; initial: string } | undefined>();
   const [edgeKind, setEdgeKind] = useState(spec.defaultEdgeKind ?? spec.edgeKinds[0]?.kind ?? '');
   const [showKeys, setShowKeys] = useState(false);
   const wrapper = useRef<HTMLDivElement>(null);
+  const boxSelecting = useRef(false);
 
   const graph = useMemo(() => (document === undefined ? undefined : spec.project(document, viewId)), [spec, document, viewId]);
   const signature = graph ? structureKey(graph) : '';
+
+  const selectedIds = useMemo(() => resolveSelection(graph, selection), [graph, selection]);
+  const selectionKey = selectedIds.join('\u0000');
+  const single = selectedIds.length === 1 ? selectedIds[0] : undefined;
+  useEffect(() => {
+    onSelect?.(single);
+  }, [single, onSelect]);
+  useEffect(() => {
+    setSelection((current) => (resolveSelection(graph, current).length === current.size ? current : new Set(resolveSelection(graph, current))));
+  }, [graph]);
+  useEffect(() => {
+    setPrompting(undefined);
+  }, [selectionKey, key]);
 
   // Al cambiar de módulo o de vista se encuadra el dibujo una vez que ELK lo haya colocado; después la cámara no se toca.
   const fitPending = useRef(true);
   useEffect(() => {
     setMoved(readPositions(key));
-    setSelected(undefined);
+    setSelection(NO_SELECTION);
     fitPending.current = true;
   }, [key]);
 
@@ -104,7 +122,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     const parents = new Set(g.nodes.filter((n) => n.parentId).map((n) => n.parentId as string));
     const result = await layoutGraph(
       g.nodes.filter((n) => !parents.has(n.id)).map((n) => ({ id: n.id, width: n.width ?? kinds.get(n.kind)?.width ?? 180, height: n.height ?? kinds.get(n.kind)?.height ?? 72, groupId: n.parentId })),
-      g.edges.map((e) => ({ id: e.id, source: e.source, target: e.target, label: e.label })),
+      g.edges.map((e) => ({ id: e.id, source: e.source, target: e.target, label: layoutLabelText(e) })),
       g.nodes.filter((n) => parents.has(n.id)).map((n) => ({ id: n.id, groupId: n.parentId })),
       { direction: 'RIGHT' },
     );
@@ -115,16 +133,21 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
   }, [signature, relayout]);
 
   const built = useMemo(() => (graph ? buildFlow(spec, graph, layout, moved) : { nodes: [] as FlowNode[], edges: [] as FlowEdge[] }), [spec, graph, layout, moved]);
-  const nodes = useMemo(() => built.nodes.map((n) => ({ ...n, selected: n.id === selected })), [built.nodes, selected]);
-  const edges = useMemo(() => built.edges.map((e) => ({ ...e, selected: e.id === selected })), [built.edges, selected]);
+  const builtRef = useRef(built);
+  builtRef.current = built;
+
+  const pick = useCallback((id: string, additive: boolean) => setSelection((current) => (additive ? toggleSelected(current, id) : new Set([id]))), []);
+  const nodes = useMemo(() => built.nodes.map((n) => ({ ...n, selected: selection.has(n.id) })), [built.nodes, selection]);
+  const edges = useMemo(() => built.edges.map((e) => ({ ...e, selected: selection.has(e.id), data: { ...e.data, onPick: pick } })), [built.edges, selection, pick]);
 
   useEffect(() => {
     if (!layout || !fitPending.current) return;
     fitPending.current = false;
     const timer = window.setTimeout(() => {
-      if (focusId && graph?.nodes.some((n) => n.id === focusId)) {
-        setSelected(focusId);
-        void flow.fitView({ nodes: [{ id: focusId }], padding: 1.2, duration: 250, maxZoom: 1 });
+      const targets = focusId && graph ? focusNodes(graph, focusId) : [];
+      if (focusId && targets.length > 0) {
+        setSelection(new Set([focusId]));
+        void flow.fitView({ nodes: targets.map((id) => ({ id })), padding: 1.2, duration: 250, maxZoom: 1 });
       } else void flow.fitView({ padding: 0.15, duration: 200, maxZoom: 1 });
     }, 60);
     return () => window.clearTimeout(timer);
@@ -133,9 +156,10 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
 
   // Foco pedido cuando la vista ya está colocada (p. ej. desde «Referenciado por» dentro del mismo módulo).
   useEffect(() => {
-    if (!focusId || !layout || !graph?.nodes.some((n) => n.id === focusId)) return;
-    setSelected(focusId);
-    const timer = window.setTimeout(() => void flow.fitView({ nodes: [{ id: focusId }], padding: 1.2, duration: 250, maxZoom: 1 }), 60);
+    const targets = focusId && graph ? focusNodes(graph, focusId) : [];
+    if (!focusId || !layout || targets.length === 0) return;
+    setSelection(new Set([focusId]));
+    const timer = window.setTimeout(() => void flow.fitView({ nodes: targets.map((id) => ({ id })), padding: 1.2, duration: 250, maxZoom: 1 }), 60);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId]);
@@ -166,7 +190,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
   const addNode = (kind: string): void => {
     if (readOnly || document === undefined) return;
     const label = spec.nodeKinds.find((k) => k.kind === kind)?.label ?? kind;
-    const parentNode = selected ? graph?.nodes.find((n) => n.id === selected) : undefined;
+    const parentNode = single ? graph?.nodes.find((n) => n.id === single) : undefined;
     const id = commit(spec.addNode(document, kind, `${label} nuevo`, parentNode?.id, viewId));
     if (!id) return;
     const rect = wrapper.current?.getBoundingClientRect();
@@ -174,7 +198,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     const next = new Map(moved).set(id, { x: Math.round(center.x - 90), y: Math.round(center.y - 36) });
     setMoved(next);
     writePositions(key, next);
-    setSelected(id);
+    setSelection(new Set([id]));
   };
 
   const onConnect = (c: Connection): void => {
@@ -182,21 +206,37 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     const why = spec.canConnect?.(document, edgeKind, c.source, c.target);
     if (why) return notify(why);
     const id = commit(spec.addEdge(document, edgeKind, c.source, c.target));
-    if (id) setSelected(id);
+    if (id) setSelection(new Set([id]));
   };
 
   const remove = useCallback(
-    (id: string | undefined): void => {
-      if (readOnly || document === undefined || !id) return;
-      commit(spec.remove(document, id));
-      setSelected(undefined);
+    (ids: readonly string[]): void => {
+      if (readOnly || document === undefined || ids.length === 0) return;
+      const result = removeAll(spec, document, ids);
+      if (!result.ok) return notify(result.reason);
+      commit(result);
+      setSelection(NO_SELECTION);
     },
-    [commit, document, readOnly, spec],
+    [commit, document, notify, readOnly, spec],
   );
 
   const patch = (id: string, values: Record<string, unknown>): void => {
     if (document !== undefined) commit(spec.update(document, id, values));
   };
+
+  const selectedItems = useMemo(() => (graph && selectedIds.length > 1 ? describeSelection(spec, graph, selectedIds) : undefined), [spec, graph, selectedIds]);
+
+  const actions = spec.actions ?? [];
+  const availability = useMemo(() => (document === undefined ? [] : actions.map((a) => actionAvailability(a, document, selectedIds, readOnly))), [actions, document, selectedIds, readOnly]);
+  const runAction = (action: (typeof actions)[number], input?: string): void => {
+    setPrompting(undefined);
+    if (!readOnly && document !== undefined) commit(action.run(document, selectedIds, input));
+  };
+  const startAction = (action: (typeof actions)[number]): void => {
+    if (!action.prompt) return runAction(action);
+    setPrompting({ id: action.id, initial: document === undefined ? '' : (action.prompt.initial?.(document, selectedIds) ?? '') });
+  };
+  const prompted = actions.find((a) => a.id === prompting?.id);
 
   const undo = useCallback(() => {
     const previous = history.undo(text);
@@ -221,27 +261,40 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
       e.preventDefault();
       if (action === 'undo') undo();
       else if (action === 'redo') redo();
-      else if (action === 'delete') remove(selected);
+      else if (action === 'delete') remove(selectedIds);
       else if (action === 'layout') autoLayout();
       else if (action === 'fit') void flow.fitView({ padding: 0.15, duration: 250 });
-      else if (action === 'deselect') setSelected(undefined);
-      else if (action === 'follow') follow(selected);
+      else if (action === 'deselect') setSelection(NO_SELECTION);
+      else if (action === 'follow') follow(single);
       else if (action === 'back') onBack?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [autoLayout, flow, follow, onBack, redo, remove, selected, undo]);
+  }, [autoLayout, flow, follow, onBack, redo, remove, selectedIds, single, undo]);
 
-  const onNodesChange = useCallback((_: NodeChange[]) => undefined, []);
-  const onEdgesChange = useCallback((_: EdgeChange[]) => undefined, []);
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setSelection((current) => applySelectionChanges(current, changes));
+    const dragged = changes.flatMap((c) => (c.type === 'position' && c.position ? [{ id: c.id, position: c.position }] : []));
+    if (dragged.length > 0) setMoved((current) => movedByDrag(builtRef.current.nodes, current, dragged));
+  }, []);
+  // El recuadro de React Flow selecciona también las relaciones de lo que encierra; aquí solo cuentan los elementos.
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    if (!boxSelecting.current) setSelection((current) => applySelectionChanges(current, changes));
+  }, []);
+
+  const startBox = (): void => {
+    boxSelecting.current = true;
+    const end = new AbortController();
+    const stop = (): void => {
+      boxSelecting.current = false;
+      end.abort();
+    };
+    window.addEventListener('pointerup', stop, { signal: end.signal });
+    window.addEventListener('pointercancel', stop, { signal: end.signal });
+  };
 
   const onDragStop = (): void => {
-    const next = new Map(moved);
-    for (const n of flow.getNodes()) {
-      const internal = flow.getInternalNode(n.id);
-      const abs = internal?.internals.positionAbsolute;
-      if (abs) next.set(n.id, { x: Math.round(abs.x), y: Math.round(abs.y) });
-    }
+    const next = new Map([...absolutePositions(builtRef.current.nodes)].map(([id, at]) => [id, { x: Math.round(at.x), y: Math.round(at.y) }] as const));
     setMoved(next);
     writePositions(key, next);
   };
@@ -276,7 +329,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
           {spec.nodeKinds
             .filter((k) => k.addable !== false)
             .map((k) => (
-              <button key={k.kind} type="button" className="cv-tool" disabled={readOnly} title={`Añadir ${k.label.toLowerCase()}${selected ? ' (dentro del contenedor seleccionado si encaja)' : ''}`} onClick={() => addNode(k.kind)} data-testid={`add-${k.kind}`}>
+              <button key={k.kind} type="button" className="cv-tool" disabled={readOnly} title={`Añadir ${k.label.toLowerCase()}${single ? ' (dentro del contenedor seleccionado si encaja)' : ''}`} onClick={() => addNode(k.kind)} data-testid={`add-${k.kind}`}>
                 <span className="cv-tool-shape" aria-hidden="true">
                   <ShapeSvg shape={k.shape} width={28} height={18} fill={k.fill} stroke={k.stroke} />
                 </span>
@@ -308,13 +361,28 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
         <button type="button" className="cv-tool" onClick={() => void flow.fitView({ padding: 0.15, duration: 250 })} title="Ajustar a la ventana (0)">
           Ajustar
         </button>
-        <button type="button" className="cv-tool" disabled={readOnly || !selected} onClick={() => remove(selected)} title="Borrar (Supr)" aria-label="Borrar selección">
+        <button type="button" className="cv-tool" disabled={readOnly || selectedIds.length === 0} onClick={() => remove(selectedIds)} title="Borrar (Supr)" aria-label="Borrar selección">
           🗑
         </button>
+        {actions.length > 0 && (
+          <>
+            <span className="cv-sep" />
+            <div className="cv-group-tools" role="group" aria-label="Acciones sobre la selección">
+              {actions.map((a, i) => (
+                <button key={a.id} type="button" className="cv-tool" disabled={!availability[i]?.enabled} title={availability[i]?.title ?? a.label} aria-pressed={prompting?.id === a.id || undefined} onClick={() => startAction(a)} data-testid={`action-${a.id}`}>
+                  {a.label}
+                </button>
+              ))}
+            </div>
+            <span className="cv-sep" />
+          </>
+        )}
         <button type="button" className="cv-tool" onClick={() => setShowKeys((s) => !s)} aria-pressed={showKeys} title="Atajos de teclado" aria-label="Atajos de teclado">
           ⌨
         </button>
       </div>
+
+      {prompted && prompting && <ActionPrompt key={prompted.id} action={prompted} document={document} initial={prompting.initial} onSubmit={(value) => runAction(prompted, value)} onCancel={() => setPrompting(undefined)} />}
 
       {showKeys && (
         <dl className="cv-keys" data-testid="shortcuts">
@@ -333,17 +401,22 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             nodesDraggable={!readOnly}
             nodesConnectable={!readOnly}
             elementsSelectable
-            onNodeClick={(_, n) => setSelected(n.id)}
+            multiSelectionKeyCode={['Control', 'Meta']}
+            onSelectionStart={startBox}
+            onNodeClick={(e, n) => {
+              if (!e.ctrlKey && !e.metaKey && !e.shiftKey) setSelection((current) => (current.size > 1 && current.has(n.id) ? new Set([n.id]) : current));
+            }}
             onNodeDoubleClick={(_, n) => follow(n.id)}
-            onEdgeClick={(_, e) => setSelected(e.id)}
-            onPaneClick={() => setSelected(undefined)}
+            onPaneClick={() => setSelection(NO_SELECTION)}
             onConnect={onConnect}
             onNodeDragStop={onDragStop}
+            onSelectionDragStop={onDragStop}
             deleteKeyCode={null}
             minZoom={0.1}
             maxZoom={2}
@@ -354,7 +427,21 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
             <MiniMap pannable zoomable nodeColor={(n) => ((n.data as FlowNode['data']).node.fill ?? (n.data as FlowNode['data']).notation.fill)} />
           </ReactFlow>
         </div>
-        <Inspector spec={spec} document={document} id={selected ?? ''} readOnly={readOnly} moduleId={moduleId} links={links} onPatch={patch} onRemove={remove} />
+        <Inspector
+          spec={spec}
+          document={document}
+          id={single ?? ''}
+          selection={selectedItems}
+          readOnly={readOnly}
+          moduleId={moduleId}
+          links={links}
+          onPatch={patch}
+          onRemove={(id) => remove([id])}
+          onRemoveSelection={() => remove(selectedIds)}
+          onPick={(id) => setSelection(new Set([id]))}
+          onCommit={commit}
+          onOpenAttachment={onOpenAttachment}
+        />
       </div>
     </div>
   );

@@ -449,10 +449,12 @@ describe('iark: módulo de integraciones', () => {
     run(['convert', integ, '--module', 'integration', '--to', 'mermaid', '--out', mmd]);
     const r = run(['import', mmd, '--module', 'integration', '--out', json]);
     expect(r.status).toBe(0);
-    expect(r.stderr).toMatch(/Importado "ida" en el módulo integration: 9 elementos/);
+    expect(r.stderr).toMatch(/Importado "ida" en el módulo integration: 17 elementos/);
     const doc = JSON.parse(readFileSync(json, 'utf8'));
     const names = Object.fromEntries(doc.nodes.map((n: { id: string; name: string }) => [n.id, n.name]));
-    expect(names).toMatchObject({ pedidos: 'Servicio de pedidos', kafka: 'Kafka', 'pedidos-api': 'API de pedidos' });
+    expect(names).toMatchObject({ pedidos: 'Servicio de pedidos', kafka: 'Kafka', 'pedidos-api': 'API de pedidos', cliente: 'Cliente', 'pedidos-mcp': 'MCP de pedidos' });
+    const kinds = Object.fromEntries(doc.nodes.map((n: { id: string; kind: string }) => [n.id, n.kind]));
+    expect(kinds).toMatchObject({ cliente: 'user', 'pedidos-mcp': 'mcp', 'traducir-erp': 'pattern', 'exportador-erp': 'connector', 'reintento-pagos': 'scheduler', gateway: 'gateway' });
     expect(run(['validate', json, '--module', 'integration']).status).toBe(0);
   });
 
@@ -475,6 +477,50 @@ describe('iark: módulo de integraciones', () => {
     expect(matrix.status).toBe(0);
     expect(matrix.stdout).toMatch(/^\| Origen \\ Destino \| Tienda web/);
     expect(matrix.stdout).toContain('evento');
+  });
+
+  it('integration contracts valida el contenido de cada contrato y contract-export lo saca a su archivo', () => {
+    const report = run(['integration', 'contracts', integ]);
+    expect(report.status).toBe(0);
+    expect(report.stdout).toContain('| Servicio de facturación | protobuf | 1.0.0 | válido |');
+    expect(report.stdout).toContain('FacturacionService.ConsultarFactura');
+    expect(report.stdout).toContain('| Herramientas MCP de pedidos | mcp | 1.0.0 | válido |');
+
+    const broken = JSON.parse(readFileSync(integ, 'utf8'));
+    broken.contracts.find((c: { id: string }) => c.id === 'pedido-creado-ce').content = '{"specversion":"0.3","id":"1"}';
+    const withProblems = run(['integration', 'contracts', '--stdin'], JSON.stringify(broken));
+    expect(withProblems.stdout).toMatch(/Evento PedidoCreado \(CloudEvents\) \| cloudevents \| 1\.3 \| \d+ problema\(s\)/);
+    expect(withProblems.stdout).toContain('### Problemas');
+
+    const proto = run(['integration', 'contract-export', 'facturacion-proto', integ]);
+    expect(proto.status).toBe(0);
+    expect(proto.stdout).toMatch(/^syntax = "proto3";/);
+    expect(proto.stdout).toContain('service FacturacionService');
+    const missing = run(['integration', 'contract-export', 'nada', integ]);
+    expect(missing.status).not.toBe(0);
+    expect(missing.stderr).toMatch(/No existe el contrato «nada»\. Contratos: /);
+  });
+
+  it('integration cloudevents formatea un payload suelto o un envoltorio incompleto como CloudEvents 1.0', () => {
+    const wrapped = run(['integration', 'cloudevents', '--stdin', '--type', 'com.tienda.pedido.creado', '--source', '/pedidos'], '{"pedidoId":"1042"}');
+    expect(wrapped.status).toBe(0);
+    const event = JSON.parse(wrapped.stdout);
+    expect(Object.keys(event)).toEqual(['specversion', 'id', 'source', 'type', 'datacontenttype', 'data']);
+    expect(event).toMatchObject({ specversion: '1.0', source: '/pedidos', type: 'com.tienda.pedido.creado', data: { pedidoId: '1042' } });
+
+    const completed = run(['integration', 'cloudevents', '--stdin'], '{"type":"com.tienda.pedido.pagado","source":"/pagos","data":{"ok":true}}');
+    expect(JSON.parse(completed.stdout)).toMatchObject({ specversion: '1.0', id: 'A234-1234-1234' });
+
+    const invalid = run(['integration', 'cloudevents', '--stdin'], '{ roto');
+    expect(invalid.status).not.toBe(0);
+  });
+
+  it('convert --view system:<id> dibuja un sistema y sus vecinos', () => {
+    const svg = run(['convert', integ, '--module', 'integration', '--to', 'svg', '--view', 'system:pedidos']);
+    expect(svg.status).toBe(0);
+    expect(svg.stdout).toContain('Sistema - Servicio de pedidos');
+    expect(svg.stdout).toContain('MCP de pedidos');
+    expect(svg.stdout).not.toContain('ERP corporativo');
   });
 
   it('generate --module integration falla con un mensaje claro sin credenciales', () => {

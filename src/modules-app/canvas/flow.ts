@@ -25,23 +25,94 @@ export interface FlowNode {
   selected?: boolean;
 }
 
+export interface FlowEdgeData extends Record<string, unknown> {
+  edge: EditorEdge;
+  notation: EdgeNotation;
+  /** Selección desde la etiqueta de la arista (que se dibuja fuera del SVG de las aristas). */
+  onPick?(id: string, additive: boolean): void;
+}
+
 export interface FlowEdge {
   id: string;
   source: string;
   target: string;
-  type: 'smoothstep';
-  label?: string;
+  type: 'notation';
   style: { stroke: string; strokeWidth: number; strokeDasharray?: string };
   markerEnd?: { type: 'arrowclosed'; color: string };
   markerStart?: { type: 'arrowclosed'; color: string };
-  data: { edge: EditorEdge; notation: EdgeNotation };
+  data: FlowEdgeData;
   selected?: boolean;
+}
+
+const ORIGIN = { x: 0, y: 0 };
+
+type Placed = Pick<FlowNode, 'id' | 'position' | 'parentId'>;
+
+/** Posición absoluta de cada nodo (la de React Flow es relativa al padre en los hijos de un grupo). */
+export function absolutePositions(nodes: readonly Placed[]): Map<string, { x: number; y: number }> {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const result = new Map<string, { x: number; y: number }>();
+  const resolve = (id: string, depth: number): { x: number; y: number } => {
+    const known = result.get(id);
+    if (known) return known;
+    const node = byId.get(id)!;
+    const parent = node.parentId && byId.has(node.parentId) && depth < 20 ? resolve(node.parentId, depth + 1) : ORIGIN;
+    const at = { x: node.position.x + parent.x, y: node.position.y + parent.y };
+    result.set(id, at);
+    return at;
+  };
+  for (const n of nodes) resolve(n.id, 0);
+  return result;
+}
+
+/**
+ * Posiciones absolutas tras un arrastre: `changes` trae las nuevas posiciones (relativas al padre) que notifica React
+ * Flow. Los descendientes de un grupo movido lo acompañan.
+ */
+export function movedByDrag(nodes: readonly Placed[], moved: ReadonlyMap<string, { x: number; y: number }>, changes: ReadonlyArray<{ id: string; position: { x: number; y: number } }>): Map<string, { x: number; y: number }> {
+  const absolute = absolutePositions(nodes);
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const children = new Map<string, string[]>();
+  for (const n of nodes) if (n.parentId) children.set(n.parentId, [...(children.get(n.parentId) ?? []), n.id]);
+  const dragged = new Set(changes.map((c) => c.id));
+  const next = new Map(moved);
+  for (const change of changes) {
+    const node = byId.get(change.id);
+    const before = absolute.get(change.id);
+    if (!node || !before) continue;
+    const parent = (node.parentId && absolute.get(node.parentId)) || ORIGIN;
+    const after = { x: Math.round(change.position.x + parent.x), y: Math.round(change.position.y + parent.y) };
+    next.set(change.id, after);
+    const pending = [...(children.get(change.id) ?? [])];
+    for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
+      const at = absolute.get(id);
+      if (dragged.has(id) || !at) continue;
+      next.set(id, { x: at.x + after.x - before.x, y: at.y + after.y - before.y });
+      pending.push(...(children.get(id) ?? []));
+    }
+  }
+  return next;
 }
 
 const notationOf = (spec: EditorSpec<unknown>, kind: string): NodeNotation => spec.nodeKinds.find((k) => k.kind === kind) ?? FALLBACK_NODE;
 const edgeNotationOf = (spec: EditorSpec<unknown>, kind: string): EdgeNotation => spec.edgeKinds.find((k) => k.kind === kind) ?? FALLBACK_EDGE;
 
 const DASH: Record<string, string | undefined> = { solid: undefined, dashed: '6 4', dotted: '2 4' };
+
+const MARK_SLOT = 22;
+const CHAR_WIDTH = 6.6;
+
+/** Texto de la etiqueta de una arista: su nombre seguido de las insignias de texto entre «». */
+export function edgeLabelText(edge: EditorEdge): string {
+  return [edge.label, ...(edge.badges ?? []).map((b) => `«${b}»`)].filter(Boolean).join(' ');
+}
+
+/** Texto con el que se reserva el hueco de la etiqueta en el autolayout: el de la etiqueta y espacio para sus insignias gráficas. */
+export function layoutLabelText(edge: EditorEdge): string {
+  const room = '\u00a0'.repeat(Math.ceil(((edge.marks?.length ?? 0) * MARK_SLOT) / CHAR_WIDTH));
+  const text = edgeLabelText(edge);
+  return room ? `${room}${text}` : text;
+}
 
 /** Firma de la estructura del grafo: cambia cuando hay nodos, aristas o padres nuevos (no cuando solo cambia un texto). */
 export function structureKey(graph: EditorGraph): string {
@@ -78,6 +149,9 @@ export function buildFlow(
     return d;
   };
 
+  // Cada grupo queda por encima del que lo contiene y todos los elementos por encima de cualquier grupo.
+  const leafZ = Math.max(0, ...graph.nodes.filter((n) => parents.has(n.id)).map((n) => depth(n.id))) + 1;
+
   const nodes: FlowNode[] = [...graph.nodes]
     .sort((a, b) => depth(a.id) - depth(b.id))
     .map((n) => {
@@ -94,7 +168,7 @@ export function buildFlow(
         width: abs.width,
         height: abs.height,
         style: { width: abs.width, height: abs.height },
-        zIndex: group ? 0 : 1,
+        zIndex: group ? depth(n.id) : leafZ,
       };
     });
 
@@ -103,13 +177,11 @@ export function buildFlow(
     .map((e) => {
       const notation = edgeNotationOf(spec, e.kind);
       const width = e.width ?? notation.width ?? 1.5;
-      const label = [e.label, ...(e.badges ?? []).map((b) => `«${b}»`)].filter(Boolean).join(' ');
       return {
         id: e.id,
         source: e.source,
         target: e.target,
-        type: 'smoothstep',
-        ...(label ? { label } : {}),
+        type: 'notation',
         style: { stroke: notation.stroke, strokeWidth: width, strokeDasharray: DASH[notation.line ?? 'solid'] },
         ...(notation.arrowEnd === false ? {} : { markerEnd: { type: 'arrowclosed' as const, color: notation.stroke } }),
         ...(notation.arrowStart ? { markerStart: { type: 'arrowclosed' as const, color: notation.stroke } } : {}),

@@ -2,13 +2,15 @@
   "name": "@iark/domain-integration",
   "version": "0.1.0",
   "private": true,
-  "description": "IArk - DIAgrams: módulo de arquitectura de integraciones (sistemas, APIs, brokers, colas, contratos, interacciones y flujos)",
+  "description": "IArk - DIAgrams: módulo de arquitectura de integraciones (sistemas, APIs, MCP, brokers, colas, contratos editables, interacciones y flujos)",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
   "dependencies": {
     "@iark/kernel": "*",
+    "fast-xml-parser": "^5.3.4",
+    "yaml": "^2.9.1",
     "zod": "^4.3.3"
   }
 }

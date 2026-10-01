@@ -1,9 +1,14 @@
 import type { ModuleIssue } from '@iark/kernel';
+import { checkContract } from './contracts';
+import { PATTERN_INFO } from './patterns';
+import { connectionViolation } from './rules';
 import { KIND_LABELS, type IntegrationDocument, type IntegrationNode } from './types';
+import { domainOf } from './zones';
 
 /**
  * Reglas semánticas del dominio (avisos que no invalidan el documento pero conviene corregir):
- * huérfanos, brokers sin productor o consumidor, contratos ausentes o sin versión, dependencias síncronas circulares.
+ * huérfanos, brokers sin productor o consumidor, contratos ausentes o sin versión, dependencias síncronas circulares,
+ * uniones que incumplen las reglas por tipo de nodo y patrones declarados dos veces.
  */
 export function analyzeIntegration(doc: IntegrationDocument): ModuleIssue[] {
   const issues: ModuleIssue[] = [];
@@ -31,11 +36,30 @@ export function analyzeIntegration(doc: IntegrationDocument): ModuleIssue[] {
     if (!n.owner && !n.external && (n.kind === 'system' || n.kind === 'api')) {
       issues.push({ severity: 'info', elementId: n.id, message: `${label(n)} no tiene responsable (owner).` });
     }
+    if (n.kind === 'pattern') {
+      const info = n.pattern ? PATTERN_INFO[n.pattern].label : 'sin patrón';
+      if ((incoming.get(n.id) ?? 0) === 0 || (outgoing.get(n.id) ?? 0) === 0) {
+        issues.push({ severity: 'warning', elementId: n.id, message: `${label(n)} (${info}) transforma mensajes: necesita una interacción de entrada y otra de salida.` });
+      }
+    }
+    if ((n.kind === 'api' || n.kind === 'mcp') && !n.contractId && !doc.interactions.some((it) => it.targetId === n.id && it.contractId)) {
+      issues.push({ severity: 'info', elementId: n.id, message: `${label(n)} no tiene contrato.` });
+    }
+    const parent = n.parentId ? nodes.get(n.parentId) : undefined;
+    if (parent && n.domain?.trim() && n.domain.trim() !== domainOf(parent, nodes)) {
+      issues.push({ severity: 'info', elementId: n.id, message: `El dominio de ${label(n)} se ignora: va dentro de ${label(parent)} y sigue a su zona.` });
+    }
   }
 
   for (const c of doc.contracts) {
     if (!c.version) issues.push({ severity: 'warning', elementId: c.id, message: `El contrato «${c.name}» no tiene versión.` });
-    if (!doc.interactions.some((it) => it.contractId === c.id)) issues.push({ severity: 'info', elementId: c.id, message: `El contrato «${c.name}» no lo usa ninguna interacción.` });
+    if (!doc.interactions.some((it) => it.contractId === c.id) && !doc.nodes.some((n) => n.contractId === c.id)) issues.push({ severity: 'info', elementId: c.id, message: `El contrato «${c.name}» no lo usa ninguna interacción ni ningún nodo.` });
+    if (c.content) {
+      for (const d of checkContract(c.format, c.content)) {
+        if (d.severity === 'info') continue;
+        issues.push({ severity: 'warning', elementId: c.id, message: `Contrato «${c.name}» (${c.format})${d.line ? `, línea ${d.line}` : ''}: ${d.message}` });
+      }
+    }
   }
 
   const seen = new Set<string>();
@@ -44,11 +68,19 @@ export function analyzeIntegration(doc: IntegrationDocument): ModuleIssue[] {
     const tgt = nodes.get(it.targetId);
     if (!src || !tgt) continue;
     const name = `${src.name} → ${tgt.name}`;
-    if (!it.contractId && (tgt.kind === 'api' || tgt.kind === 'queue' || tgt.kind === 'topic' || it.criticality === 'high')) {
+    if (!it.contractId && !tgt.contractId && (tgt.kind === 'api' || tgt.kind === 'mcp' || tgt.kind === 'queue' || tgt.kind === 'topic' || it.criticality === 'high')) {
       issues.push({ severity: 'warning', elementId: it.id, message: `La interacción ${name} no declara contrato.` });
     }
     if (it.style === 'request-response' && (tgt.kind === 'queue' || tgt.kind === 'topic')) {
       issues.push({ severity: 'warning', elementId: it.id, message: `La interacción ${name} es petición-respuesta contra ${KIND_LABELS[tgt.kind].toLowerCase()}: lo habitual es un mensaje asíncrono.` });
+    }
+    const broken = connectionViolation(src, tgt, it.style);
+    if (broken && !(broken.rule === 'channel-sync' && (tgt.kind === 'queue' || tgt.kind === 'topic'))) {
+      issues.push({ severity: 'warning', elementId: it.id, message: `La interacción ${name} incumple las reglas de conexión: ${broken.message}` });
+    }
+    if (it.pattern) {
+      const twin = [src, tgt].find((x) => x.kind === 'pattern' && x.pattern === it.pattern);
+      if (twin) issues.push({ severity: 'info', elementId: it.id, message: `La interacción ${name} marca el patrón «${PATTERN_INFO[it.pattern].label}» y su extremo «${twin.name}» ya lo dibuja como nodo: basta uno de los dos.` });
     }
     const key = `${it.sourceId}\u0000${it.targetId}\u0000${it.style}\u0000${it.protocol ?? ''}\u0000${it.description ?? ''}`;
     if (seen.has(key)) issues.push({ severity: 'warning', elementId: it.id, message: `La interacción ${name} está duplicada.` });

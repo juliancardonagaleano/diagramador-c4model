@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { WorkbenchController } from './controller';
-import { canRender, countBySeverity, locateId } from '@iark/kernel';
+import { canRender, countBySeverity, locateId, type AttachmentSpec } from '@iark/kernel';
 import { readFile } from './files';
+import { AttachmentsPanel } from './attachments';
 import { DiagramCanvas } from './canvas/DiagramCanvas';
 import { C4EmbedCanvas } from './canvas/C4EmbedCanvas';
 import type { LinkTools } from './canvas/Inspector';
@@ -9,7 +10,7 @@ import { resolveRef, SuiteLinks } from './links';
 import { EditHistory } from './canvas/history';
 import { DiagramPanel, ExportPanel, FilePicker, ImportPanel, IssuesPanel, ReportsPanel } from './panels';
 
-type PanelId = 'canvas' | 'diagram' | 'issues' | 'reports' | 'export' | 'import';
+type PanelId = 'canvas' | 'attachments' | 'diagram' | 'issues' | 'reports' | 'export' | 'import';
 
 export interface WorkbenchProps {
   controller: WorkbenchController;
@@ -43,6 +44,8 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
   useEffect(() => {
     if (focus && focus.moduleId !== state.moduleId) setFocus(undefined);
   }, [focus, state.moduleId]);
+  const [attachmentId, setAttachmentId] = useState<string | undefined>();
+  useEffect(() => setAttachmentId(undefined), [state.moduleId]);
   const [toast, setToast] = useState<string | undefined>();
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const jsonEditor = useRef<HTMLTextAreaElement>(null);
@@ -136,19 +139,27 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
     }
   };
 
+  const openAttachment = useCallback((id: string) => {
+    setAttachmentId(id);
+    setPanel('attachments');
+  }, []);
+
   const { module, analysis } = state;
   const counts = analysis.status === 'ok' ? countBySeverity(analysis.issues) : { error: 0, warning: 0, info: 0 };
   const problemCount = analysis.status === 'ok' ? analysis.issues.length : analysis.status === 'schema' ? analysis.issues.length : analysis.status === 'syntax' ? 1 : 0;
   const panelProps = { controller, state, reveal, notify };
 
   const editor = module?.editor;
+  const attachments = editor?.attachments as AttachmentSpec<unknown> | undefined;
   // C4 no declara `editor`: su lienzo es el editor principal embebido.
   const hasCanvas = !!editor || module?.id === 'c4';
-  const active: PanelId = panel ?? (hasCanvas ? 'canvas' : 'diagram');
+  const fallback: PanelId = hasCanvas ? 'canvas' : 'diagram';
+  const active: PanelId = panel === 'attachments' && !attachments ? fallback : (panel ?? fallback);
   const canvasMode = active === 'canvas' && hasCanvas;
   const renders = module ? canRender(module) : true;
   const tabs: Array<[PanelId, string]> = [
     ...(hasCanvas ? ([['canvas', 'Lienzo']] as Array<[PanelId, string]>) : []),
+    ...(attachments ? ([['attachments', attachments.label]] as Array<[PanelId, string]>) : []),
     ['diagram', hasCanvas ? (renders ? 'Vista SVG' : 'JSON') : 'Diagrama'],
     ['issues', `Problemas${problemCount ? ` (${problemCount})` : ''}`],
     ['reports', 'Informes'],
@@ -210,7 +221,7 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
           </button>
         </div>
       )}
-      <main className="wb-main" data-mode={canvasMode ? 'canvas' : undefined}>
+      <main className="wb-main" data-mode={canvasMode || active === 'attachments' ? 'canvas' : undefined}>
         <section className="wb-editor" aria-label="Documento">
           <div className="wb-bar">
             <strong>{module ? `${module.name} · v${module.version}` : state.loading ? 'Cargando módulo…' : 'Elige un módulo'}</strong>
@@ -281,6 +292,24 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
               links={linkTools}
               onBack={trail.length > 0 ? () => void goBack() : undefined}
               onSelect={(id) => (selectedRef.current = id)}
+              onOpenAttachment={openAttachment}
+            />
+          )}
+          {active === 'attachments' && attachments && (
+            <AttachmentsPanel
+              attachments={attachments}
+              document={analysis.status === 'ok' ? analysis.document : undefined}
+              text={state.text}
+              readOnly={state.readOnly}
+              history={history}
+              onText={(t) => controller.setText(t)}
+              notify={notify}
+              selectedId={attachmentId}
+              onSelect={setAttachmentId}
+              onOpenUsage={(id) => {
+                setFocus({ moduleId: module!.id, id });
+                setPanel('canvas');
+              }}
             />
           )}
           {active === 'diagram' && <DiagramPanel {...panelProps} />}

@@ -68,6 +68,26 @@ describe('generateStructured (proveedor openai)', () => {
     expect(fresh.document.items).toEqual([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
   });
 
+  it('al refinar aplica el gancho carry del módulo con el documento base, y no al generar desde cero', async () => {
+    interface Texts {
+      items: Array<{ id: string; text?: string }>;
+    }
+    const carry = vi.fn((base: Texts, generated: Texts): Texts => ({ items: generated.items.map((i) => ({ ...i, text: base.items.find((b) => b.id === i.id)?.text })) }));
+    const textSpec: AiSpec<Texts> = {
+      ...(spec as unknown as AiSpec<Texts>),
+      generationSchema: z.object({ items: z.array(z.object({ id: z.string() })) }),
+      toDocument: (generated) => ({ ok: true, document: generated as Texts }),
+      carry,
+    };
+    const base: Texts = { items: [{ id: 'a', text: 'contenido largo' }] };
+    const fetchMock = vi.fn(async () => reply('{"items":[{"id":"a"},{"id":"b"}]}'));
+    const refined = await withEnv(() => generateStructured(textSpec, { instruction: 'añade b', base, defaultModel: 'm', provider: 'openai', fetch: fetchMock as unknown as typeof fetch }));
+    expect(refined.document.items).toEqual([{ id: 'a', text: 'contenido largo' }, { id: 'b', text: undefined }]);
+    expect(carry).toHaveBeenCalledTimes(1);
+    await withEnv(() => generateStructured(textSpec, { instruction: 'crea', defaultModel: 'm', provider: 'openai', fetch: fetchMock as unknown as typeof fetch }));
+    expect(carry).toHaveBeenCalledTimes(1);
+  });
+
   it('reintenta con la corrección cuando el JSON no cumple el esquema o el módulo rechaza el documento', async () => {
     const fetchMock = vi
       .fn()

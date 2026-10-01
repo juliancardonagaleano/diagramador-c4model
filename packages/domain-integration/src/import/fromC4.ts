@@ -1,6 +1,6 @@
 import { formatUrn, pickId } from '@iark/kernel';
 import { formatIntegrationIssues, validateIntegrationDocument } from '../schema';
-import { INTEGRATION_DOCUMENT_VERSION, PARENT_KIND, type IntegrationDocument, type IntegrationNode, type Interaction, type InteractionStyle, type NodeKind } from '../types';
+import { INTEGRATION_DOCUMENT_VERSION, PARENT_KINDS, type IntegrationDocument, type IntegrationNode, type Interaction, type InteractionStyle, type NodeKind } from '../types';
 import { IntegrationImportError, type IntegrationImportResult } from './fromMermaid';
 
 interface C4ElementLike {
@@ -42,8 +42,9 @@ function styleOf(protocol: string | undefined): InteractionStyle {
 
 /**
  * Convierte un documento del módulo C4 en un mapa de integración. Solo se lee su estructura JSON (no se depende del
- * código del módulo C4): cada sistema y contenedor pasa a ser un nodo con `ref = urn:iark:c4:<id>`, las personas se
- * omiten y las relaciones entre nodos pasan a ser interacciones (el protocolo sale de la tecnología de la relación).
+ * código del módulo C4): cada sistema, contenedor y persona pasa a ser un nodo con `ref = urn:iark:c4:<id>` (las personas
+ * son usuarios finales) y las relaciones entre nodos pasan a ser interacciones (el protocolo sale de la tecnología de la
+ * relación). Un usuario solo inicia interacciones, así que las relaciones que llegan a una persona se omiten.
  */
 export function fromC4Json(input: unknown, options: { name?: string } = {}): IntegrationImportResult {
   const doc = input as { workspace?: { name?: string }; model?: { elements?: C4ElementLike[]; relationships?: C4RelationshipLike[] } } | null;
@@ -55,14 +56,11 @@ export function fromC4Json(input: unknown, options: { name?: string } = {}): Int
   const ids = new Set<string>();
   const idOf = new Map<string, string>();
   const nodes: IntegrationNode[] = [];
-  let people = 0;
+  const users = new Set<string>();
   for (const e of elements) {
-    if (e.type === 'person') {
-      people += 1;
-      continue;
-    }
     if (e.type === 'component') continue; // el detalle de código no es integración
-    const kind: NodeKind = e.type === 'softwareSystem' ? 'system' : kindOfContainer(e);
+    const kind: NodeKind = e.type === 'person' ? 'user' : e.type === 'softwareSystem' ? 'system' : kindOfContainer(e);
+    if (kind === 'user') users.add(e.id);
     const id = pickId(e.id, ids);
     idOf.set(e.id, id);
     nodes.push({ id, kind, name: e.name, ...(e.description ? { description: e.description } : {}), ...(e.technology ? { technology: e.technology } : {}), ...(e.external ? { external: true } : {}), ref: formatUrn('c4', e.id) });
@@ -73,18 +71,22 @@ export function fromC4Json(input: unknown, options: { name?: string } = {}): Int
     const parent = e.parentId ? idOf.get(e.parentId) : undefined;
     const node = nodes.find((n) => n.id === id);
     const parentNode = nodes.find((n) => n.id === parent);
-    if (node && parentNode && PARENT_KIND[node.kind] === parentNode.kind) node.parentId = parentNode.id;
+    if (node && parentNode && PARENT_KINDS[node.kind]?.includes(parentNode.kind)) node.parentId = parentNode.id;
   }
-  if (people > 0) warnings.push(`Se omitieron ${people} persona(s): no son nodos de integración.`);
 
   const interactionIds = new Set<string>();
   const interactions: Interaction[] = [];
+  let toUsers = 0;
   let dropped = 0;
   for (const r of relationships) {
     const sourceId = idOf.get(r.sourceId);
     const targetId = idOf.get(r.targetId);
     if (!sourceId || !targetId || sourceId === targetId) {
       dropped += 1;
+      continue;
+    }
+    if (users.has(r.targetId)) {
+      toUsers += 1;
       continue;
     }
     interactions.push({
@@ -96,7 +98,8 @@ export function fromC4Json(input: unknown, options: { name?: string } = {}): Int
       ...(r.description ? { description: r.description } : {}),
     });
   }
-  if (dropped > 0) warnings.push(`Se omitieron ${dropped} relación(es) que involucran personas, componentes o nodos inexistentes.`);
+  if (toUsers > 0) warnings.push(`Se omitieron ${toUsers} relación(es) que llegan a una persona: un usuario final solo inicia interacciones.`);
+  if (dropped > 0) warnings.push(`Se omitieron ${dropped} relación(es) que involucran componentes o nodos inexistentes.`);
   if (nodes.length === 0) throw new IntegrationImportError('El documento C4 no tiene sistemas ni contenedores que importar.');
 
   const result = validateIntegrationDocument({

@@ -15,17 +15,27 @@ describe('shapeParts', () => {
     }
   });
 
-  it('cilindro, tubería, barra y ficha llevan detalles además del cuerpo; el actor es cabeza más cuerpo', () => {
-    for (const shape of ['cylinder', 'pipe', 'bar', 'card'] as const) {
+  it('cilindro, tubería, barra, ficha, abanico y reloj llevan detalles además del cuerpo; el actor es cabeza más cuerpo', () => {
+    for (const shape of ['cylinder', 'pipe', 'bar', 'card', 'fan', 'clock'] as const) {
       expect(shapeParts(shape, 160, 80).some((p) => p.role === 'detail'), shape).toBe(true);
     }
     expect(shapeParts('actor', 120, 120).filter((p) => p.role === 'body')).toHaveLength(2);
     expect(shapeParts('rect', 160, 80)).toHaveLength(1);
+    expect(shapeParts('diamond', 160, 80)).toHaveLength(1);
+  });
+
+  it('las rayas de la barra quedan en sus bordes para no cruzar el texto', () => {
+    const lines = shapeParts('bar', 200, 76).filter((p) => p.role === 'detail');
+    const ys = lines.map((p) => Number(/^M12 ([\d.]+)/.exec(p.d)?.[1]));
+    expect(ys[0]).toBeLessThan(76 / 4);
+    expect(ys[1]).toBeGreaterThan(76 * 0.75);
   });
 
   it('el actor reserva la cabeza y desplaza el texto; el resto de figuras no', () => {
     expect(textOffset('actor', 100)).toBeGreaterThan(0);
     expect(textOffset('actor', 100)).toBeLessThan(50);
+    expect(textOffset('clock', 100)).toBeGreaterThan(0);
+    expect(textOffset('card', 100)).toBe(26);
     expect(textOffset('rect', 100)).toBe(0);
     expect(textOffset('cylinder', 100)).toBe(0);
   });
@@ -39,6 +49,9 @@ describe('drawioShapeStyle', () => {
     expect(drawioShapeStyle('chevron')).toContain('shape=step');
     expect(drawioShapeStyle('actor')).toContain('umlActor');
     expect(drawioShapeStyle('circle')).toContain('ellipse');
+    expect(drawioShapeStyle('fan')).toContain('shape=trapezoid');
+    expect(drawioShapeStyle('diamond')).toContain('rhombus');
+    expect(drawioShapeStyle('clock')).toContain('ellipse');
     expect(drawioShapeStyle(undefined)).toBe('rounded=1;');
     for (const shape of SHAPE_KINDS) expect(drawioShapeStyle(shape), shape).toMatch(/;$/);
   });

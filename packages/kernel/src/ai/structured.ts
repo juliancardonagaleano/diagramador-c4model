@@ -194,7 +194,8 @@ export async function generateStructured<TDoc>(spec: AiSpec<TDoc>, options: Stru
     if (result.ok) {
       progress('Modelo válido.');
       // Al refinar, los enlaces por URN (`ref`) del documento base sobreviven: el modelo no los conoce.
-      const document = options.base === undefined ? result.document : carryRefs(options.base, result.document);
+      const referenced = options.base === undefined ? result.document : carryRefs(options.base, result.document);
+      const document = options.base !== undefined && spec.carry ? spec.carry(options.base, referenced) : referenced;
       return { document, model: servedModel, provider, attempts, usage: { inputTokens, outputTokens } };
     }
     lastIssues = result.issues;

@@ -673,6 +673,8 @@ describe('desde un mapa de integración', () => {
       ['pedidos', 'Equipo Pedidos', undefined, 'urn:iark:integration:pedidos'],
       ['facturacion', 'Equipo Finanzas', undefined, 'urn:iark:integration:facturacion'],
       ['pasarela-pagos', undefined, true, 'urn:iark:integration:pasarela-pagos'],
+      ['asistente', undefined, true, 'urn:iark:integration:asistente'],
+      ['erp', undefined, true, 'urn:iark:integration:erp'],
     ]);
     expect(d.resources.map((r) => [r.id, r.kind, r.technology])).toEqual([
       ['gateway', 'gateway', 'Kong'],
@@ -687,6 +689,8 @@ describe('desde un mapa de integración', () => {
       'pedidos -messages-> kafka',
       'facturacion -messages-> kafka',
       'facturacion -calls-> pasarela-pagos',
+      'asistente -calls-> pedidos',
+      'pedidos -calls-> facturacion',
     ]);
     expect(warnings[0]).toContain('se funden');
     expect(warnings.at(-1)).toContain('No se crean redes, anfitriones ni despliegues');

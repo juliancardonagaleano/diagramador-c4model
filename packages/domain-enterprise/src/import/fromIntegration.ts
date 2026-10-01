@@ -84,12 +84,12 @@ export function fromIntegrationJson(input: unknown, options: { name?: string } =
     ref: `urn:iark:integration:${n.id}`,
   }));
 
-  // Un extremo que es una API de un sistema cuenta como ese sistema.
+  // Un extremo que es una API o un servidor MCP de un sistema cuenta como ese sistema.
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const systemOf = (id: string): string | undefined => {
     const n = byId.get(id);
     if (n?.kind === 'system') return n.id;
-    return n?.kind === 'api' && n.parentId && byId.get(n.parentId)?.kind === 'system' ? n.parentId : undefined;
+    return (n?.kind === 'api' || n?.kind === 'mcp') && n.parentId && byId.get(n.parentId)?.kind === 'system' ? n.parentId : undefined;
   };
   const relationIds = new Set<string>();
   const signatures = new Set<string>();

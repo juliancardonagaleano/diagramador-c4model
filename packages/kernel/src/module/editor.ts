@@ -7,8 +7,10 @@
 
 import type { GraphLayout } from '../graph/layout';
 import type { ShapeKind } from '../graph/shapes';
+import type { EdgeMark } from '../graph/svg';
 
 export type { ShapeKind } from '../graph/shapes';
+export type { EdgeMark } from '../graph/svg';
 
 export type LineKind = 'solid' | 'dashed' | 'dotted';
 
@@ -70,6 +72,8 @@ export interface EditorEdge {
   target: string;
   label?: string;
   badges?: string[];
+  /** Insignias gráficas sobre la línea: el número de paso, el icono de un patrón… (se dibujan antes que la etiqueta). */
+  marks?: EdgeMark[];
   /** Grosor que sustituye al de la notación (p. ej. criticidad alta). */
   width?: number;
 }
@@ -81,7 +85,17 @@ export interface EditorGraph {
 
 export type FieldSpec =
   | { key: string; label: string; type: 'text' | 'longtext' | 'boolean'; hint?: string }
-  | { key: string; label: string; type: 'select'; options: Array<{ value: string; label: string }>; hint?: string; allowEmpty?: boolean }
+  | { key: string; label: string; type: 'number'; hint?: string; min?: number; step?: number }
+  | {
+      key: string;
+      label: string;
+      type: 'select';
+      options: Array<{ value: string; label: string }>;
+      hint?: string;
+      allowEmpty?: boolean;
+      /** El valor es el id de un adjunto (`EditorSpec.attachments`): el panel de propiedades ofrece abrirlo en su editor o crear uno nuevo. */
+      opensAttachment?: boolean;
+    }
   | { key: string; label: string; type: 'list'; hint?: string };
 
 /** Qué se está editando: un nodo o una relación de cierto tipo. */
@@ -91,6 +105,101 @@ export interface EditorTarget {
 }
 
 export type EditResult<TDoc> = { ok: true; document: TDoc; id?: string } | { ok: false; reason: string };
+
+/**
+ * Operación del módulo sobre la selección actual (p. ej. «Agrupar en dominio»). El lienzo las ofrece en su barra de
+ * herramientas; `needs` dice cuántos elementos tienen que estar seleccionados para que el botón esté activo.
+ */
+export interface EditorAction<TDoc> {
+  id: string;
+  label: string;
+  hint?: string;
+  /** `none`: no usa la selección; `one`: exactamente un elemento; `many`: uno o más. */
+  needs: 'none' | 'one' | 'many';
+  /** Si se pide un texto antes de ejecutarla (el nombre del dominio); `suggestions` propone valores ya usados. */
+  prompt?: { label: string; placeholder?: string; initial?(document: TDoc, ids: string[]): string; suggestions?(document: TDoc): string[] };
+  /** Motivo por el que no se puede ejecutar con esta selección, o `undefined` si se puede. */
+  disabled?(document: TDoc, ids: string[]): string | undefined;
+  run(document: TDoc, ids: string[], input?: string): EditResult<TDoc>;
+}
+
+export type AttachmentLanguage = 'json' | 'yaml' | 'proto' | 'graphql' | 'xml' | 'text';
+
+export interface AttachmentFormat {
+  id: string;
+  label: string;
+  language: AttachmentLanguage;
+  /** Extensión de archivo al descargarlo (`.proto`, `.json`…). */
+  extension: string;
+  description?: string;
+}
+
+export interface AttachmentDiagnostic {
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  /** Línea y columna (desde 1) si se conocen. */
+  line?: number;
+  column?: number;
+}
+
+export type AttachmentTextResult = { ok: true; text: string } | { ok: false; reason: string };
+
+export interface AttachmentInfo {
+  id: string;
+  name: string;
+  format: string;
+  version?: string;
+  /** Cuántos elementos del documento lo usan. */
+  uses: number;
+}
+
+export interface AttachmentDetail extends AttachmentInfo {
+  description?: string;
+  url?: string;
+  /** Contenido editable. */
+  text: string;
+  /** Elementos del documento que lo usan (nodos y relaciones), para saltar a ellos. */
+  usedBy: Array<{ id: string; name: string; kind: string }>;
+}
+
+/** Conversión de un adjunto a otro formato o forma (p. ej. JSON ↔ YAML); sustituye el texto. */
+export interface AttachmentTransform {
+  id: string;
+  label: string;
+  /** Formatos a los que se ofrece; si falta, a todos. */
+  formats?: string[];
+  run(text: string, context: { name: string; format: string }): AttachmentTextResult;
+}
+
+/**
+ * Documentos de texto con editor propio que cuelgan del documento del módulo y se asocian a sus elementos: los contratos
+ * de una integración (OpenAPI, .proto, CloudEvents, MCP…). El banco de trabajo los lista en una pestaña, valida y formatea
+ * su contenido y deja crear uno desde el panel de propiedades de un elemento; no sabe de qué dominio son.
+ */
+export interface AttachmentSpec<TDoc> {
+  /** Título de la pestaña en plural y nombre en singular («Contratos» / «contrato»). */
+  label: string;
+  singular: string;
+  formats: AttachmentFormat[];
+  list(document: TDoc): AttachmentInfo[];
+  read(document: TDoc, id: string): AttachmentDetail | undefined;
+  /** Problemas del contenido para ese formato (sintaxis y reglas del formato). */
+  check(format: string, text: string): AttachmentDiagnostic[];
+  /** Reescribe el contenido en su forma canónica; falla si el texto no se puede interpretar. */
+  reformat(format: string, text: string, context: { name: string }): AttachmentTextResult;
+  /** Contenido inicial de un adjunto nuevo. */
+  template(format: string, name: string): string;
+  /** Resumen legible del contenido (operaciones, mensajes, herramientas…). */
+  summary?(format: string, text: string): string[];
+  transforms?: AttachmentTransform[];
+  add(document: TDoc, format: string, name: string): EditResult<TDoc>;
+  update(document: TDoc, id: string, patch: { name?: string; format?: string; version?: string; description?: string; url?: string; text?: string }): EditResult<TDoc>;
+  remove(document: TDoc, id: string): EditResult<TDoc>;
+  /** Crea un adjunto del formato que mejor encaja con el elemento `targetId` y se lo asigna; `id` es el del adjunto nuevo. */
+  createFor?(document: TDoc, targetId: string): EditResult<TDoc>;
+  /** Formato recomendado para un elemento (para ofrecer «Nuevo contrato (OpenAPI)»). */
+  suggestFormat?(document: TDoc, targetId: string): string | undefined;
+}
 
 export interface EditorSpec<TDoc> {
   nodeKinds: NodeNotation[];
@@ -116,6 +225,10 @@ export interface EditorSpec<TDoc> {
    * lienzo aplica el autolayout común por capas.
    */
   layout?(document: TDoc, viewId?: string): GraphLayout | undefined | Promise<GraphLayout | undefined>;
+  /** Operaciones sobre la selección (la barra del lienzo las muestra tras los botones de edición). */
+  actions?: Array<EditorAction<TDoc>>;
+  /** Documentos de texto asociados a los elementos, con su propio editor (los contratos de una integración). */
+  attachments?: AttachmentSpec<TDoc>;
 }
 
 /** Id nuevo y único con la forma `base`, `base-2`, `base-3`… */

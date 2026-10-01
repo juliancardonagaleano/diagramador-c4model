@@ -12,10 +12,12 @@ function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
   const ink = textColorFor(fill);
 
   if (group) {
+    const line = node.stroke ?? fill;
+    const tint = node.fill ? { background: `color-mix(in srgb, ${node.fill} 14%, transparent)` } : undefined;
     return (
-      <div className="cv-group" style={{ width, height, borderColor: fill }} data-selected={selected || undefined} data-testid={`node-${node.id}`} data-kind={node.kind}>
+      <div className="cv-group" style={{ width, height, borderColor: line, ...tint }} data-selected={selected || undefined} data-testid={`node-${node.id}`} data-kind={node.kind}>
         <Handle type="target" position={Position.Left} />
-        <span className="cv-group-title" style={{ color: fill }}>
+        <span className="cv-group-title" style={{ color: line }}>
           {notation.glyph} {notation.label}: {node.label}
           {node.ref && (
             <span className="cv-link cv-link-inline" title={`Enlaza con ${node.ref} (doble clic o Alt+↓ para ir)`} data-testid={`link-${node.id}`}>
