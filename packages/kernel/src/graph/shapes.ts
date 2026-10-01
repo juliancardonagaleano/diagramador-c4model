@@ -112,9 +112,10 @@ export function shapeParts(shape: ShapeKind, w: number, h: number): ShapePart[] 
   }
 }
 
-/** Cuánto hay que bajar el centro del texto en una figura (la cabeza del actor y la esfera del reloj ocupan la parte alta). */
+/** Cuánto hay que bajar el centro del texto en una figura (la cabeza del actor, la esfera del reloj y la cabecera de la ficha ocupan la parte alta). */
 export function textOffset(shape: ShapeKind, h: number): number {
   if (shape === 'clock') return h * 0.19;
+  if (shape === 'card') return 26;
   if (shape !== 'actor') return 0;
   const r = Math.max(3, Math.min(h * 0.14, 16));
   return (2 * r + 4) / 2;

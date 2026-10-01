@@ -61,7 +61,7 @@ function scanLine(line: string, startCloser: string | null, syntax: SourceSyntax
       i += syntax.blockString.length;
       continue;
     }
-    const char = line[i]!;
+    const char = line[i];
     if (syntax.quotes.includes(char)) {
       let j = i + 1;
       while (j < line.length && line[j] !== char) j += line[j] === '\\' ? 2 : 1;
@@ -89,7 +89,7 @@ export function checkBrackets(text: string, syntax: SourceSyntax): SourceProblem
   const lines = normalizeLines(text);
   for (let index = 0; index < lines.length; index++) {
     const line = index + 1;
-    const scan = scanLine(lines[index]!, closer, syntax);
+    const scan = scanLine(lines[index], closer, syntax);
     if (scan.blockStart !== undefined) blockOpen = { line, column: scan.blockStart };
     closer = scan.closer;
     if (scan.unterminatedString !== undefined) problems.push({ message: 'Cadena sin cerrar: falta la comilla de cierre.', line, column: scan.unterminatedString });
@@ -101,7 +101,7 @@ export function checkBrackets(text: string, syntax: SourceSyntax): SourceProblem
       const top = stack.pop();
       if (!top) problems.push({ message: `Cierre «${bracket.char}» sin su apertura.`, line, column: bracket.column });
       else if (top.char !== PAIRS[bracket.char]) {
-        const expected = CLOSERS[OPENERS.indexOf(top.char)]!;
+        const expected = CLOSERS[OPENERS.indexOf(top.char)];
         problems.push({ message: `Se esperaba «${expected}» para cerrar la «${top.char}» de la línea ${top.line} y se encontró «${bracket.char}».`, line, column: bracket.column });
       }
     }
@@ -140,7 +140,7 @@ export function reindent(text: string, syntax: SourceSyntax): string {
     }
     const scan = scanLine(trimmed, null, syntax);
     let leading = 0;
-    while (leading < trimmed.length && CLOSERS.includes(trimmed[leading]!)) leading++;
+    while (leading < trimmed.length && CLOSERS.includes(trimmed[leading])) leading++;
     out.push(`${' '.repeat(Math.max(0, depth - leading) * 2)}${trimmed}`);
     lastBlank = false;
     closer = scan.closer;

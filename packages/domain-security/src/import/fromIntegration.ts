@@ -46,13 +46,13 @@ export function fromIntegrationJson(input: unknown, options: { name?: string } =
   const warnings: string[] = [];
   const nodes = raw.nodes.filter(isNode);
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const asAsset = (n: NodeLike): boolean => n.kind === 'system' || n.kind === 'store' || n.kind === 'gateway' || n.kind === 'broker' || (n.kind === 'queue' && byId.get(n.parentId ?? '')?.kind !== 'broker');
+  const asAsset = (n: NodeLike): boolean => n.kind === 'system' || n.kind === 'user' || n.kind === 'store' || n.kind === 'gateway' || n.kind === 'broker' || (n.kind === 'queue' && !['broker', 'gateway'].includes(byId.get(n.parentId ?? '')?.kind ?? ''));
   const assetNodes = nodes.filter(asAsset);
   if (assetNodes.length === 0) throw new SecurityImportError('El documento de integración no tiene sistemas, almacenes ni pasarelas que pasar a activos.');
 
   const ids = new Set(nodes.map((n) => n.id));
-  const kindOf = (n: NodeLike): AssetKind => (n.kind === 'store' || n.kind === 'queue' ? 'datastore' : n.kind === 'system' && n.external ? 'external' : 'process');
-  const zoneKey = (n: NodeLike): 'externo' | 'perimetro' | 'interna' => (n.kind === 'system' && n.external ? 'externo' : n.kind === 'gateway' ? 'perimetro' : 'interna');
+  const kindOf = (n: NodeLike): AssetKind => (n.kind === 'user' ? 'actor' : n.kind === 'store' || n.kind === 'queue' ? 'datastore' : n.kind === 'system' && n.external ? 'external' : 'process');
+  const zoneKey = (n: NodeLike): 'externo' | 'perimetro' | 'interna' => (n.kind === 'user' || (n.kind === 'system' && n.external) ? 'externo' : n.kind === 'gateway' ? 'perimetro' : 'interna');
   const zoneIds = new Map<string, string>();
   const zones: Zone[] = [];
   const zoneFor = (n: NodeLike): string => {
@@ -76,12 +76,12 @@ export function fromIntegrationJson(input: unknown, options: { name?: string } =
   }));
   const assetIds = new Set(assetNodes.map((n) => n.id));
 
-  // Un extremo que es una API de un sistema cuenta como ese sistema, y un tópico o cola de un broker, como el broker.
+  // Un extremo que es una API o un servidor MCP de un sistema cuenta como ese sistema, y un tópico o cola de un broker o pasarela, como su contenedor.
   const resolve = (id: string): string | undefined => {
     const n = byId.get(id);
     if (!n) return undefined;
     if (assetIds.has(n.id)) return n.id;
-    if ((n.kind === 'api' || n.kind === 'topic' || n.kind === 'queue') && n.parentId && assetIds.has(n.parentId)) return n.parentId;
+    if ((n.kind === 'api' || n.kind === 'mcp' || n.kind === 'topic' || n.kind === 'queue') && n.parentId && assetIds.has(n.parentId)) return n.parentId;
     return undefined;
   };
   const flows: Flow[] = [];

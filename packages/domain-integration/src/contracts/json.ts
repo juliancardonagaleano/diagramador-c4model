@@ -82,7 +82,7 @@ function locateJsonError(text: string): JsonFault | undefined {
     throw new JsonFailure({ offset, message: `JSON no válido: ${message}` });
   };
   const skipSpace = (): void => {
-    while (pos < text.length && ' \t\n\r'.includes(text[pos]!)) pos++;
+    while (pos < text.length && ' \t\n\r'.includes(text[pos])) pos++;
   };
   const describe = (char: string | undefined): string => (char === undefined ? 'el final del texto' : `«${char}»`);
   const endOfContent = (): number => text.trimEnd().length;
@@ -91,7 +91,7 @@ function locateJsonError(text: string): JsonFault | undefined {
     const start = pos;
     pos++;
     while (pos < text.length) {
-      const char = text[pos]!;
+      const char = text[pos];
       if (char === '"') {
         pos++;
         return;
@@ -118,7 +118,7 @@ function locateJsonError(text: string): JsonFault | undefined {
     if (depth > MAX_JSON_DEPTH) fail(pos, 'anidamiento excesivo');
     skipSpace();
     if (pos >= text.length) fail(endOfContent(), 'el texto termina de forma inesperada');
-    const char = text[pos]!;
+    const char = text[pos];
     if (char === '{') {
       pos++;
       skipSpace();

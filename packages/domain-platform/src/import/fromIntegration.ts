@@ -61,8 +61,9 @@ export function fromIntegrationJson(input: unknown, options: { name?: string } =
     ...(n.external ? { external: true } : {}),
     ref: `urn:iark:integration:${n.id}`,
   }));
-  // Un tópico o una cola de un broker se funde en el broker; una cola suelta es un recurso propio.
-  const resourceNodes = nodes.filter((n) => (n.kind === 'store' || n.kind === 'gateway' || n.kind === 'broker') || (n.kind === 'queue' && byId.get(n.parentId ?? '')?.kind !== 'broker'));
+  // Un tópico o una cola de un broker o de una pasarela se funde en su contenedor; una cola suelta es un recurso propio.
+  const inContainer = (n: NodeLike): boolean => ['broker', 'gateway'].includes(byId.get(n.parentId ?? '')?.kind ?? '');
+  const resourceNodes = nodes.filter((n) => (n.kind === 'store' || n.kind === 'gateway' || n.kind === 'broker') || (n.kind === 'queue' && !inContainer(n)));
   const resources: Resource[] = resourceNodes.map((n) => ({
     id: n.id,
     name: n.name,
@@ -74,13 +75,13 @@ export function fromIntegrationJson(input: unknown, options: { name?: string } =
     ref: `urn:iark:integration:${n.id}`,
   }));
 
-  // Un extremo que es una API de un sistema cuenta como ese sistema, y un tópico o cola de un broker, como el broker.
+  // Un extremo que es una API o un servidor MCP de un sistema cuenta como ese sistema, y un tópico o cola de un broker o pasarela, como su contenedor.
   const resolve = (id: string): { id: string; type: 'service' | 'resource' } | undefined => {
     const n = byId.get(id);
     if (!n) return undefined;
     if (n.kind === 'system') return { id: n.id, type: 'service' };
-    if (n.kind === 'api' && n.parentId && byId.get(n.parentId)?.kind === 'system') return { id: n.parentId, type: 'service' };
-    if ((n.kind === 'topic' || n.kind === 'queue') && n.parentId && byId.get(n.parentId)?.kind === 'broker') return { id: n.parentId, type: 'resource' };
+    if ((n.kind === 'api' || n.kind === 'mcp') && n.parentId && byId.get(n.parentId)?.kind === 'system') return { id: n.parentId, type: 'service' };
+    if ((n.kind === 'topic' || n.kind === 'queue') && n.parentId && inContainer(n)) return { id: n.parentId, type: 'resource' };
     return resourceNodes.some((r) => r.id === n.id) ? { id: n.id, type: 'resource' } : undefined;
   };
   const dependencyIds = new Set<string>();

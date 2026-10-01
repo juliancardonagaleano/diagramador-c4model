@@ -448,3 +448,39 @@ pre.wb-out {
 
 .wb-import-preview { margin: 4px 0 0; }
 .wb-import-preview summary { cursor: pointer; font-size: 12px; color: var(--wb-muted, #64748b); }
+
+/* Pestaña de adjuntos (los contratos de un módulo): lista a la izquierda y editor a la derecha. */
+.wb-panel.at-panel { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 0; padding: 0; overflow: hidden; }
+@media (max-width: 860px) { .wb-panel.at-panel { grid-template-columns: 1fr; grid-template-rows: auto 1fr; overflow: auto; } }
+.at-list { min-height: 0; overflow: auto; padding: 10px; border-right: 1px solid var(--wb-border); background: var(--wb-surface); }
+.at-list ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.at-list-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.at-new { display: grid; gap: 6px; margin-bottom: 8px; padding: 8px; border: 1px solid var(--wb-border); border-radius: 6px; background: var(--wb-surface-2); }
+.at-new input[type='text'] { width: 100%; }
+.at-item { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; width: 100%; padding: 6px 8px; text-align: left; font-size: 12px; }
+.at-item[aria-current] { border-color: var(--wb-primary); background: var(--wb-info-bg); }
+.at-name { flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 13px; }
+.at-meta { color: var(--wb-text-2); font-size: 11px; }
+.at-item .wb-chip { font-size: 11px; padding: 0 7px; }
+.at-item .wb-chip:last-child { margin-left: auto; }
+.at-muted { margin: 4px 0; color: var(--wb-text-2); font-size: 12px; }
+.at-editor { min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+.at-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0 12px; font-size: 12px; }
+.at-fields .at-wide { grid-column: 1 / -1; }
+.at-fields .cv-field input[type='text'], .at-fields .cv-field select, .at-fields .cv-field textarea { padding: 5px 8px; border-radius: 6px; }
+.at-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.at-toolbar button { padding: 4px 10px; font-size: 12px; }
+.at-toolbar .at-danger { margin-left: auto; border-color: var(--wb-error); background: var(--wb-error-bg); color: var(--wb-error); }
+.at-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; background: var(--wb-warning-bg); color: var(--wb-warning); font-size: 12px; }
+.at-confirm span { flex: 1 1 240px; }
+.at-text { flex: 1 0 260px; width: 100%; min-height: 260px; resize: vertical; padding: 10px 12px; border: 1px solid var(--wb-border); border-radius: 6px; background: var(--wb-surface); font-family: var(--wb-mono); font-size: 12px; line-height: 18px; white-space: pre; overflow: auto; tab-size: 2; }
+.at-diagnostics { display: grid; gap: 6px; font-size: 12px; }
+.at-diagnostics .wb-issues li { padding: 6px 10px; }
+.at-diagnostics .wb-chip { justify-self: start; }
+.at-section { border: 1px solid var(--wb-border); border-radius: 6px; background: var(--wb-surface); font-size: 12px; }
+.at-section > summary { padding: 6px 10px; cursor: pointer; font-weight: 600; }
+.at-section ul { margin: 0; padding: 0 10px 8px 28px; }
+.at-section .at-muted { padding: 0 10px 6px; }
+.at-section ul.at-used { padding-left: 10px; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+.at-used button { padding: 3px 8px; font-size: 12px; }
+.at-used small { color: var(--wb-text-2); }

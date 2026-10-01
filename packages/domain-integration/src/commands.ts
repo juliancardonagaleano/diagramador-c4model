@@ -126,7 +126,7 @@ export const integrationCommands: CommandSpec[] = [
       const parsed = parseJson(input, 'payload o evento CloudEvents');
       const given = Object.fromEntries((['type', 'source', 'subject', 'id'] as const).filter((k) => typeof options[k] === 'string').map((k) => [k, options[k]]));
       const isEnvelope = !!parsed && typeof parsed === 'object' && !Array.isArray(parsed) && ['specversion', 'type', 'source'].some((k) => k in parsed);
-      const envelope = isEnvelope ? { ...(parsed as Record<string, unknown>), ...given } : Object.keys(given).length > 0 ? { ...given, data: parsed } : parsed;
+      const envelope = isEnvelope ? { ...(parsed as Record<string, unknown>), ...given } : Object.keys(given).length > 0 ? { ...given, datacontenttype: 'application/json', data: parsed } : parsed;
       const name = typeof options.type === 'string' ? slug(options.type.split('.').pop() ?? options.type) : 'evento';
       const result = reformatContract('cloudevents', JSON.stringify(envelope), { name });
       if (!result.ok) throw new IntegrationImportError(result.reason);

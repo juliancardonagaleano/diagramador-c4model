@@ -292,9 +292,11 @@ iark integration from-c4 banca.json                                     # sistem
 iark integration catalog pedidos.json                                   # tabla Markdown de contratos y dónde se usan
 iark integration matrix  pedidos.json                                   # matriz origen × destino con el estilo de cada enlace
 iark integration contracts pedidos.json                                 # valida el contenido de cada contrato y lo resume
-iark integration contract-export pedidos.json facturacion-proto > facturacion.proto   # saca un contrato a su archivo
+iark integration contract-export facturacion-proto pedidos.json > facturacion.proto   # saca un contrato a su archivo
 iark integration cloudevents payload.json --type com.tienda.pedido.creado --source /pedidos   # formatea como CloudEvents 1.0
 ```
+
+**Mermaid**: cada tipo tiene su forma (API `{{ }}`, pasarela `>" "]`, broker como `subgraph`, cola y tópico `([ ])`, almacén `[( )]`, conector `( )`, tarea programada `((( )))`, usuario `(( ))`, servidor MCP `[/ /]` y patrón `{ }`). Un sistema o un broker con hijos es un `subgraph`, una zona es un `subgraph` titulado «Dominio: X» que contiene a sus miembros, y las líneas con `order` llevan su número y las que tienen patrón, su nombre entre « ». Cuando la forma no basta para deducir el tipo (un tópico comparte forma con la cola) el texto lleva la marca «Tópico»; con ellas, la ida y vuelta por `iark import` conserva tipo, dominio, orden y patrón. Los contratos y su contenido no viajan por Mermaid: están en el documento JSON.
 
 ## Módulo de datos
 

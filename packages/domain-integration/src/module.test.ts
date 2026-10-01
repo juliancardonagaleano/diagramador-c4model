@@ -23,7 +23,8 @@ const doc = parse(example);
 
 describe('esquema de integración', () => {
   it('acepta el ejemplo y aplica valores por defecto', () => {
-    expect(doc.nodes).toHaveLength(9);
+    expect(doc.nodes).toHaveLength(17);
+    expect([...new Set(doc.nodes.map((n) => n.kind))].sort()).toEqual(['api', 'broker', 'connector', 'gateway', 'mcp', 'pattern', 'scheduler', 'store', 'system', 'topic', 'user']);
     expect(parse({}).workspace.name).toBe('Mapa de integración');
   });
 
@@ -86,13 +87,25 @@ describe('reglas semánticas', () => {
 });
 
 describe('vistas', () => {
-  it('mapa completo y una vista por flujo con sus padres', () => {
+  it('mapa completo, una vista por flujo con sus padres y una por sistema', () => {
     const views = listViews(doc);
-    expect(views.map((v) => v.id)).toEqual(['map', 'flow:crear-pedido']);
+    expect(views.map((v) => v.id)).toEqual(['map', 'flow:crear-pedido', 'system:tienda-web', 'system:pedidos', 'system:facturacion', 'system:pasarela-pagos', 'system:asistente', 'system:erp']);
     const flow = findView(doc, 'crear-pedido');
     expect(flow.interactions.map((i) => i.step)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(flow.nodeIds).toContain('kafka'); // el tópico arrastra a su broker
     expect(() => findView(doc, 'nada')).toThrow(/Vistas disponibles/);
+  });
+
+  it('el mapa numera por `order` y deja sin número lo que no lo tiene', () => {
+    const numbered = findView(doc, 'map').interactions.filter((i) => i.step !== undefined);
+    expect(numbered.map((i) => [i.interaction.id, i.step])).toEqual([['web-gw', 1], ['gw-api', 2], ['pedidos-db-w', 3], ['pedidos-topic', 4], ['topic-fact', 5], ['fact-pagos', 6]]);
+  });
+
+  it('la vista de un sistema incluye lo que contiene y a sus vecinos directos', () => {
+    const view = findView(doc, 'system:pedidos');
+    expect(view.nodeIds).toEqual(expect.arrayContaining(['pedidos', 'pedidos-api', 'pedidos-mcp', 'gateway', 'asistente', 'pedidos-db', 'pedido-creado', 'kafka', 'facturacion', 'facturacion-api']));
+    expect(view.nodeIds).not.toContain('erp');
+    expect(view.nodeIds).not.toContain('pasarela-pagos');
   });
 });
 
@@ -124,7 +137,7 @@ describe('exportadores', () => {
 
   it('draw.io: una página por vista con vértices y aristas', async () => {
     const xml = await toDrawio(doc);
-    expect(xml.match(/<diagram /g)).toHaveLength(2);
+    expect(xml.match(/<diagram /g)).toHaveLength(listViews(doc).length);
     expect(xml).toContain('vertex="1"');
     expect(xml).toContain('edge="1"');
   });
@@ -168,17 +181,22 @@ describe('importadores', () => {
           { id: 'r1', sourceId: 'cliente', targetId: 'api' },
           { id: 'r2', sourceId: 'api', targetId: 'bus', technology: 'Kafka' },
           { id: 'r3', sourceId: 'api', targetId: 'db', technology: 'SQL', description: 'Lee' },
+          { id: 'r4', sourceId: 'api', targetId: 'cliente', description: 'Notifica' },
         ],
       },
     };
     const { document, warnings } = fromC4Json(c4);
     expect(document.workspace.name).toBe('Integración - Tienda');
-    expect(document.nodes.map((n) => [n.id, n.kind])).toEqual([['tienda', 'system'], ['api', 'api'], ['bus', 'queue'], ['db', 'store']]);
+    expect(document.nodes.map((n) => [n.id, n.kind])).toEqual([['cliente', 'user'], ['tienda', 'system'], ['api', 'api'], ['bus', 'queue'], ['db', 'store']]);
     expect(document.nodes.find((n) => n.id === 'api')).toMatchObject({ parentId: 'tienda' });
     expect(document.nodes.find((n) => n.id === 'bus')?.parentId).toBeUndefined(); // una cola solo cabe en un broker
-    expect(parseUrn(document.nodes[1].ref!)).toEqual({ module: 'c4', id: 'api' });
-    expect(document.interactions.map((i) => i.style)).toEqual(['async-message', 'request-response']);
-    expect(warnings.some((w) => w.includes('persona'))).toBe(true);
+    expect(parseUrn(document.nodes[2].ref!)).toEqual({ module: 'c4', id: 'api' });
+    expect(document.interactions.map((i) => [i.sourceId, i.targetId, i.style])).toEqual([
+      ['cliente', 'api', 'request-response'],
+      ['api', 'bus', 'async-message'],
+      ['api', 'db', 'request-response'],
+    ]);
+    expect(warnings.some((w) => w.includes('persona'))).toBe(true); // la relación que llega al usuario se omite
     expect(() => fromC4Json({})).toThrow(/model\.elements/);
   });
 });
@@ -198,11 +216,11 @@ describe('módulo integration', () => {
     const generated = {
       workspace: { name: 'Demo', description: null },
       nodes: [
-        { id: 'a', kind: 'system', name: 'A', description: null, technology: null, owner: null, external: null, parentId: null },
-        { id: 'b', kind: 'system', name: 'B', description: null, technology: null, owner: null, external: true, parentId: null },
+        { id: 'a', kind: 'system', name: 'A', description: null, technology: null, owner: null, external: null, parentId: null, contractId: null, pattern: null, domain: null },
+        { id: 'b', kind: 'system', name: 'B', description: null, technology: null, owner: null, external: true, parentId: null, contractId: null, pattern: null, domain: null },
       ],
       contracts: [],
-      interactions: [{ id: 'ab', sourceId: 'a', targetId: 'b', style: 'event', protocol: null, pattern: null, contractId: null, description: null, dataObjects: null, criticality: null }],
+      interactions: [{ id: 'ab', sourceId: 'a', targetId: 'b', style: 'event', protocol: null, pattern: null, contractId: null, description: null, dataObjects: null, criticality: null, order: null }],
       flows: [],
     };
     expect(integrationAiSpec.generationSchema.safeParse(generated).success).toBe(true);

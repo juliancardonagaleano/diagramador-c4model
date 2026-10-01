@@ -40,7 +40,12 @@
               "broker",
               "queue",
               "topic",
-              "store"
+              "store",
+              "connector",
+              "scheduler",
+              "user",
+              "mcp",
+              "pattern"
             ]
           },
           "name": {
@@ -75,6 +80,48 @@
               "string",
               "null"
             ]
+          },
+          "contractId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "content-based-router",
+                  "message-translator",
+                  "splitter",
+                  "aggregator",
+                  "filter",
+                  "enricher",
+                  "publish-subscribe",
+                  "polling-consumer",
+                  "idempotent-receiver",
+                  "dead-letter-channel",
+                  "saga",
+                  "circuit-breaker",
+                  "wire-tap",
+                  "claim-check",
+                  "scatter-gather",
+                  "resequencer",
+                  "transactional-outbox",
+                  "retry"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "domain": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -85,7 +132,10 @@
           "technology",
           "owner",
           "external",
-          "parentId"
+          "parentId",
+          "contractId",
+          "pattern",
+          "domain"
         ],
         "additionalProperties": false
       }
@@ -111,6 +161,8 @@
               "avro",
               "json-schema",
               "wsdl",
+              "cloudevents",
+              "mcp",
               "other"
             ]
           },
@@ -190,7 +242,13 @@
                   "idempotent-receiver",
                   "dead-letter-channel",
                   "saga",
-                  "circuit-breaker"
+                  "circuit-breaker",
+                  "wire-tap",
+                  "claim-check",
+                  "scatter-gather",
+                  "resequencer",
+                  "transactional-outbox",
+                  "retry"
                 ]
               },
               {
@@ -237,6 +295,12 @@
                 "type": "null"
               }
             ]
+          },
+          "order": {
+            "type": [
+              "number",
+              "null"
+            ]
           }
         },
         "required": [
@@ -249,7 +313,8 @@
           "contractId",
           "description",
           "dataObjects",
-          "criticality"
+          "criticality",
+          "order"
         ],
         "additionalProperties": false
       }

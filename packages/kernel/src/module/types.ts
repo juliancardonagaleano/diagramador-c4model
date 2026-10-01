@@ -78,6 +78,11 @@ export interface AiSpec<TDoc> {
   retry(issues: string): string;
   /** Convierte lo generado en documento del módulo; si no es válido, devuelve los motivos para el reintento. */
   toDocument(generated: unknown): { ok: true; document: TDoc } | { ok: false; issues: string };
+  /**
+   * Al refinar, devuelve a `generated` lo que el modelo no genera y `base` ya tenía (p. ej. el texto de los contratos); se
+   * aplica después de conservar los `ref`. Opcional.
+   */
+  carry?(base: TDoc, generated: TDoc): TDoc;
   /** Acabado del documento generado (p. ej. autolayout). Opcional. */
   finish?(document: TDoc): Promise<TDoc> | TDoc;
 }

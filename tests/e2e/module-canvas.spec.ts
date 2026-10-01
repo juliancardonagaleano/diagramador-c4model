@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 async function open(page: Page, module = 'integration'): Promise<string[]> {
   const errors: string[] = [];
@@ -7,6 +7,18 @@ async function open(page: Page, module = 'integration'): Promise<string[]> {
   await expect(page.getByTestId('module-canvas')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
   return errors;
+}
+
+/** Caja del elemento una vez que la cámara ha terminado de encuadrar el dibujo. */
+async function settled(locator: Locator): Promise<{ x: number; y: number; width: number; height: number }> {
+  let last = (await locator.boundingBox())!;
+  for (let i = 0; i < 20; i++) {
+    await locator.page().waitForTimeout(150);
+    const next = (await locator.boundingBox())!;
+    if (Math.abs(next.x - last.x) < 0.5 && Math.abs(next.y - last.y) < 0.5) return next;
+    last = next;
+  }
+  return last;
 }
 
 const docText = async (page: Page): Promise<string> => {
@@ -72,12 +84,68 @@ test.describe('lienzo interactivo de módulos', () => {
 
   test('cambiar a la vista de un flujo numera sus pasos sobre las relaciones', async ({ page }) => {
     await open(page);
-    await expect(page.locator('.react-flow__edge-text', { hasText: /^1\./ })).toHaveCount(0);
+    await expect(page.locator('.cv-edge-text', { hasText: /^1\./ })).toHaveCount(0);
     const select = page.getByTestId('canvas-view');
     const options = await select.locator('option').allTextContents();
     expect(options.length).toBeGreaterThan(1);
     await select.selectOption({ index: 1 });
-    await expect(page.locator('.react-flow__edge-text', { hasText: /^1\./ }).first()).toBeVisible();
+    await expect(page.locator('.cv-edge-text', { hasText: /^1\./ }).first()).toBeVisible();
+  });
+});
+
+test.describe('selección y arrastre', () => {
+  test('arrastrar un nodo lo mueve', async ({ page }) => {
+    await open(page, 'security');
+    const node = page.getByTestId('node-cliente');
+    const before = await settled(node);
+    await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(before.x + before.width / 2 + 70, before.y + before.height / 2 + 50, { steps: 8 });
+    await page.mouse.up();
+    const after = (await node.boundingBox())!;
+    expect(Math.round(after.x - before.x)).toBeGreaterThan(40);
+    expect(Math.round(after.y - before.y)).toBeGreaterThan(30);
+  });
+
+  test('Ctrl + clic suma elementos, el panel los resume y Supr los borra con un solo paso de deshacer', async ({ page }) => {
+    await open(page, 'security');
+    const before = await page.locator('.react-flow__node').count();
+    await page.getByTestId('node-cliente').click();
+    await expect(page.getByTestId('inspector').getByLabel('Nombre')).toBeVisible();
+    await page.getByTestId('node-pedidos-db').click({ modifiers: ['Control'] });
+    const inspector = page.getByTestId('inspector');
+    await expect(inspector).toContainText('2 elementos seleccionados');
+    await expect(inspector.getByTestId('selection-list').getByRole('listitem')).toHaveCount(2);
+    await page.keyboard.press('Delete');
+    await expect(page.locator('.react-flow__node')).not.toHaveCount(before);
+    expect(await docText(page)).not.toContain('"id": "pedidos-db"');
+    await page.keyboard.press('Control+z');
+    await expect(page.locator('.react-flow__node')).toHaveCount(before);
+    expect(await docText(page)).toContain('"id": "pedidos-db"');
+    await expect(page.getByRole('button', { name: 'Deshacer' })).toBeDisabled();
+  });
+
+  test('Mayús + arrastrar selecciona los elementos de un recuadro y Ctrl + clic quita uno', async ({ page }) => {
+    await open(page, 'security');
+    const a = await settled(page.getByTestId('node-cliente'));
+    const b = await settled(page.getByTestId('node-pedidos-db'));
+    const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+    const left = Math.min(a.x, b.x) - 12;
+    const top = Math.min(a.y, b.y) - 12;
+    const right = Math.max(a.x + a.width, b.x + b.width) + 12;
+    const bottom = Math.max(a.y + a.height, b.y + b.height) + 12;
+    expect(left).toBeGreaterThan(pane.x);
+    await page.keyboard.down('Shift');
+    await page.mouse.move(left, top);
+    await page.mouse.down();
+    await page.mouse.move(right, bottom, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    const inspector = page.getByTestId('inspector');
+    await expect(inspector.getByTestId('selection-list')).toContainText('Cliente');
+    const count = await inspector.getByTestId('selection-list').getByRole('listitem').count();
+    await page.getByTestId('node-cliente').click({ modifiers: ['Control'] });
+    await expect(inspector.getByTestId('selection-list').getByRole('listitem')).toHaveCount(count - 1);
   });
 });
 

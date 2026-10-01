@@ -39,6 +39,15 @@ export class Reporter {
   }
 }
 
+/** Los diagnósticos sin posición primero y el resto por línea y columna; a igual posición se conserva el orden de detección. */
+export function sortDiagnostics(list: AttachmentDiagnostic[]): AttachmentDiagnostic[] {
+  const rank = (item: AttachmentDiagnostic): number => (item.line === undefined ? -1 : item.line * 100000 + (item.column ?? 0));
+  return list
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => rank(a.item) - rank(b.item) || a.index - b.index)
+    .map(({ item }) => item);
+}
+
 export function failureDiagnostic(failure: { message: string; line: number; column: number }): AttachmentDiagnostic[] {
   return [{ severity: 'error', message: failure.message, line: failure.line, column: failure.column }];
 }
@@ -59,7 +68,7 @@ export function pascalCase(text: string, fallback: string): string {
     .replace(/[̀-ͯ]/g, '')
     .split(/[^A-Za-z0-9]+/)
     .filter(Boolean);
-  const joined = words.map((word) => word[0]!.toUpperCase() + word.slice(1)).join('');
+  const joined = words.map((word) => word[0].toUpperCase() + word.slice(1)).join('');
   if (!joined) return fallback;
   return /^[0-9]/.test(joined) ? `${fallback}${joined}` : joined;
 }
@@ -104,7 +113,7 @@ export function reformatStructured(text: string, options: { yaml: boolean; order
   return { ok: true, text: doc.toString(YAML_OUTPUT) };
 }
 
-/** Convierte entre JSON y YAML. El YAML de salida pierde los comentarios cuando el origen es JSON. */
+/** Un origen YAML que se pide en YAML se reescribe sin pasar por JSON para no perder sus comentarios. */
 export function convertStructured(text: string, target: 'json' | 'yaml', order?: readonly string[]): AttachmentTextResult {
   const source = stripBom(text);
   if (target === 'yaml' && !looksLikeJson(source)) return reformatStructured(source, { yaml: true, order });
@@ -116,6 +125,16 @@ export function convertStructured(text: string, target: 'json' | 'yaml', order?:
 
 function orderValue(value: unknown, order?: readonly string[]): unknown {
   return order && isRecord(value) ? orderKeys(value, order) : value;
+}
+
+export function checkInfo(info: unknown, report: Reporter): void {
+  if (!isRecord(info)) {
+    report.error('Falta «info» (un objeto con «title» y «version»).', []);
+    return;
+  }
+  if (typeof info.title !== 'string' || info.title.trim() === '') report.error('Falta «info.title» (texto no vacío).', ['info']);
+  if (info.version === undefined || info.version === null || info.version === '') report.error('Falta «info.version».', ['info']);
+  else if (typeof info.version !== 'string') report.error('«info.version» debe ser texto; en YAML ponla entre comillas (p. ej. "1.0.0").', ['info', 'version']);
 }
 
 const DATA_KEYS = new Set(['example', 'default', 'enum', 'const']);

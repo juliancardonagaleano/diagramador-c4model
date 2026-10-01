@@ -44,7 +44,12 @@
               "broker",
               "queue",
               "topic",
-              "store"
+              "store",
+              "connector",
+              "scheduler",
+              "user",
+              "mcp",
+              "pattern"
             ]
           },
           "name": {
@@ -76,6 +81,37 @@
             "items": {
               "type": "string"
             }
+          },
+          "contractId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "pattern": {
+            "type": "string",
+            "enum": [
+              "content-based-router",
+              "message-translator",
+              "splitter",
+              "aggregator",
+              "filter",
+              "enricher",
+              "publish-subscribe",
+              "polling-consumer",
+              "idempotent-receiver",
+              "dead-letter-channel",
+              "saga",
+              "circuit-breaker",
+              "wire-tap",
+              "claim-check",
+              "scatter-gather",
+              "resequencer",
+              "transactional-outbox",
+              "retry"
+            ]
+          },
+          "domain": {
+            "type": "string"
           }
         },
         "required": [
@@ -110,6 +146,8 @@
               "avro",
               "json-schema",
               "wsdl",
+              "cloudevents",
+              "mcp",
               "other"
             ]
           },
@@ -120,6 +158,9 @@
             "type": "string"
           },
           "description": {
+            "type": "string"
+          },
+          "content": {
             "type": "string"
           }
         },
@@ -178,7 +219,13 @@
               "idempotent-receiver",
               "dead-letter-channel",
               "saga",
-              "circuit-breaker"
+              "circuit-breaker",
+              "wire-tap",
+              "claim-check",
+              "scatter-gather",
+              "resequencer",
+              "transactional-outbox",
+              "retry"
             ]
           },
           "contractId": {
@@ -202,6 +249,9 @@
               "medium",
               "high"
             ]
+          },
+          "order": {
+            "type": "number"
           }
         },
         "required": [

@@ -35,6 +35,13 @@ export function resolveSelection(graph: EditorGraph | undefined, selection: Sele
   return [...graph.nodes.map((n) => n.id), ...graph.edges.map((e) => e.id)].filter((id) => selection.has(id));
 }
 
+/** Nodos que hay que encuadrar para mostrar un elemento: él mismo si es un nodo, sus dos extremos si es una relación. */
+export function focusNodes(graph: EditorGraph, id: string): string[] {
+  if (graph.nodes.some((n) => n.id === id)) return [id];
+  const edge = graph.edges.find((e) => e.id === id);
+  return edge ? [edge.source, edge.target] : [];
+}
+
 export interface SelectionItem {
   id: string;
   title: string;

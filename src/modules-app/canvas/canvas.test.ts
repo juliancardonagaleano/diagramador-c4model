@@ -41,6 +41,7 @@ describe('editor de integración', () => {
     expect(graph.nodes.length).toBe(doc.nodes.length);
     const { nodes, edges } = buildFlow(spec, graph, undefined);
     expect(edges.length).toBe(doc.interactions.length);
+    expect(edges.every((e) => e.type === 'notation')).toBe(true);
     const queue = nodes.find((n) => n.data.node.kind === 'queue' || n.data.node.kind === 'topic');
     expect(queue?.data.notation.shape).toBe('pill');
     const parentIds = new Set(nodes.filter((n) => n.parentId).map((n) => n.parentId));

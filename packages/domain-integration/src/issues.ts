@@ -1,4 +1,5 @@
 import type { ModuleIssue } from '@iark/kernel';
+import { checkContract } from './contracts';
 import { PATTERN_INFO } from './patterns';
 import { connectionViolation } from './rules';
 import { KIND_LABELS, type IntegrationDocument, type IntegrationNode } from './types';
@@ -52,7 +53,13 @@ export function analyzeIntegration(doc: IntegrationDocument): ModuleIssue[] {
 
   for (const c of doc.contracts) {
     if (!c.version) issues.push({ severity: 'warning', elementId: c.id, message: `El contrato «${c.name}» no tiene versión.` });
-    if (!doc.interactions.some((it) => it.contractId === c.id)) issues.push({ severity: 'info', elementId: c.id, message: `El contrato «${c.name}» no lo usa ninguna interacción.` });
+    if (!doc.interactions.some((it) => it.contractId === c.id) && !doc.nodes.some((n) => n.contractId === c.id)) issues.push({ severity: 'info', elementId: c.id, message: `El contrato «${c.name}» no lo usa ninguna interacción ni ningún nodo.` });
+    if (c.content) {
+      for (const d of checkContract(c.format, c.content)) {
+        if (d.severity === 'info') continue;
+        issues.push({ severity: 'warning', elementId: c.id, message: `Contrato «${c.name}» (${c.format})${d.line ? `, línea ${d.line}` : ''}: ${d.message}` });
+      }
+    }
   }
 
   const seen = new Set<string>();

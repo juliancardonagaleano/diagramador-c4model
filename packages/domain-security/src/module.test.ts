@@ -516,8 +516,9 @@ describe('desde un mapa de integración', () => {
     expect(asset('gateway')).toMatchObject({ kind: 'process', zoneId: 'perimetro', ref: 'urn:iark:integration:gateway' });
     expect(asset('pedidos-db')).toMatchObject({ kind: 'datastore', zoneId: 'red-interna' });
     expect(asset('pasarela-pagos')).toMatchObject({ kind: 'external', zoneId: 'externo' });
-    expect(out.assets).toHaveLength(7);
-    expect(out.flows).toHaveLength(6);
+    expect(asset('cliente')).toMatchObject({ kind: 'actor', zoneId: 'externo', ref: 'urn:iark:integration:cliente' });
+    expect(out.assets).toHaveLength(10);
+    expect(out.flows).toHaveLength(9);
     expect(warnings.join('\n')).toContain('se funden en el sistema o el broker');
     expect(warnings.join('\n')).toContain('Las zonas de confianza se proponen por heurística');
     expect(validateSecurityDocument(out).ok).toBe(true);
@@ -661,7 +662,7 @@ describe('comandos', () => {
     const integ = readFileSync('examples/pedidos-integracion.json', 'utf8');
     const out = JSON.parse(run('from-integration', [], integ, { name: 'Desde integración' })) as SecurityDocument;
     expect(out.workspace.name).toBe('Desde integración');
-    expect(out.assets).toHaveLength(7);
+    expect(out.assets).toHaveLength(10);
     const fromPlatform = JSON.parse(run('from-platform', [], readFileSync('examples/plataforma-ejemplo.json', 'utf8'), { env: 'dev' })) as SecurityDocument;
     expect(fromPlatform.zones.map((z) => z.id)).toEqual(['vpc-dev', 'internet']);
   });

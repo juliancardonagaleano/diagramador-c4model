@@ -44,6 +44,56 @@ export interface FlowEdge {
   selected?: boolean;
 }
 
+const ORIGIN = { x: 0, y: 0 };
+
+type Placed = Pick<FlowNode, 'id' | 'position' | 'parentId'>;
+
+/** Posición absoluta de cada nodo (la de React Flow es relativa al padre en los hijos de un grupo). */
+export function absolutePositions(nodes: readonly Placed[]): Map<string, { x: number; y: number }> {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const result = new Map<string, { x: number; y: number }>();
+  const resolve = (id: string, depth: number): { x: number; y: number } => {
+    const known = result.get(id);
+    if (known) return known;
+    const node = byId.get(id)!;
+    const parent = node.parentId && byId.has(node.parentId) && depth < 20 ? resolve(node.parentId, depth + 1) : ORIGIN;
+    const at = { x: node.position.x + parent.x, y: node.position.y + parent.y };
+    result.set(id, at);
+    return at;
+  };
+  for (const n of nodes) resolve(n.id, 0);
+  return result;
+}
+
+/**
+ * Posiciones absolutas tras un arrastre: `changes` trae las nuevas posiciones (relativas al padre) que notifica React
+ * Flow. Los descendientes de un grupo movido lo acompañan.
+ */
+export function movedByDrag(nodes: readonly Placed[], moved: ReadonlyMap<string, { x: number; y: number }>, changes: ReadonlyArray<{ id: string; position: { x: number; y: number } }>): Map<string, { x: number; y: number }> {
+  const absolute = absolutePositions(nodes);
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const children = new Map<string, string[]>();
+  for (const n of nodes) if (n.parentId) children.set(n.parentId, [...(children.get(n.parentId) ?? []), n.id]);
+  const dragged = new Set(changes.map((c) => c.id));
+  const next = new Map(moved);
+  for (const change of changes) {
+    const node = byId.get(change.id);
+    const before = absolute.get(change.id);
+    if (!node || !before) continue;
+    const parent = (node.parentId && absolute.get(node.parentId)) || ORIGIN;
+    const after = { x: Math.round(change.position.x + parent.x), y: Math.round(change.position.y + parent.y) };
+    next.set(change.id, after);
+    const pending = [...(children.get(change.id) ?? [])];
+    for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
+      const at = absolute.get(id);
+      if (dragged.has(id) || !at) continue;
+      next.set(id, { x: at.x + after.x - before.x, y: at.y + after.y - before.y });
+      pending.push(...(children.get(id) ?? []));
+    }
+  }
+  return next;
+}
+
 const notationOf = (spec: EditorSpec<unknown>, kind: string): NodeNotation => spec.nodeKinds.find((k) => k.kind === kind) ?? FALLBACK_NODE;
 const edgeNotationOf = (spec: EditorSpec<unknown>, kind: string): EdgeNotation => spec.edgeKinds.find((k) => k.kind === kind) ?? FALLBACK_EDGE;
 

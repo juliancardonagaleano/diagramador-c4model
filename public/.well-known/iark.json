@@ -28,7 +28,7 @@
       "id": "integration",
       "name": "Arquitectura de integraciones",
       "version": "0.1.0",
-      "description": "Mapa de integración y flujos: sistemas, APIs, brokers, colas, contratos, patrones EIP; exporta a Mermaid, SVG y draw.io.",
+      "description": "Mapa de integración y flujos con notación EIP: sistemas, APIs, MCP, brokers, colas, contratos editables (OpenAPI, .proto, CloudEvents, MCP) y patrones; exporta a Mermaid, SVG y draw.io.",
       "documentVersion": "1.0",
       "importFormats": [
         "mermaid"
