@@ -1,27 +1,19 @@
 import { uniqueId, type EditorSpec, type EdgeNotation, type FieldSpec, type NodeNotation } from '@iark/kernel';
 import { findView } from './views';
-import { CRITICALITIES, INTERACTION_STYLES, KIND_LABELS, NODE_KINDS, PARENT_KIND, PATTERNS, type IntegrationDocument, type IntegrationNode, type InteractionStyle, type NodeKind } from './types';
-import { KIND_COLORS, NODE_SHAPES } from './export/render';
+import { CRITICALITIES, INTERACTION_STYLES, KIND_LABELS, NODE_KINDS, PARENT_KINDS, PATTERNS, type IntegrationDocument, type IntegrationNode, type InteractionStyle, type NodeKind } from './types';
+import { KIND_COLORS, NODE_GLYPHS, NODE_SHAPES, NODE_SIZES } from './notation';
 
-const node = (kind: NodeKind, glyph: string, width: number, height: number): NodeNotation => ({
+const node = (kind: NodeKind): NodeNotation => ({
   kind,
   label: KIND_LABELS[kind],
-  glyph,
+  glyph: NODE_GLYPHS[kind],
   shape: NODE_SHAPES[kind],
   fill: KIND_COLORS[kind],
-  width,
-  height,
+  width: NODE_SIZES[kind].width,
+  height: NODE_SIZES[kind].height,
 });
 
-const NODE_KIND_NOTATION: NodeNotation[] = [
-  node('system', '▣', 200, 88),
-  node('api', '◇', 180, 76),
-  node('gateway', '⇄', 180, 76),
-  node('broker', '☰', 180, 76),
-  node('queue', '⇒', 170, 64),
-  node('topic', '≋', 170, 64),
-  node('store', '⛁', 170, 84),
-];
+const NODE_KIND_NOTATION: NodeNotation[] = NODE_KINDS.map(node);
 
 const STYLE_LABELS: Record<InteractionStyle, string> = {
   'request-response': 'Petición-respuesta',
@@ -130,7 +122,7 @@ export const integrationEditor: EditorSpec<IntegrationDocument> = {
     const k = kind as NodeKind;
     const parent = parentId ? doc.nodes.find((n) => n.id === parentId) : undefined;
     const id = uniqueId(name, [...doc.nodes.map((n) => n.id)]);
-    const created: IntegrationNode = { id, kind: k, name, ...(parent && PARENT_KIND[k] === parent.kind ? { parentId: parent.id } : {}) };
+    const created: IntegrationNode = { id, kind: k, name, ...(parent && PARENT_KINDS[k]?.includes(parent.kind) ? { parentId: parent.id } : {}) };
     return { ok: true, id, document: { ...doc, nodes: [...doc.nodes, created] } };
   },
 

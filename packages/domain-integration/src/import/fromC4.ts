@@ -1,6 +1,6 @@
 import { formatUrn, pickId } from '@iark/kernel';
 import { formatIntegrationIssues, validateIntegrationDocument } from '../schema';
-import { INTEGRATION_DOCUMENT_VERSION, PARENT_KIND, type IntegrationDocument, type IntegrationNode, type Interaction, type InteractionStyle, type NodeKind } from '../types';
+import { INTEGRATION_DOCUMENT_VERSION, PARENT_KINDS, type IntegrationDocument, type IntegrationNode, type Interaction, type InteractionStyle, type NodeKind } from '../types';
 import { IntegrationImportError, type IntegrationImportResult } from './fromMermaid';
 
 interface C4ElementLike {
@@ -73,7 +73,7 @@ export function fromC4Json(input: unknown, options: { name?: string } = {}): Int
     const parent = e.parentId ? idOf.get(e.parentId) : undefined;
     const node = nodes.find((n) => n.id === id);
     const parentNode = nodes.find((n) => n.id === parent);
-    if (node && parentNode && PARENT_KIND[node.kind] === parentNode.kind) node.parentId = parentNode.id;
+    if (node && parentNode && PARENT_KINDS[node.kind]?.includes(parentNode.kind)) node.parentId = parentNode.id;
   }
   if (people > 0) warnings.push(`Se omitieron ${people} persona(s): no son nodos de integración.`);
 

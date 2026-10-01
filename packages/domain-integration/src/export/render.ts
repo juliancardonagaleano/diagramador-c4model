@@ -1,31 +1,11 @@
-import { layoutGraph, renderGraphSvg, type GraphLayout, type GraphLayoutOptions, type ShapeKind } from '@iark/kernel';
-import { KIND_LABELS, type IntegrationDocument, type IntegrationNode, type Interaction, type NodeKind } from '../types';
+import { layoutGraph, renderGraphSvg, type GraphLayout, type GraphLayoutOptions } from '@iark/kernel';
+import { KIND_LABELS, type IntegrationDocument, type IntegrationNode, type Interaction } from '../types';
+import { KIND_COLORS, NODE_SHAPES, NODE_SIZES } from '../notation';
 import { findView, type IntegrationView } from '../views';
 
-/** Figura de cada tipo de nodo: la misma en el lienzo interactivo y en el SVG exportado. */
-export const NODE_SHAPES: Record<NodeKind, ShapeKind> = { system: 'rect', api: 'rect', gateway: 'rect', broker: 'rect', queue: 'pill', topic: 'pill', store: 'cylinder' };
-
-export const KIND_COLORS: Record<NodeKind, string> = {
-  system: '#1168bd',
-  api: '#0b7285',
-  gateway: '#7048e8',
-  broker: '#c2410c',
-  queue: '#d9480f',
-  topic: '#b45309',
-  store: '#2b8a3e',
-};
+export { KIND_COLORS, NODE_SHAPES };
 
 const EXTERNAL_COLOR = '#6b6b6b';
-
-const SIZES: Record<NodeKind, { width: number; height: number }> = {
-  system: { width: 200, height: 88 },
-  api: { width: 180, height: 76 },
-  gateway: { width: 180, height: 76 },
-  broker: { width: 180, height: 76 },
-  queue: { width: 170, height: 64 },
-  topic: { width: 170, height: 64 },
-  store: { width: 170, height: 84 },
-};
 
 /** Texto de la etiqueta de una interacción: número de paso, descripción y protocolo. */
 export function interactionLabel(it: Interaction, step?: number): string {
@@ -55,7 +35,7 @@ export async function layoutView(doc: IntegrationDocument, viewId?: string, opti
 
   const graphNodes = [...nodes.values()]
     .filter((n) => !groupIds.has(n.id))
-    .map((n) => ({ id: n.id, ...SIZES[n.kind], groupId: n.parentId && nodes.has(n.parentId) ? n.parentId : undefined }));
+    .map((n) => ({ id: n.id, ...NODE_SIZES[n.kind], groupId: n.parentId && nodes.has(n.parentId) ? n.parentId : undefined }));
   const groups = [...groupIds].map((id) => ({ id, groupId: nodes.get(id)?.parentId && nodes.has(nodes.get(id)!.parentId!) ? nodes.get(id)!.parentId : undefined }));
   const edges = view.interactions.map(({ interaction }) => ({ id: interaction.id, source: interaction.sourceId, target: interaction.targetId, label: labels.get(interaction.id) || undefined }));
 

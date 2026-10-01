@@ -3,9 +3,9 @@
  * React) y los exportadores SVG de los módulos (que las escriben como texto), de modo que un cilindro o una flecha se ven
  * igual en pantalla y en el archivo exportado.
  */
-export type ShapeKind = 'rect' | 'rounded' | 'cylinder' | 'pill' | 'hexagon' | 'chevron' | 'pipe' | 'bar' | 'circle' | 'card' | 'actor' | 'document';
+export type ShapeKind = 'rect' | 'rounded' | 'cylinder' | 'pill' | 'hexagon' | 'chevron' | 'pipe' | 'bar' | 'circle' | 'card' | 'actor' | 'document' | 'fan' | 'clock' | 'diamond';
 
-export const SHAPE_KINDS: ShapeKind[] = ['rect', 'rounded', 'cylinder', 'pill', 'hexagon', 'chevron', 'pipe', 'bar', 'circle', 'card', 'actor', 'document'];
+export const SHAPE_KINDS: ShapeKind[] = ['rect', 'rounded', 'cylinder', 'pill', 'hexagon', 'chevron', 'pipe', 'bar', 'circle', 'card', 'actor', 'document', 'fan', 'clock', 'diamond'];
 
 export interface ShapePart {
   /** Trazado SVG (atributo `d`), en coordenadas relativas a la esquina superior izquierda del nodo. */
@@ -64,9 +64,33 @@ export function shapeParts(shape: ShapeKind, w: number, h: number): ShapePart[] 
     case 'bar':
       return [
         { d: roundedRectPath(i, i, w - 2, h - 2, 4), role: 'body' },
-        { d: `M12 ${n(h / 2 - 8)} H${n(w - 12)}`, role: 'detail', opacity: 0.7 },
-        { d: `M12 ${n(h / 2 + 8)} H${n(w - 12)}`, role: 'detail', opacity: 0.7 },
+        { d: `M12 ${n(Math.min(8, h / 4))} H${n(w - 12)}`, role: 'detail', opacity: 0.7 },
+        { d: `M12 ${n(h - Math.min(8, h / 4))} H${n(w - 12)}`, role: 'detail', opacity: 0.7 },
       ];
+    case 'fan': {
+      // Entrada estrecha a la izquierda que se abre en tres salidas a la derecha: un tópico de publicación-suscripción.
+      const left = h * 0.32;
+      return [
+        { d: `M1 ${n(left)} L${n(w - 1)} 1 V${n(h - 1)} L1 ${n(h - left)} z`, role: 'body' },
+        { d: `M5 ${n(h / 2)} H15`, role: 'detail', opacity: 0.8 },
+        ...[0.22, 0.5, 0.78].map((f) => ({ d: `M${n(w - 18)} ${n(h * f)} H${n(w - 6)}`, role: 'detail' as const, opacity: 0.8 })),
+      ];
+    }
+    case 'clock': {
+      // Elipse con una esfera de reloj pequeña arriba; el texto baja (ver `textOffset`).
+      const rx = w / 2 - 1;
+      const ry = h / 2 - 1;
+      const r = Math.max(4, Math.min(h * 0.09, 10));
+      const cx = w / 2;
+      const cy = h * 0.27;
+      return [
+        { d: `M1 ${n(h / 2)} a${n(rx)} ${n(ry)} 0 1 0 ${n(2 * rx)} 0 a${n(rx)} ${n(ry)} 0 1 0 ${n(-2 * rx)} 0 z`, role: 'body' },
+        { d: `M${n(cx - r)} ${n(cy)} a${n(r)} ${n(r)} 0 1 0 ${n(2 * r)} 0 a${n(r)} ${n(r)} 0 1 0 ${n(-2 * r)} 0 z`, role: 'detail', opacity: 0.9 },
+        { d: `M${n(cx)} ${n(cy - r * 0.6)} V${n(cy)} H${n(cx + r * 0.5)}`, role: 'detail', opacity: 0.9 },
+      ];
+    }
+    case 'diamond':
+      return [{ d: `M${n(w / 2)} 1 L${n(w - 1)} ${n(h / 2)} L${n(w / 2)} ${n(h - 1)} L1 ${n(h / 2)} z`, role: 'body' }];
     case 'card':
       return [
         { d: roundedRectPath(i, i, w - 2, h - 2, 4), role: 'body' },
@@ -88,8 +112,9 @@ export function shapeParts(shape: ShapeKind, w: number, h: number): ShapePart[] 
   }
 }
 
-/** Cuánto hay que bajar el centro del texto en una figura (la cabeza del actor ocupa la parte alta). */
+/** Cuánto hay que bajar el centro del texto en una figura (la cabeza del actor y la esfera del reloj ocupan la parte alta). */
 export function textOffset(shape: ShapeKind, h: number): number {
+  if (shape === 'clock') return h * 0.19;
   if (shape !== 'actor') return 0;
   const r = Math.max(3, Math.min(h * 0.14, 16));
   return (2 * r + 4) / 2;
@@ -120,6 +145,12 @@ export function drawioShapeStyle(shape: ShapeKind | undefined): string {
       return 'shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;';
     case 'document':
       return 'shape=document;boundedLbl=1;size=0.2;';
+    case 'fan':
+      return 'shape=trapezoid;perimeter=trapezoidPerimeter;direction=west;size=0.3;';
+    case 'clock':
+      return 'ellipse;';
+    case 'diamond':
+      return 'rhombus;perimeter=rhombusPerimeter;';
     default:
       return 'rounded=1;';
   }

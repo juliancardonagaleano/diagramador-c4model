@@ -6,7 +6,7 @@ import {
   INTEGRATION_DOCUMENT_VERSION,
   INTERACTION_STYLES,
   NODE_KINDS,
-  PARENT_KIND,
+  PARENT_KINDS,
   PATTERNS,
   type IntegrationDocument,
 } from './types';
@@ -24,6 +24,9 @@ export const nodeSchema = z.object({
   parentId: idSchema.optional(),
   ref: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  contractId: idSchema.optional(),
+  pattern: z.enum(PATTERNS).optional(),
+  domain: z.string().optional(),
 });
 
 export const contractSchema = z.object({
@@ -33,6 +36,7 @@ export const contractSchema = z.object({
   version: z.string().optional(),
   url: z.string().optional(),
   description: z.string().optional(),
+  content: z.string().optional(),
 });
 
 export const interactionSchema = z.object({
@@ -46,6 +50,7 @@ export const interactionSchema = z.object({
   description: z.string().optional(),
   dataObjects: z.array(z.string()).optional(),
   criticality: z.enum(CRITICALITIES).optional(),
+  order: z.number().optional(),
 });
 
 export const flowSchema = z.object({
@@ -68,6 +73,12 @@ export const integrationDocumentSchema = z
   .superRefine((doc, ctx) => {
     const issue = (path: Array<string | number>, message: string): void => void ctx.addIssue({ code: 'custom', path, message });
 
+    const contracts = new Set<string>();
+    doc.contracts.forEach((c, i) => {
+      if (contracts.has(c.id)) issue(['contracts', i, 'id'], `Id de contrato duplicado: "${c.id}"`);
+      contracts.add(c.id);
+    });
+
     const nodes = new Map<string, (typeof doc.nodes)[number]>();
     doc.nodes.forEach((n, i) => {
       if (nodes.has(n.id)) issue(['nodes', i, 'id'], `Id de nodo duplicado: "${n.id}"`);
@@ -76,18 +87,15 @@ export const integrationDocumentSchema = z
     doc.nodes.forEach((n, i) => {
       if (n.parentId !== undefined) {
         const parent = nodes.get(n.parentId);
-        const expected = PARENT_KIND[n.kind];
+        const expected = PARENT_KINDS[n.kind];
         if (!parent) issue(['nodes', i, 'parentId'], `El nodo "${n.id}" referencia un padre inexistente: "${n.parentId}"`);
         else if (!expected) issue(['nodes', i, 'parentId'], `Un nodo de tipo "${n.kind}" no puede tener padre`);
-        else if (parent.kind !== expected) issue(['nodes', i, 'parentId'], `El padre de "${n.id}" (${n.kind}) debe ser de tipo "${expected}", pero "${parent.id}" es "${parent.kind}"`);
+        else if (!expected.includes(parent.kind)) issue(['nodes', i, 'parentId'], `El padre de "${n.id}" (${n.kind}) debe ser de tipo ${expected.map((k) => `"${k}"`).join(' o ')}, pero "${parent.id}" es "${parent.kind}"`);
       }
       if (n.ref !== undefined && !parseUrn(n.ref)) issue(['nodes', i, 'ref'], `La referencia de "${n.id}" no es una URN válida (urn:iark:<módulo>:<id>): "${n.ref}"`);
-    });
-
-    const contracts = new Set<string>();
-    doc.contracts.forEach((c, i) => {
-      if (contracts.has(c.id)) issue(['contracts', i, 'id'], `Id de contrato duplicado: "${c.id}"`);
-      contracts.add(c.id);
+      if (n.contractId !== undefined && !contracts.has(n.contractId)) issue(['nodes', i, 'contractId'], `El nodo "${n.id}" referencia un contrato inexistente: "${n.contractId}"`);
+      if (n.kind === 'pattern' && n.pattern === undefined) issue(['nodes', i, 'pattern'], `El nodo "${n.id}" es de tipo "pattern": indica qué patrón aplica`);
+      if (n.kind !== 'pattern' && n.pattern !== undefined) issue(['nodes', i, 'pattern'], `Solo un nodo de tipo "pattern" lleva patrón; "${n.id}" es "${n.kind}" (para marcar una interacción usa su propio campo "pattern")`);
     });
 
     const interactions = new Set<string>();

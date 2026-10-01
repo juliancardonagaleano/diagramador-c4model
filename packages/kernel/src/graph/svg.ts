@@ -20,11 +20,22 @@ export interface SvgNodeStyle {
   maxLines?: number;
 }
 
+/** Insignia pequeña sobre una línea: un número de paso (`text`) o el icono de un patrón (`icon`: trazados de una caja de 16 × 16). */
+export interface EdgeMark {
+  text?: string;
+  icon?: string[];
+  color?: string;
+  /** Texto accesible; en el SVG va como `<title>` (sale al pasar el ratón). */
+  title?: string;
+}
+
 export interface SvgEdgeStyle {
   stroke: string;
   dashed?: boolean;
   width?: number;
   label?: string;
+  /** Insignias que se dibujan a la izquierda de la etiqueta, o centradas en la línea si no hay etiqueta. */
+  marks?: EdgeMark[];
 }
 
 export interface SvgOptions {
@@ -36,6 +47,33 @@ export interface SvgOptions {
 }
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+const MARK = 20;
+
+/** Punto medio de una poligonal, medido sobre su longitud. */
+function polylineMidpoint(points: Array<{ x: number; y: number }>): { x: number; y: number } {
+  if (points.length === 0) return { x: 0, y: 0 };
+  const lengths = points.slice(1).map((p, i) => Math.hypot(p.x - points[i].x, p.y - points[i].y));
+  let left = lengths.reduce((a, b) => a + b, 0) / 2;
+  for (let i = 0; i < lengths.length; i++) {
+    if (left <= lengths[i] || i === lengths.length - 1) {
+      const t = lengths[i] === 0 ? 0 : Math.min(1, left / lengths[i]);
+      return { x: points[i].x + (points[i + 1].x - points[i].x) * t, y: points[i].y + (points[i + 1].y - points[i].y) * t };
+    }
+    left -= lengths[i];
+  }
+  return points[0];
+}
+
+function renderMark(mark: EdgeMark, cx: number, cy: number): string {
+  const color = mark.color ?? '#334155';
+  const title = mark.title ? `<title>${esc(mark.title)}</title>` : '';
+  if (mark.icon && mark.icon.length > 0) {
+    const paths = mark.icon.map((d) => `<path d="${d}" fill="none" stroke="${color}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+    return `<g transform="translate(${cx - MARK / 2} ${cy - MARK / 2})">${title}<rect width="${MARK}" height="${MARK}" rx="5" fill="#ffffff" stroke="${color}"/><g transform="translate(2 2)">${paths}</g></g>`;
+  }
+  return `<g>${title}<circle cx="${cx}" cy="${cy}" r="${MARK / 2}" fill="${color}"/><text x="${cx}" y="${cy + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">${esc(mark.text ?? '')}</text></g>`;
+}
 
 /** Recorta una línea de texto para que quepa en `width` px (aprox. 6.4 px por carácter a 12 px). */
 function fit(text: string, width: number): string {
@@ -67,10 +105,17 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
     const style = options.edge(e.id);
     const d = e.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x} ${p.y}`).join(' ');
     out.push(`<path d="${d}" fill="none" stroke="${style.stroke}" stroke-width="${style.width ?? 1.5}"${style.dashed ? ' stroke-dasharray="6 4"' : ''} marker-end="url(#arrow)"/>`);
-    if (style.label && e.label) {
-      const tw = Math.min(220, style.label.length * 6.4 + 10);
-      out.push(`<rect x="${e.label.x - tw / 2}" y="${e.label.y - 10}" width="${tw}" height="18" rx="3" fill="#ffffff" fill-opacity="0.92"/>`);
-      out.push(`<text x="${e.label.x}" y="${e.label.y + 3}" text-anchor="middle" fill="#334155">${esc(fit(style.label, tw + 16))}</text>`);
+    const marks = style.marks ?? [];
+    const anchor = e.label ?? polylineMidpoint(e.points);
+    const hasLabel = !!(style.label && e.label);
+    const tw = hasLabel ? Math.min(220, (style.label as string).length * 6.4 + 10) : 0;
+    const markWidth = marks.length * (MARK + 2);
+    const left = anchor.x - (markWidth + tw) / 2;
+    marks.forEach((mark, i) => out.push(renderMark(mark, left + i * (MARK + 2) + MARK / 2, anchor.y)));
+    if (hasLabel) {
+      const cx = left + markWidth + tw / 2;
+      out.push(`<rect x="${cx - tw / 2}" y="${anchor.y - 10}" width="${tw}" height="18" rx="3" fill="#ffffff" fill-opacity="0.92"/>`);
+      out.push(`<text x="${cx}" y="${anchor.y + 3}" text-anchor="middle" fill="#334155">${esc(fit(style.label as string, tw + 16))}</text>`);
     }
   }
 
