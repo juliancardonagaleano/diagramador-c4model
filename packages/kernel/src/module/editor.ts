@@ -54,6 +54,8 @@ export interface EditorNode {
   badges?: string[];
   /** Borde discontinuo (p. ej. un sistema externo). */
   dashed?: boolean;
+  /** Trazo del borde de un nodo que se dibuja como zona (por defecto discontinuo): una red pública, continua; una aislada, punteada. */
+  border?: 'solid' | 'dashed' | 'dotted';
   /** Color que sustituye al de la notación (p. ej. clasificación de un dato). */
   fill?: string;
   /** Borde que sustituye al de la notación (p. ej. rojo para un dato restringido). */

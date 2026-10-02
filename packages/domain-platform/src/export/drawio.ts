@@ -13,11 +13,13 @@ function nodeStyle(s: SvgNodeStyle): string {
 export async function toDrawio(doc: PlatformDocument): Promise<string> {
   const pages: string[] = [];
   for (const v of listViews(doc)) {
-    const { view, layout, nodes, groups, edges } = await layoutView(doc, v.id);
+    const { view, layout, nodes, groups, edges, groupStyles } = await layoutView(doc, v.id);
     const cells: string[] = ['<mxCell id="0"/>', '<mxCell id="1" parent="0"/>'];
     for (const g of layout.groups) {
+      const zone = groupStyles.get(g.id);
+      const zoneStyle = zone ? `${zone.border === 'solid' ? 'strokeWidth=2;' : zone.border === 'dotted' ? 'dashed=1;dashPattern=1 4;strokeWidth=2;' : 'dashed=1;'}fillColor=${zone.fill};strokeColor=${zone.stroke};` : 'dashed=1;fillColor=#f8fafc;strokeColor=#94a3b8;';
       cells.push(
-        `<mxCell id="n-${esc(g.id)}" value="${esc(groups.get(g.id) ?? g.id)}" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#f8fafc;strokeColor=#94a3b8;verticalAlign=top;align=left;spacingLeft=10;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="${g.x}" y="${g.y}" width="${g.width}" height="${g.height}" as="geometry"/></mxCell>`,
+        `<mxCell id="n-${esc(g.id)}" value="${esc(groups.get(g.id) ?? g.id)}" style="rounded=1;whiteSpace=wrap;html=1;${zoneStyle}verticalAlign=top;align=left;spacingLeft=10;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="${g.x}" y="${g.y}" width="${g.width}" height="${g.height}" as="geometry"/></mxCell>`,
       );
     }
     for (const b of layout.nodes) {

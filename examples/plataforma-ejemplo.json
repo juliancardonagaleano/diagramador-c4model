@@ -13,17 +13,17 @@
     { "id": "vpc-dev", "name": "VPC desarrollo", "environmentId": "dev", "exposure": "private", "cidr": "10.20.0.0/16" }
   ],
   "resources": [
-    { "id": "k8s-dev", "name": "k8s-dev", "kind": "cluster", "environmentId": "dev", "networkId": "vpc-dev", "technology": "Kubernetes", "version": "1.29", "iac": true, "owner": "Plataforma" },
-    { "id": "pedidos-db-dev", "name": "Base de pedidos (dev)", "kind": "database", "environmentId": "dev", "networkId": "vpc-dev", "technology": "PostgreSQL", "version": "15", "iac": true, "owner": "Plataforma" },
-    { "id": "kafka-dev", "name": "Kafka (dev)", "kind": "queue", "environmentId": "dev", "networkId": "vpc-dev", "technology": "Kafka", "iac": true, "owner": "Plataforma" },
-    { "id": "lb-prod", "name": "Balanceador público", "kind": "load-balancer", "environmentId": "prod", "networkId": "subred-publica", "technology": "AWS ALB", "iac": true, "owner": "Plataforma" },
-    { "id": "k8s-prod", "name": "k8s-prod", "kind": "cluster", "environmentId": "prod", "networkId": "subred-apps", "technology": "Kubernetes", "version": "1.29", "iac": true, "owner": "Plataforma" },
-    { "id": "kafka-prod", "name": "Kafka (prod)", "kind": "queue", "environmentId": "prod", "networkId": "subred-apps", "technology": "Kafka", "iac": true, "owner": "Plataforma", "ref": "urn:iark:integration:kafka" },
-    { "id": "pedidos-db-prod", "name": "Base de pedidos", "kind": "database", "environmentId": "prod", "networkId": "subred-datos", "technology": "PostgreSQL", "version": "15", "iac": true, "owner": "Plataforma", "ref": "urn:iark:integration:pedidos-db" }
+    { "id": "k8s-dev", "name": "k8s-dev", "kind": "cluster", "environmentId": "dev", "networkId": "vpc-dev", "technology": "Kubernetes", "version": "1.29", "iac": true, "owner": "Plataforma", "monthlyCost": 420, "cpuLimit": "16", "memoryLimit": "64 GiB" },
+    { "id": "pedidos-db-dev", "name": "Base de pedidos (dev)", "kind": "database", "environmentId": "dev", "networkId": "vpc-dev", "technology": "PostgreSQL", "version": "15", "iac": true, "owner": "Plataforma", "monthlyCost": 90 },
+    { "id": "kafka-dev", "name": "Kafka (dev)", "kind": "queue", "environmentId": "dev", "networkId": "vpc-dev", "technology": "Kafka", "iac": true, "owner": "Plataforma", "monthlyCost": 150 },
+    { "id": "lb-prod", "name": "Balanceador público", "kind": "load-balancer", "environmentId": "prod", "networkId": "subred-publica", "technology": "AWS ALB", "iac": true, "owner": "Plataforma", "monthlyCost": 60 },
+    { "id": "k8s-prod", "name": "k8s-prod", "kind": "cluster", "environmentId": "prod", "networkId": "subred-apps", "technology": "Kubernetes", "version": "1.29", "iac": true, "owner": "Plataforma", "monthlyCost": 1850, "region": "eu-west-1", "cpuLimit": "64", "memoryLimit": "256 GiB" },
+    { "id": "kafka-prod", "name": "Kafka (prod)", "kind": "queue", "environmentId": "prod", "networkId": "subred-apps", "technology": "Kafka", "iac": true, "owner": "Plataforma", "ref": "urn:iark:integration:kafka", "monthlyCost": 780 },
+    { "id": "pedidos-db-prod", "name": "Base de pedidos", "kind": "database", "environmentId": "prod", "networkId": "subred-datos", "technology": "PostgreSQL", "version": "15", "iac": true, "owner": "Plataforma", "ref": "urn:iark:integration:pedidos-db", "monthlyCost": 1240, "cpuLimit": "16", "memoryLimit": "128 GiB" }
   ],
   "services": [
-    { "id": "tienda-web", "name": "Tienda web", "kind": "frontend", "technology": "React", "owner": "Equipo Web", "repo": "tienda/web", "criticality": "high", "ref": "urn:iark:integration:tienda-web" },
-    { "id": "pedidos", "name": "Servicio de pedidos", "technology": "Java, Spring Boot", "owner": "Equipo Pedidos", "repo": "tienda/pedidos", "criticality": "critical", "ref": "urn:iark:integration:pedidos" },
+    { "id": "tienda-web", "name": "Tienda web", "kind": "frontend", "technology": "React", "owner": "Equipo Web", "repo": "tienda/web", "criticality": "high", "ref": "urn:iark:integration:tienda-web", "slo": "99,9 %" },
+    { "id": "pedidos", "name": "Servicio de pedidos", "technology": "Java, Spring Boot", "owner": "Equipo Pedidos", "repo": "tienda/pedidos", "criticality": "critical", "ref": "urn:iark:integration:pedidos", "slo": "99,95 %", "sla": "99,9 %" },
     { "id": "facturacion", "name": "Facturación", "technology": ".NET", "owner": "Equipo Finanzas", "repo": "tienda/facturacion", "criticality": "high", "ref": "urn:iark:integration:facturacion" },
     { "id": "notificaciones", "name": "Notificaciones", "kind": "worker", "technology": "Node.js", "owner": "Equipo Web", "repo": "tienda/notificaciones", "criticality": "medium" },
     { "id": "reportes", "name": "Reportes nocturnos", "kind": "job", "technology": "Python", "owner": "Equipo Pedidos", "repo": "tienda/reportes", "criticality": "low" },
@@ -35,8 +35,8 @@
     { "id": "facturacion-dev", "serviceId": "facturacion", "environmentId": "dev", "hostId": "k8s-dev", "replicas": 1, "version": "1.8.0" },
     { "id": "notificaciones-dev", "serviceId": "notificaciones", "environmentId": "dev", "hostId": "k8s-dev", "replicas": 1, "version": "0.9.0" },
     { "id": "reportes-dev", "serviceId": "reportes", "environmentId": "dev", "hostId": "k8s-dev", "version": "0.4.0" },
-    { "id": "tienda-web-prod", "serviceId": "tienda-web", "environmentId": "prod", "hostId": "k8s-prod", "replicas": 2, "version": "2.3.1" },
-    { "id": "pedidos-prod", "serviceId": "pedidos", "environmentId": "prod", "hostId": "k8s-prod", "replicas": 3, "version": "3.0.2" },
+    { "id": "tienda-web-prod", "serviceId": "tienda-web", "environmentId": "prod", "hostId": "k8s-prod", "replicas": 2, "version": "2.3.1", "monthlyCost": 180, "cpuLimit": "1", "memoryLimit": "2 GiB" },
+    { "id": "pedidos-prod", "serviceId": "pedidos", "environmentId": "prod", "hostId": "k8s-prod", "replicas": 3, "version": "3.0.2", "monthlyCost": 310, "cpuLimit": "2", "memoryLimit": "4 GiB" },
     { "id": "facturacion-prod", "serviceId": "facturacion", "environmentId": "prod", "hostId": "k8s-prod", "replicas": 2, "version": "1.7.4" },
     { "id": "notificaciones-prod", "serviceId": "notificaciones", "environmentId": "prod", "hostId": "k8s-prod", "replicas": 1, "version": "0.9.0" },
     { "id": "reportes-prod", "serviceId": "reportes", "environmentId": "prod", "hostId": "k8s-prod", "version": "0.3.5" }

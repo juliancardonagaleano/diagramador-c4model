@@ -3,9 +3,9 @@
  * React) y los exportadores SVG de los módulos (que las escriben como texto), de modo que un cilindro o una flecha se ven
  * igual en pantalla y en el archivo exportado.
  */
-export type ShapeKind = 'rect' | 'rounded' | 'cylinder' | 'pill' | 'hexagon' | 'chevron' | 'pipe' | 'bar' | 'circle' | 'card' | 'actor' | 'document' | 'fan' | 'clock' | 'diamond';
+export type ShapeKind = 'rect' | 'rounded' | 'cylinder' | 'pill' | 'hexagon' | 'chevron' | 'pipe' | 'bar' | 'circle' | 'card' | 'actor' | 'document' | 'fan' | 'clock' | 'diamond' | 'cube' | 'monitor';
 
-export const SHAPE_KINDS: ShapeKind[] = ['rect', 'rounded', 'cylinder', 'pill', 'hexagon', 'chevron', 'pipe', 'bar', 'circle', 'card', 'actor', 'document', 'fan', 'clock', 'diamond'];
+export const SHAPE_KINDS: ShapeKind[] = ['rect', 'rounded', 'cylinder', 'pill', 'hexagon', 'chevron', 'pipe', 'bar', 'circle', 'card', 'actor', 'document', 'fan', 'clock', 'diamond', 'cube', 'monitor'];
 
 export interface ShapePart {
   /** Trazado SVG (atributo `d`), en coordenadas relativas a la esquina superior izquierda del nodo. */
@@ -89,6 +89,24 @@ export function shapeParts(shape: ShapeKind, w: number, h: number): ShapePart[] 
         { d: `M${n(cx)} ${n(cy - r * 0.6)} V${n(cy)} H${n(cx + r * 0.5)}`, role: 'detail', opacity: 0.9 },
       ];
     }
+    case 'cube': {
+      // Caja en perspectiva: la cara frontal abajo a la izquierda, la superior y la lateral en profundidad (un clúster).
+      const k = Math.min(14, w / 6, h / 3);
+      return [
+        { d: `M1 ${n(k)} L${n(k)} 1 H${n(w - 1)} V${n(h - k)} L${n(w - k)} ${n(h - 1)} H1 z`, role: 'body' },
+        { d: `M1 ${n(k)} H${n(w - k)} V${n(h - 1)}`, role: 'detail' },
+        { d: `M${n(w - k)} ${n(k)} L${n(w - 1)} 1`, role: 'detail' },
+      ];
+    }
+    case 'monitor': {
+      // Pantalla con su peana debajo (una máquina virtual); el texto va sobre la pantalla (ver `textOffset`).
+      const stand = Math.min(12, h / 4);
+      return [
+        { d: roundedRectPath(i, i, w - 2, h - stand - 1, 6), role: 'body' },
+        { d: `M${n(w / 2)} ${n(h - stand)} V${n(h - 3)}`, role: 'detail' },
+        { d: `M${n(w / 2 - Math.min(20, w / 6))} ${n(h - 2)} H${n(w / 2 + Math.min(20, w / 6))}`, role: 'detail' },
+      ];
+    }
     case 'diamond':
       return [{ d: `M${n(w / 2)} 1 L${n(w - 1)} ${n(h / 2)} L${n(w / 2)} ${n(h - 1)} L1 ${n(h / 2)} z`, role: 'body' }];
     case 'card':
@@ -116,6 +134,8 @@ export function shapeParts(shape: ShapeKind, w: number, h: number): ShapePart[] 
 export function textOffset(shape: ShapeKind, h: number): number {
   if (shape === 'clock') return h * 0.28;
   if (shape === 'card') return 26;
+  if (shape === 'cube') return Math.min(14, h / 3) / 2;
+  if (shape === 'monitor') return -Math.min(12, h / 4) / 2;
   if (shape !== 'actor') return 0;
   const r = Math.max(3, Math.min(h * 0.14, 16));
   return (2 * r + 4) / 2;
@@ -152,6 +172,10 @@ export function drawioShapeStyle(shape: ShapeKind | undefined): string {
       return 'ellipse;';
     case 'diamond':
       return 'rhombus;perimeter=rhombusPerimeter;';
+    case 'cube':
+      return 'shape=cube;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;size=14;';
+    case 'monitor':
+      return 'rounded=1;arcSize=12;strokeWidth=2;';
     default:
       return 'rounded=1;';
   }

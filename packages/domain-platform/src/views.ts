@@ -1,10 +1,11 @@
+import { hasCosts } from './costs';
 import { dependencyGraph, reach, scopeEnvironment, scoped, type Reach } from './graph';
 import { indexElements, type PlatformDocument } from './types';
 
 export interface PlatformView {
-  /** `topology`, `env:<id>`, `delivery` o, bajo demanda, `impact:<id>`, `depends:<id>` y `focus:<id>`. */
+  /** `topology`, `env:<id>`, `delivery`, `costs` o, bajo demanda, `impact:<id>`, `depends:<id>` y `focus:<id>`. */
   id: string;
-  type: 'topology' | 'environment' | 'delivery' | 'impact' | 'depends' | 'focus';
+  type: 'topology' | 'environment' | 'delivery' | 'costs' | 'impact' | 'depends' | 'focus';
   title: string;
   /** Entorno al que se acota la vista (`environment` y las de impacto de un elemento de un solo entorno). */
   environmentId?: string;
@@ -73,9 +74,23 @@ function delivery(doc: PlatformDocument): PlatformView {
   };
 }
 
+/** Costes mensuales por entorno: los recursos y las instancias con coste, agrupados en su entorno. */
+function costs(doc: PlatformDocument): PlatformView {
+  const priced = doc.deployments.filter((d) => d.monthlyCost !== undefined);
+  return {
+    id: 'costs',
+    type: 'costs',
+    title: `Costes por entorno - ${doc.workspace.name}`,
+    elementIds: doc.resources.filter((r) => r.monthlyCost !== undefined).map((r) => r.id),
+    dependencyIds: [],
+    deploymentIds: priced.map((d) => d.id),
+    pipelineIds: [],
+  };
+}
+
 /**
  * Vistas derivadas del documento: la topología lógica (servicios, recursos y sus dependencias), una por entorno con
- * lo que hay desplegado en cada red y anfitrión, y la entrega continua (pipelines). Solo se listan las que tienen
+ * lo que hay desplegado en cada red y anfitrión, la entrega continua (pipelines) y, si hay costes declarados, los costes por entorno. Solo se listan las que tienen
  * contenido. El impacto o las dependencias de un elemento concreto se piden por su id (ver `findView`).
  */
 export function listViews(doc: PlatformDocument): PlatformView[] {
@@ -85,6 +100,7 @@ export function listViews(doc: PlatformDocument): PlatformView[] {
     if (doc.resources.some((r) => r.environmentId === e.id) || doc.deployments.some((d) => d.environmentId === e.id)) views.push(environmentView(doc, e.id));
   }
   if (doc.pipelines.length > 0) views.push(delivery(doc));
+  if (hasCosts(doc)) views.push(costs(doc));
   return views;
 }
 

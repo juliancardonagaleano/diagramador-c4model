@@ -1,13 +1,17 @@
-import { uniqueId, type EdgeNotation, type EditResult, type EditorGraph, type EditorNode, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
-import { DEPENDENCY_STYLES, EXTERNAL_COLOR, RESOURCE_COLORS, RESOURCE_SHAPES, SERVICE_COLORS, SERVICE_SHAPES, buildScene } from './export/render';
+import { uniqueId, type EdgeNotation, type EditResult, type EditorAction, type EditorGraph, type EditorNode, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
+import { duplicateEnvironment, findEnvironment, nextEnvironment, promoteDeployments, scaleReplicas, toggleApproval } from './actions';
+import { formatCost } from './costs';
+import { DEPENDENCY_STYLES, EXPOSURE_ZONES, EXTERNAL_COLOR, RESOURCE_COLORS, RESOURCE_SHAPES, SERVICE_COLORS, SERVICE_SHAPES, buildScene } from './export/render';
+import { dependencyEnvironmentViolation, exposureViolation, hostViolation, placementViolation } from './rules';
 import {
   CRITICALITIES,
   CRITICALITY_LABELS,
   DEPENDENCY_KINDS,
   DEPENDENCY_LABELS,
+  ENVIRONMENT_KINDS,
+  ENVIRONMENT_LABELS,
   EXPOSURES,
   EXPOSURE_LABELS,
-  HOST_KINDS,
   PIPELINE_KINDS,
   PIPELINE_LABELS,
   RESOURCE_KINDS,
@@ -20,6 +24,7 @@ import {
   indexElements,
   isHost,
   type Deployment,
+  type Environment,
   type Dependency,
   type DependencyKind,
   type Network,
@@ -64,6 +69,7 @@ const NODE_KIND_NOTATION: NodeNotation[] = [
   resource('secret-store', '🔒'),
   resource('registry', '▦'),
   resource('other', '▢'),
+  { kind: 'environment', label: 'Entorno', glyph: '◫', shape: 'rect', fill: '#2f9e44', width: 240, height: 120, addable: false },
   { kind: 'network', label: 'Red', glyph: '▦', shape: 'rect', fill: NETWORK_FILLS.private, width: 240, height: 120 },
   { kind: 'pipeline', label: 'Pipeline', glyph: '⛓', shape: 'rect', fill: STEP_COLOR, width: 240, height: 120 },
   { kind: 'step', label: 'Paso', glyph: '·', shape: 'rect', fill: STEP_COLOR, width: 180, height: 70, addable: false },
@@ -85,6 +91,10 @@ const INSTANCE_FIELDS: FieldSpec[] = [
   { key: 'replicas', label: 'Réplicas', type: 'text' },
   { key: 'version', label: 'Versión desplegada', type: 'text' },
 ];
+const COST: FieldSpec = { key: 'monthlyCost', label: 'Coste mensual', type: 'number', min: 0, step: 1, hint: 'En la moneda del espacio de trabajo (USD si no se indica); alimenta la vista de costes' };
+const CPU: FieldSpec = { key: 'cpuLimit', label: 'Límite de CPU', type: 'text', hint: 'p. ej. 2 (vCPU) o 500m' };
+const MEMORY: FieldSpec = { key: 'memoryLimit', label: 'Límite de memoria', type: 'text', hint: 'p. ej. 4 GiB' };
+const DEPLOYMENT_FIELDS: FieldSpec[] = [...INSTANCE_FIELDS, COST, CPU, MEMORY];
 
 function nodeFields(kind: string, doc: PlatformDocument): FieldSpec[] {
   const environment: FieldSpec = { key: 'environmentId', label: 'Entorno', type: 'select', options: doc.environments.map((e) => ({ value: e.id, label: e.name })) };
@@ -98,6 +108,8 @@ function nodeFields(kind: string, doc: PlatformDocument): FieldSpec[] {
       { key: 'owner', label: 'Responsable', type: 'text' },
       { key: 'repo', label: 'Repositorio', type: 'text' },
       { key: 'criticality', label: 'Criticidad', type: 'select', options: options(CRITICALITIES, CRITICALITY_LABELS), allowEmpty: true },
+      { key: 'slo', label: 'SLO (objetivo interno)', type: 'text', hint: 'p. ej. 99,9 % de disponibilidad' },
+      { key: 'sla', label: 'SLA (compromiso con el cliente)', type: 'text', hint: 'p. ej. 99,5 %' },
       { key: 'external', label: 'Externo (SaaS, no se despliega aquí)', type: 'boolean' },
       REF,
       TAGS,
@@ -115,6 +127,10 @@ function nodeFields(kind: string, doc: PlatformDocument): FieldSpec[] {
       { key: 'status', label: 'Estado', type: 'select', options: options(RESOURCE_STATUSES, STATUS_LABELS), allowEmpty: true, hint: 'si no se indica, aprovisionado' },
       { key: 'iac', label: 'Gestionado como código (IaC)', type: 'boolean' },
       { key: 'owner', label: 'Responsable', type: 'text' },
+      COST,
+      { key: 'region', label: 'Región', type: 'text' },
+      CPU,
+      MEMORY,
       REF,
       TAGS,
     ];
@@ -135,7 +151,9 @@ function nodeFields(kind: string, doc: PlatformDocument): FieldSpec[] {
         { key: 'stages', label: 'Entornos por los que promociona', type: 'list', hint: 'ids de entorno en orden; «prod*» pide aprobación manual' },
       ];
     case 'instance':
-      return INSTANCE_FIELDS;
+      return DEPLOYMENT_FIELDS;
+    case 'environment':
+      return [NAME, DESCRIPTION, { key: 'kind', label: 'Clase', type: 'select', options: options(ENVIRONMENT_KINDS, ENVIRONMENT_LABELS), allowEmpty: true }, { key: 'provider', label: 'Proveedor', type: 'text' }, { key: 'region', label: 'Región', type: 'text' }];
     default:
       return [NAME, DESCRIPTION];
   }
@@ -147,7 +165,7 @@ const EDGE_FIELDS: Record<string, FieldSpec[]> = {
     { key: 'protocol', label: 'Protocolo', type: 'text' },
     DESCRIPTION,
   ],
-  'runs-on': INSTANCE_FIELDS,
+  'runs-on': DEPLOYMENT_FIELDS,
   flow: [],
 };
 
@@ -158,7 +176,7 @@ function patchObject<T extends object>(target: T, patch: Record<string, unknown>
   for (const key of allowed) {
     if (!(key in patch)) continue;
     let value = clean(patch[key]);
-    if (key === 'replicas' && value !== undefined) value = Number(value);
+    if ((key === 'replicas' || key === 'monthlyCost') && value !== undefined) value = Number(value);
     if (value === undefined) delete next[key];
     else next[key] = value;
   }
@@ -177,11 +195,13 @@ type Target =
   | { type: 'dependency'; dependencyId: string }
   | { type: 'runs-on'; deploymentId: string }
   | { type: 'flow'; pipelineId: string; direction: 'in' | 'out'; elementId: string }
-  | { type: 'flow-step'; pipelineId: string };
+  | { type: 'flow-step'; pipelineId: string }
+  | { type: 'cost-group'; environmentId: string };
 
 function resolve(doc: PlatformDocument, id: string): Target | undefined {
   if (id.startsWith('i:')) return doc.deployments.some((d) => d.id === id.slice(2)) ? { type: 'instance', deploymentId: id.slice(2) } : undefined;
   if (id.startsWith('x:')) return doc.deployments.some((d) => d.id === id.slice(2)) ? { type: 'runs-on', deploymentId: id.slice(2) } : undefined;
+  if (id.startsWith('c:')) return doc.environments.some((x) => x.id === id.slice(2)) ? { type: 'cost-group', environmentId: id.slice(2) } : undefined;
   if (id.startsWith('d:')) {
     const dependencyId = doc.dependencies.map((d) => d.id).find((did) => id === `d:${did}` || id.startsWith(`d:${did}:`));
     return dependencyId ? { type: 'dependency', dependencyId } : undefined;
@@ -227,8 +247,158 @@ function environmentFor(doc: PlatformDocument, parentId?: string, viewId?: strin
   return doc.environments[0]?.id;
 }
 
+/** Instancias desplegadas que hay tras unos ids del lienzo: una instancia, su flecha «corre en» o un anfitrión con todo lo que aloja. */
+function deploymentsBehind(doc: PlatformDocument, ids: string[]): Deployment[] {
+  const found = new Map<string, Deployment>();
+  for (const id of ids) {
+    const target = resolve(doc, id);
+    if (target?.type === 'instance' || target?.type === 'runs-on') {
+      const d = doc.deployments.find((x) => x.id === target.deploymentId);
+      if (d) found.set(d.id, d);
+    } else if (target?.type === 'element') {
+      for (const d of doc.deployments.filter((x) => x.hostId === target.id)) found.set(d.id, d);
+    }
+  }
+  return [...found.values()];
+}
+
+/** Entorno único al que pertenece una selección (un recurso, una red, una instancia o el grupo de costes de un entorno), o un motivo si no hay uno. */
+function environmentOfSelection(doc: PlatformDocument, ids: string[]): { environment?: Environment; reason?: string } {
+  const found = new Set<string>();
+  for (const id of ids) {
+    const target = resolve(doc, id);
+    if (target?.type === 'cost-group') found.add(target.environmentId);
+    else if (target?.type === 'instance' || target?.type === 'runs-on') found.add(doc.deployments.find((d) => d.id === target.deploymentId)!.environmentId);
+    else if (target?.type === 'element') {
+      const e = indexElements(doc).get(target.id)!;
+      if (e.kind === 'resource' || e.kind === 'network') found.add((e.item as { environmentId: string }).environmentId);
+      else if (e.kind === 'environment') found.add(e.id);
+    }
+  }
+  if (found.size === 0) return { reason: 'Selecciona un recurso, una red o una instancia del entorno que quieres duplicar.' };
+  if (found.size > 1) return { reason: 'La selección mezcla varios entornos: elige elementos de uno solo.' };
+  const environment = doc.environments.find((e) => e.id === [...found][0]);
+  return environment ? { environment } : { reason: 'No se encuentra el entorno.' };
+}
+
+/** Insignias de un recurso, una instancia o un servicio: coste, región, límites y objetivos de servicio. */
+function metadataBadges(doc: PlatformDocument, nodeId: string, includeCost: boolean): string[] {
+  const target = resolve(doc, nodeId);
+  const limits = (x: { cpuLimit?: string; memoryLimit?: string }): string[] => {
+    const text = [x.cpuLimit ? `CPU ${x.cpuLimit}` : '', x.memoryLimit ? `mem ${x.memoryLimit}` : ''].filter(Boolean).join(' · ');
+    return text ? [text] : [];
+  };
+  const objectives = (s: { slo?: string; sla?: string } | undefined): string[] => {
+    const text = [s?.slo ? `SLO ${s.slo}` : '', s?.sla ? `SLA ${s.sla}` : ''].filter(Boolean).join(' · ');
+    return text ? [text] : [];
+  };
+  const cost = (x: { monthlyCost?: number }): string[] => (includeCost && x.monthlyCost !== undefined ? [formatCost(x.monthlyCost, doc)] : []);
+  if (target?.type === 'instance') {
+    const d = doc.deployments.find((x) => x.id === target.deploymentId)!;
+    const s = doc.services.find((x) => x.id === d.serviceId);
+    return [...objectives(s), ...limits(d), ...cost(d)];
+  }
+  if (target?.type === 'element') {
+    const r = doc.resources.find((x) => x.id === target.id);
+    if (r) return [...cost(r), ...(r.region ? [`región ${r.region}`] : []), ...limits(r)];
+    const s = doc.services.find((x) => x.id === target.id);
+    if (s) return objectives(s);
+  }
+  return [];
+}
+
+/** La instancia desplegada que representa un id del lienzo, si lo es. */
+function instanceOf(doc: PlatformDocument, nodeId: string): Deployment | undefined {
+  const target = resolve(doc, nodeId);
+  return target?.type === 'instance' ? doc.deployments.find((d) => d.id === target.deploymentId) : undefined;
+}
+
 const ok = (document: PlatformDocument, id?: string): EditResult<PlatformDocument> => ({ ok: true, document, id });
 const fail = (reason: string): EditResult<PlatformDocument> => ({ ok: false, reason });
+
+const NO_INSTANCES = 'Selecciona una o varias instancias desplegadas (o un clúster o máquina con servicios).';
+
+/** Etapas de despliegue de pipeline (`p:<pipeline>:s<n>`) que hay en una selección, por pipeline. */
+function stagesIn(doc: PlatformDocument, ids: string[]): Map<string, number[]> {
+  const found = new Map<string, number[]>();
+  for (const id of ids) {
+    const target = resolve(doc, id);
+    const index = target?.type === 'pipeline' && target.step ? /^s(\d+)$/.exec(target.step)?.[1] : undefined;
+    if (target?.type === 'pipeline' && index !== undefined) found.set(target.pipelineId, [...(found.get(target.pipelineId) ?? []), Number(index)]);
+  }
+  return found;
+}
+
+const environmentNames = (doc: PlatformDocument): string[] => doc.environments.map((e) => e.name);
+
+/** Operaciones sobre la selección del lienzo (la barra las muestra tras los botones de edición). */
+const ACTIONS: Array<EditorAction<PlatformDocument>> = [
+  {
+    id: 'promote-environment',
+    label: 'Promover a otro entorno…',
+    hint: 'Despliega las instancias seleccionadas (o todas las de un clúster) en otro entorno, con su versión; si ya corren allí, solo les pasa la versión',
+    needs: 'many',
+    prompt: {
+      label: 'Entorno de destino',
+      placeholder: 'Producción',
+      initial: (doc, ids) => {
+        const first = deploymentsBehind(doc, ids)[0];
+        return (first && nextEnvironment(doc, first.environmentId)?.name) || '';
+      },
+      suggestions: environmentNames,
+    },
+    disabled: (doc, ids) => (deploymentsBehind(doc, ids).length === 0 ? NO_INSTANCES : doc.environments.length < 2 ? 'El documento solo tiene un entorno.' : undefined),
+    run(doc, ids, input) {
+      const target = findEnvironment(doc, input ?? '');
+      if (!target) return fail(`No existe el entorno «${input ?? ''}». Entornos: ${environmentNames(doc).join(', ')}.`);
+      return promoteDeployments(doc, deploymentsBehind(doc, ids).map((d) => d.id), target);
+    },
+  },
+  {
+    id: 'duplicate-environment',
+    label: 'Duplicar entorno…',
+    hint: 'Copia el entorno de la selección (redes, recursos, instancias y las dependencias de sus recursos) con un nombre nuevo; los pipelines lo añaden como etapa',
+    needs: 'many',
+    prompt: {
+      label: 'Nombre del entorno nuevo',
+      placeholder: 'Preproducción 2',
+      initial: (doc, ids) => {
+        const { environment } = environmentOfSelection(doc, ids);
+        return environment ? `${environment.name} (copia)` : '';
+      },
+    },
+    disabled: (doc, ids) => environmentOfSelection(doc, ids).reason,
+    run(doc, ids, input) {
+      const { environment, reason } = environmentOfSelection(doc, ids);
+      return environment ? duplicateEnvironment(doc, environment.id, input ?? '') : fail(reason ?? 'Selecciona un elemento del entorno.');
+    },
+  },
+  {
+    id: 'scale-replicas',
+    label: 'Escalar réplicas…',
+    hint: 'Cambia las réplicas de las instancias seleccionadas: un número (5), una suma o resta (+2, -1) o un factor (x2)',
+    needs: 'many',
+    prompt: { label: 'Réplicas (5, +2, -1, x2)', placeholder: '+2' },
+    disabled: (doc, ids) => (deploymentsBehind(doc, ids).length === 0 ? NO_INSTANCES : undefined),
+    run: (doc, ids, input) => scaleReplicas(doc, deploymentsBehind(doc, ids).map((d) => d.id), input),
+  },
+  {
+    id: 'toggle-approval',
+    label: 'Puerta de aprobación',
+    hint: 'Pide (o quita) la aprobación manual antes de desplegar en las etapas de pipeline seleccionadas',
+    needs: 'many',
+    disabled: (doc, ids) => (stagesIn(doc, ids).size === 0 ? 'Selecciona una o varias etapas de despliegue de un pipeline.' : undefined),
+    run(doc, ids) {
+      let next = doc;
+      for (const [pipelineId, stages] of stagesIn(doc, ids)) {
+        const result = toggleApproval(next, pipelineId, stages);
+        if (!result.ok) return result;
+        next = result.document;
+      }
+      return ok(next);
+    },
+  },
+];
 
 export const platformEditor: EditorSpec<PlatformDocument> = {
   nodeKinds: NODE_KIND_NOTATION,
@@ -245,14 +415,24 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
     for (const [id, g] of scene.groups) {
       const element = all.get(g.elementId);
       const network = networks.get(g.elementId);
-      const kind = network ? 'network' : element?.kind === 'pipeline' ? 'pipeline' : ((element?.item as Resource | undefined)?.kind ?? 'other');
+      const kind = network ? 'network' : element?.kind === 'pipeline' ? 'pipeline' : element?.kind === 'environment' ? 'environment' : ((element?.item as Resource | undefined)?.kind ?? 'other');
       // El lienzo antepone la clase al título del grupo, así que el título lleva solo el nombre y lo que lo caracteriza.
       const label = network
         ? `${network.name} · ${EXPOSURE_LABELS[exposureOf(network)]}${network.cidr ? ` (${network.cidr})` : ''}`
         : element?.kind === 'pipeline'
           ? `${element.name} · ${PIPELINE_LABELS[(element.item as Pipeline).kind]}${(element.item as Pipeline).tool ? ` (${(element.item as Pipeline).tool})` : ''}`
-          : (element?.name ?? g.label);
-      nodes.push({ id, kind, label, parentId: g.groupId, ref: (element?.item as { ref?: string } | undefined)?.ref, fill: network ? NETWORK_FILLS[exposureOf(network)] : undefined });
+          : element?.kind === 'environment'
+            ? g.label
+            : [element?.name ?? g.label, ...metadataBadges(doc, g.elementId, true)].join(' · ');
+      nodes.push({
+        id,
+        kind,
+        label,
+        parentId: g.groupId,
+        ref: (element?.item as { ref?: string } | undefined)?.ref,
+        fill: network ? NETWORK_FILLS[exposureOf(network)] : undefined,
+        ...(network ? { border: EXPOSURE_ZONES[exposureOf(network)].border } : {}),
+      });
     }
     for (const [id, n] of scene.nodes) {
       const [label = id, ...rest] = n.lines;
@@ -263,7 +443,7 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
         kind: n.cls,
         label,
         sublabel: rest[0],
-        badges: rest.slice(1).filter(Boolean),
+        badges: [...rest.slice(1).filter(Boolean), ...metadataBadges(doc, id, view.type !== 'costs')],
         parentId: n.groupId,
         ref: shownAsInstance ? undefined : (n.elementId ? (all.get(n.elementId)?.item as { ref?: string } | undefined)?.ref : undefined),
         fill: n.fill,
@@ -307,6 +487,10 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
         const d = doc.dependencies.find((x) => x.id === target.dependencyId)!;
         return { type: 'edge', kind: d.kind, values: { ...d } };
       }
+      case 'cost-group': {
+        const env = doc.environments.find((x) => x.id === target.environmentId)!;
+        return { type: 'node', kind: 'environment', values: { ...env } };
+      }
       default:
         return { type: 'edge', kind: 'flow', values: {} };
     }
@@ -335,6 +519,8 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
       if (!environmentId) return fail('Añade primero un entorno al documento (pestaña JSON): todo recurso pertenece a uno.');
       const id = uniqueId(name, taken);
       const networkId = parentElement?.kind === 'network' ? parentElement.id : parentElement?.kind === 'resource' ? (parentElement.item as Resource).networkId : undefined;
+      const misplaced = placementViolation(doc, kind as ResourceKind, networkId);
+      if (misplaced) return fail(misplaced);
       const created: Resource = { id, name, kind: kind as ResourceKind, environmentId, ...(networkId ? { networkId } : {}) };
       return ok({ ...doc, resources: [...doc.resources, created] }, id);
     }
@@ -390,10 +576,15 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
       case 'element': {
         const e = all.get(target.id)!;
         if (e.kind === 'service') {
-          return ok({ ...doc, services: doc.services.map((s) => (s.id === e.id ? patchObject(s, patch, ['name', 'description', 'kind', 'technology', 'owner', 'repo', 'criticality', 'external', 'ref', 'tags']) : s)) }, id);
+          return ok({ ...doc, services: doc.services.map((s) => (s.id === e.id ? patchObject(s, patch, ['name', 'description', 'kind', 'technology', 'owner', 'repo', 'criticality', 'slo', 'sla', 'external', 'ref', 'tags']) : s)) }, id);
         }
         if (e.kind === 'resource') {
-          const next = patchObject(e.item as Resource, patch, ['name', 'description', 'kind', 'environmentId', 'networkId', 'technology', 'version', 'status', 'iac', 'owner', 'ref', 'tags']);
+          const current = e.item as Resource;
+          const next = patchObject(current, patch, ['name', 'description', 'kind', 'environmentId', 'networkId', 'technology', 'version', 'status', 'iac', 'owner', 'ref', 'tags', 'monthlyCost', 'region', 'cpuLimit', 'memoryLimit']);
+          if (next.monthlyCost !== undefined && (!Number.isFinite(next.monthlyCost) || next.monthlyCost < 0)) return fail('El coste mensual es un número igual o mayor que cero.');
+          // Solo se comprueba lo que cambia: un documento que ya incumple la regla sigue editándose.
+          const misplaced = next.kind !== current.kind || next.networkId !== current.networkId ? placementViolation(doc, next.kind, next.networkId) : undefined;
+          if (misplaced) return fail(misplaced);
           const network = next.networkId ? doc.networks.find((n) => n.id === next.networkId) : undefined;
           if (next.networkId && !network) return fail(`No existe la red «${next.networkId}».`);
           if (network && network.environmentId !== next.environmentId) return fail(`La red «${network.name}» es del entorno «${network.environmentId}», no de «${next.environmentId}».`);
@@ -403,6 +594,8 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
         if (e.kind === 'network') {
           const next = patchObject(e.item as Network, patch, ['name', 'description', 'environmentId', 'parentId', 'exposure', 'cidr']);
           if (next.parentId === next.id) return fail('Una red no puede contenerse a sí misma.');
+          const exposed = next.exposure !== (e.item as Network).exposure ? exposureViolation(doc, e.id, next.exposure) : undefined;
+          if (exposed) return fail(exposed);
           const parent = next.parentId ? doc.networks.find((n) => n.id === next.parentId) : undefined;
           if (next.parentId && !parent) return fail(`No existe la red «${next.parentId}».`);
           if (parent && parent.environmentId !== next.environmentId) return fail('La red y la que la contiene deben ser del mismo entorno.');
@@ -416,7 +609,10 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
       case 'instance':
       case 'runs-on': {
         if (typeof patch.replicas === 'string' && patch.replicas !== '' && !/^\d+$/.test(patch.replicas.trim())) return fail('Las réplicas son un número entero.');
-        return ok({ ...doc, deployments: doc.deployments.map((d) => (d.id === target.deploymentId ? patchObject(d, patch, ['replicas', 'version']) : d)) }, id);
+        const next = doc.deployments.map((d) => (d.id === target.deploymentId ? patchObject(d, patch, ['replicas', 'version', 'monthlyCost', 'cpuLimit', 'memoryLimit']) : d));
+        const cost = next.find((d) => d.id === target.deploymentId)!.monthlyCost;
+        if (cost !== undefined && (!Number.isFinite(cost) || cost < 0)) return fail('El coste mensual es un número igual o mayor que cero.');
+        return ok({ ...doc, deployments: next }, id);
       }
       case 'dependency': {
         const next = doc.dependencies.map((d) => (d.id === target.dependencyId ? patchObject(d, patch, ['kind', 'protocol', 'description']) : d));
@@ -424,6 +620,8 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
         if (!(DEPENDENCY_KINDS as readonly string[]).includes(edited.kind)) return fail(`Tipo de dependencia desconocido: ${String(edited.kind)}`);
         return ok({ ...doc, dependencies: next }, id);
       }
+      case 'cost-group':
+        return ok({ ...doc, environments: doc.environments.map((x) => (x.id === target.environmentId ? patchObject(x, patch, ['name', 'description', 'kind', 'provider', 'region']) : x)) }, id);
       default:
         return fail('El flujo de un pipeline se edita en el propio pipeline.');
     }
@@ -449,6 +647,8 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
             p.id !== target.pipelineId ? p : target.direction === 'in' ? { ...p, serviceIds: p.serviceIds.filter((s) => s !== target.elementId) } : { ...p, provisions: (p.provisions ?? []).filter((r) => r !== target.elementId) },
           ),
         });
+      case 'cost-group':
+        return fail('Un entorno no se quita desde la vista de costes: bórralo en la pestaña JSON.');
       default:
         return fail('Los pasos de un pipeline se quitan editando sus entornos.');
     }
@@ -462,15 +662,16 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
       if (!source || !target) return 'Una dependencia une servicios o recursos.';
       if (source.id === target.id) return 'Un elemento no puede depender de sí mismo.';
       if (doc.dependencies.some((d) => d.kind === kind && d.sourceId === source.id && d.targetId === target.id)) return 'Esa dependencia ya existe.';
-      return undefined;
+      return dependencyEnvironmentViolation(doc, source.id, target.id, instanceOf(doc, sourceId), instanceOf(doc, targetId));
     }
     if (kind === 'runs-on') {
       if (source?.kind !== 'service') return '«corre en» va de un servicio al clúster o máquina donde se despliega.';
       const s = doc.services.find((x) => x.id === source.id)!;
       if (s.external) return 'Un servicio externo no se despliega en la plataforma.';
       const host = target?.kind === 'resource' ? doc.resources.find((r) => r.id === target.id) : undefined;
-      if (!host || !isHost(host)) return `El destino debe ser ${HOST_KINDS.map((k) => RESOURCE_LABELS[k].toLowerCase()).join(' o ')}.`;
-      if (doc.deployments.some((d) => d.serviceId === s.id && d.hostId === host.id)) return 'Ese servicio ya corre en ese anfitrión.';
+      const misplaced = hostViolation(host, instanceOf(doc, sourceId));
+      if (misplaced) return misplaced;
+      if (doc.deployments.some((d) => d.serviceId === s.id && d.hostId === host!.id)) return 'Ese servicio ya corre en ese anfitrión.';
       return undefined;
     }
     if (kind === 'flow') {
@@ -490,6 +691,8 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
     }
     return `Tipo de relación desconocido: ${kind}`;
   },
+
+  actions: ACTIONS,
 };
 
 function updatePipeline(doc: PlatformDocument, pipelineId: string, patch: Record<string, unknown>, id: string): EditResult<PlatformDocument> {
