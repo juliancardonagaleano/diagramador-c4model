@@ -136,9 +136,9 @@ function nodeFields(kind: string, doc: PlatformDocument): FieldSpec[] {
       { key: 'owner', label: 'Responsable', type: 'text' },
       COST,
       { key: 'region', label: 'Región', type: 'text' },
+      ...(kind === 'certificate' ? [EXPIRES] : []),
       CPU,
       MEMORY,
-      ...(kind === 'certificate' ? [EXPIRES] : []),
       REF,
       TAGS,
     ];
@@ -469,12 +469,6 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
     };
   },
 
-  /** Solo la matriz de comparación de varios entornos tiene colocación propia (una cuadrícula); las demás vistas, el autolayout por capas. */
-  layout(doc, viewId) {
-    const view = findView(doc, viewId);
-    return matrixIsDrawn(view) ? drawMatrix(doc, view).layout : undefined;
-  },
-
   fields(target, doc) {
     if (target.type === 'node') return nodeFields(target.kind, doc);
     return EDGE_FIELDS[(DEPENDENCY_KINDS as readonly string[]).includes(target.kind) ? 'dependency' : target.kind] ?? [];
@@ -670,6 +664,12 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
       default:
         return fail('Los pasos de un pipeline se quitan editando sus entornos.');
     }
+  },
+
+  /** Solo la matriz de comparación de varios entornos tiene colocación propia (una cuadrícula); las demás vistas, el autolayout por capas. */
+  layout(doc, viewId) {
+    const view = findView(doc, viewId);
+    return matrixIsDrawn(view) ? drawMatrix(doc, view).layout : undefined;
   },
 
   canConnect(doc, kind, sourceId, targetId) {

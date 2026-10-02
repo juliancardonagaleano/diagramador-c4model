@@ -1,4 +1,4 @@
-import { layoutGraph, renderGraphSvg, type GraphEdgeInput, type GraphGroupInput, type GraphLayout, type GraphLayoutOptions, type GraphNodeInput, type ShapeKind, type SvgLegend, type SvgNodeStyle } from '@iark/kernel';
+import { layoutGraph, renderGraphSvg, type GraphEdgeInput, type GraphGroupInput, type GraphLayout, type GraphLayoutOptions, type GraphNodeInput, type ShapeKind, type SvgNodeStyle } from '@iark/kernel';
 import {
   CRITICALITY_LABELS,
   EXPOSURE_LABELS,
@@ -23,10 +23,10 @@ import {
   type Service,
   type ServiceKind,
 } from '../types';
+import { drawMatrix, matrixIsDrawn } from './matrix';
 import { compareEnvironments, MATCH_NOTES, versionText, type DiffKind, type Presence } from '../compare';
 import { costsByEnvironment, formatCost } from '../costs';
 import { findView, type PlatformView } from '../views';
-import { drawMatrix, matrixIsDrawn } from './matrix';
 
 export const SERVICE_COLORS: Record<ServiceKind, string> = { service: '#1168bd', worker: '#3b5bdb', job: '#7048e8', frontend: '#0b7285' };
 export const EXTERNAL_COLOR = '#6b7280';
@@ -156,8 +156,6 @@ export interface RenderedView {
   edges: Map<string, RenderedEdge>;
   /** Relleno y borde de los grupos que los tienen propios (las redes). */
   groupStyles: Map<string, GroupStyle>;
-  /** Leyenda de colores de la vista, si la tiene (la matriz de comparación de varios entornos). */
-  legend?: SvgLegend;
 }
 
 /** Un nodo de la escena: su estilo, el grupo que lo contiene y lo que hace falta para exportarlo a otros formatos. */
@@ -343,6 +341,7 @@ function deliveryScene(doc: PlatformDocument, view: PlatformView): Scene {
  * o réplicas distintas. La línea de un par de recursos que no se emparejó por nombre idéntico lo dice en su etiqueta.
  */
 function compareScene(doc: PlatformDocument, view: PlatformView): Scene {
+  if (matrixIsDrawn(view)) return drawMatrix(doc, view).scene;
   const scene: Scene = { nodes: new Map(), groups: new Map(), edges: new Map() };
   const comparison = compareEnvironments(doc, view.compareIds![0], view.compareIds![1]);
   const names = [comparison.a.name, comparison.b.name] as const;
@@ -380,31 +379,26 @@ const sizeOf = (style: SvgNodeStyle): { width: number; height: number } => ({ wi
 
 /** Lo que hay que dibujar en una vista (nodos, grupos y flechas), sin coordenadas. */
 export function buildScene(doc: PlatformDocument, view: PlatformView): Scene {
-  if (matrixIsDrawn(view)) return drawMatrix(doc, view).scene;
   return view.type === 'environment' ? environmentScene(doc, view) : view.type === 'delivery' ? deliveryScene(doc, view) : view.type === 'costs' ? costScene(doc, view) : view.type === 'compare' ? compareScene(doc, view) : flatScene(doc, view);
 }
 
 /** Coloca una vista con el autolayout genérico del kernel. */
 export async function layoutView(doc: PlatformDocument, viewId?: string, options: GraphLayoutOptions = {}): Promise<RenderedView> {
   const view = findView(doc, viewId);
-  // La matriz de comparación de varios entornos es una cuadrícula que se coloca sola, sin el autolayout por capas.
-  if (matrixIsDrawn(view)) {
-    const { scene, layout, legend } = drawMatrix(doc, view);
-    const titles = new Map([...scene.groups].map(([id, g]) => [id, g.label] as const));
-    return { view, layout, nodes: scene.nodes, groups: titles, fittedGroups: titles, edges: scene.edges, groupStyles: new Map(), legend };
-  }
   const scene = buildScene(doc, view);
   const nodes: GraphNodeInput[] = [...scene.nodes].map(([id, style]) => ({ id, ...sizeOf(style), ...(style.groupId ? { groupId: style.groupId } : {}) }));
   const groups: GraphGroupInput[] = [...scene.groups].map(([id, g]) => ({ id, ...(g.groupId ? { groupId: g.groupId } : {}) }));
   const edges: GraphEdgeInput[] = [...scene.edges].map(([id, e]) => ({ id, source: e.source, target: e.target, label: e.label }));
-  const layout = await layoutGraph(nodes, edges, groups, { direction: 'RIGHT', ...options });
+  // La matriz de comparación de varios entornos es una cuadrícula con colocación propia, no un grafo por capas.
+  const layout = matrixIsDrawn(view) ? drawMatrix(doc, view).layout : await layoutGraph(nodes, edges, groups, { direction: 'RIGHT', ...options });
   const widths = new Map(layout.groups.map((g) => [g.id, g.width]));
   const fitted = new Map([...scene.groups].map(([id, g]) => [id, g.short && g.label.length * 6.4 + 16 > (widths.get(id) ?? Infinity) ? g.short : g.label]));
   return { view, layout, nodes: scene.nodes, groups: new Map([...scene.groups].map(([id, g]) => [id, g.label])), fittedGroups: fitted, edges: scene.edges, groupStyles: new Map([...scene.groups].flatMap(([id, g]) => (g.style ? [[id, g.style] as const] : []))) };
 }
 
 export async function toSvg(doc: PlatformDocument, viewId?: string): Promise<string> {
-  const { view, layout, nodes, fittedGroups, edges, groupStyles, legend } = await layoutView(doc, viewId);
+  const { view, layout, nodes, fittedGroups, edges, groupStyles } = await layoutView(doc, viewId);
+  const legend = matrixIsDrawn(view) ? drawMatrix(doc, view).legend : undefined;
   return renderGraphSvg(layout, {
     title: view.title,
     ...(legend ? { legend } : {}),

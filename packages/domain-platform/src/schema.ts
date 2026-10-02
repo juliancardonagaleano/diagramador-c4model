@@ -56,14 +56,14 @@ export const resourceSchema = z.object({
   ref: z.string().optional(),
   tags: z.array(z.string()).optional(),
   monthlyCost: z.number().min(0, 'El coste mensual no puede ser negativo').optional(),
-  region: z.string().optional(),
-  cpuLimit: z.string().optional(),
-  memoryLimit: z.string().optional(),
   expiresAt: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha de caducidad debe tener la forma AAAA-MM-DD')
     .refine((text) => !Number.isNaN(Date.parse(`${text}T00:00:00Z`)) && new Date(`${text}T00:00:00Z`).toISOString().startsWith(text), 'La fecha de caducidad no existe')
     .optional(),
+  region: z.string().optional(),
+  cpuLimit: z.string().optional(),
+  memoryLimit: z.string().optional(),
 });
 
 export const serviceSchema = z.object({
