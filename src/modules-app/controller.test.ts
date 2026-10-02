@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { InvalidDocumentError, WorkbenchController } from './controller';
-import { SOURCES, example, newController } from './testing';
+import { SOURCES, example, newController, platformModule } from './testing';
 
 describe('WorkbenchController', () => {
   it('activa un módulo cargándolo bajo demanda, con su ejemplo y la primera vista', async () => {
@@ -108,6 +108,68 @@ describe('WorkbenchController', () => {
     expect(result.importer).toBe('mermaid');
     expect(controller.getState().modified).toBe(true);
     expect(controller.getState().analysis.status).toBe('ok');
+  });
+
+  describe('openText (Abrir archivo…)', () => {
+    // Un módulo de plataforma con un importador de JSON extra, como el `manifest.json` de dbt en Datos.
+    // (con una clave de plataforma de tipo equivocado, para que no valide como documento del módulo)
+    const manifest = JSON.stringify({ fake_manifest: true, environments: 'no es una lista' });
+    const withJsonImporter = new WorkbenchController(
+      SOURCES.map((s) =>
+        s.id !== 'platform'
+          ? s
+          : {
+              ...s,
+              load: async () => ({
+                ...platformModule,
+                importers: [
+                  ...platformModule.importers,
+                  {
+                    id: 'falso',
+                    label: 'Falso',
+                    extensions: ['.json'],
+                    detect: (text: string) => text.includes('fake_manifest'),
+                    import: () => ({ document: JSON.parse(example('plataforma-ejemplo.json')), warnings: ['aviso de prueba'] }),
+                  },
+                ],
+              }),
+            },
+      ),
+      { renderDelay: 0 },
+    );
+
+    it('un JSON que es un documento del módulo se carga tal cual, sin importar', async () => {
+      await withJsonImporter.selectModule('platform');
+      const result = await withJsonImporter.openText(example('plataforma-ejemplo.json'), 'plataforma.json');
+      expect(result).toBeUndefined();
+      expect(withJsonImporter.getState().analysis.status).toBe('ok');
+      expect(withJsonImporter.getState().modified).toBe(true);
+    });
+
+    it('un JSON que no cumple el esquema pero que un importador reconoce se importa', async () => {
+      await withJsonImporter.selectModule('platform');
+      const result = await withJsonImporter.openText(manifest, 'manifest.json');
+      expect(result?.importer).toBe('falso');
+      expect(result?.warnings).toEqual(['aviso de prueba']);
+      expect(withJsonImporter.getState().analysis.status).toBe('ok');
+    });
+
+    it('un JSON que ni cumple el esquema ni reconoce ningún importador se carga para corregirlo', async () => {
+      const controller = newController();
+      await controller.selectModule('security');
+      const result = await controller.openText('{ "threats": 5 }', 'roto.json');
+      expect(result).toBeUndefined();
+      expect(controller.getState().analysis.status).toBe('schema');
+    });
+
+    it('un archivo que no es JSON se importa', async () => {
+      const controller = newController();
+      await controller.selectModule('security');
+      const mermaid = (await controller.exportAs('mermaid', 'dfd')).data;
+      const result = await controller.openText(mermaid, 'dfd.mmd');
+      expect(result?.importer).toBe('mermaid');
+      expect(controller.getState().analysis.status).toBe('ok');
+    });
   });
 
   it('los informes leen el documento del editor', async () => {

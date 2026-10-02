@@ -1,10 +1,12 @@
 import type { CommandSpec } from '@iark/kernel';
+import { toDdl, DEFAULT_ENGINE } from './ddl';
+import { TYPE_CONCEPTS, listEngines, resolveEngine } from './engines';
 import { DataImportError } from './import/fromMermaid';
 import { fromIntegrationJson } from './import/fromIntegration';
 import { inheritance } from './inherit';
 import { columnImpact, parseColumnRef, traceLineage, type ColumnStep, type LineageDirection, type LineageStep } from './lineage';
 import { formatDataIssues, validateDataDocument } from './schema';
-import { CLASSIFICATION_LABELS, KIND_LABELS, hasPii, type DataDocument } from './types';
+import { API_PROTOCOL_LABELS, CLASSIFICATION_LABELS, KIND_LABELS, TERM_STATUS_LABELS, hasPii, type DataDocument } from './types';
 
 function parseJson(text: string | undefined, what: string): unknown {
   if (!text) throw new DataImportError(`Falta la entrada: indica un archivo JSON o usa --stdin (${what}).`);
@@ -125,6 +127,107 @@ export const dataCommands: CommandSpec[] = [
       if (spread.length === 0) out.push('En ningún sitio: todos los pipelines que los leen anonimizan o no hay pipelines.');
       for (const { a, reach } of spread) out.push(`- ${a.name} → ${reach.map((s) => names.get(s.assetId)).join(', ')}`);
       return out.join('\n');
+    },
+  },
+  {
+    name: 'products',
+    description: 'Productos y APIs de datos (tablas Markdown): dominio, dueño, frescura, SLA, puertos de entrada y salida, activos que sirve cada API, protocolo y contrato',
+    input: { description: 'documento de datos en JSON' },
+    run: ({ input }) => {
+      const doc = readData(input);
+      const assets = new Map(doc.assets.map((a) => [a.id, a]));
+      const domains = new Map(doc.domains.map((d) => [d.id, d.name]));
+      const contracts = new Map((doc.contracts ?? []).map((c) => [c.id, c.name]));
+      const { ownerOf, domainOf } = inheritance(doc);
+      const names = (ids: string[] | undefined): string => cell((ids ?? []).map((id) => assets.get(id)?.name ?? id).join('; ')) || '—';
+      const products = doc.assets.filter((a) => a.kind === 'data-product');
+      const apis = doc.assets.filter((a) => a.kind === 'data-api');
+      if (products.length === 0 && apis.length === 0) return 'No hay productos ni APIs de datos.';
+      const out: string[] = [];
+      if (products.length > 0) {
+        out.push('**Productos de datos**', '', '| Producto | Dominio | Dueño | Frescura | SLA | Entradas | Salidas | APIs | Contrato |', '|---|---|---|---|---|---|---|---|---|');
+        for (const p of products) {
+          const served = apis.filter((api) => (api.exposes ?? []).some((id) => id === p.id || (p.outputPorts ?? []).includes(id))).map((api) => api.id);
+          out.push(
+            `| ${cell(p.name)} | ${cell(domains.get(domainOf(p.id) ?? '')) || '—'} | ${cell(ownerOf(p.id)) || '—'} | ${cell(p.freshness) || '—'} | ${cell(p.sla) || '—'} | ${names(p.inputPorts)} | ${names(p.outputPorts)} | ${names(served)} | ${cell(contracts.get(p.contractId ?? '')) || '—'} |`,
+          );
+        }
+      }
+      if (apis.length > 0) {
+        if (out.length > 0) out.push('');
+        out.push('**APIs de datos**', '', '| API | Protocolo | Dirección | Dueño | Expone | Contrato |', '|---|---|---|---|---|---|');
+        for (const a of apis) {
+          out.push(`| ${cell(a.name)} | ${a.protocol ? API_PROTOCOL_LABELS[a.protocol] : '—'} | ${cell(a.endpoint) || '—'} | ${cell(ownerOf(a.id)) || '—'} | ${names(a.exposes)} | ${cell(contracts.get(a.contractId ?? '')) || '—'} |`);
+        }
+      }
+      return out.join('\n');
+    },
+  },
+  {
+    name: 'glossary',
+    description: 'Glosario de negocio (tabla Markdown): cada término con su definición, estado, responsable y los activos y columnas en los que se materializa',
+    input: { description: 'documento de datos en JSON' },
+    run: ({ input }) => {
+      const doc = readData(input);
+      const terms = doc.terms ?? [];
+      if (terms.length === 0) return 'No hay términos en el glosario.';
+      const assets = new Map(doc.assets.map((a) => [a.id, a]));
+      const rows = terms.map((t) => {
+        const links = (t.links ?? []).map((l) => `${assets.get(l.assetId)?.name ?? l.assetId}${l.column ? `.${l.column}` : ''}`);
+        return `| ${cell(t.name)} | ${cell(assets.get(t.glossaryId ?? '')?.name) || '—'} | ${cell(t.definition) || '—'} | ${TERM_STATUS_LABELS[t.status ?? 'draft']} | ${cell(t.owner) || '—'} | ${cell(links.join('; ')) || '—'} |`;
+      });
+      return ['| Término | Glosario | Definición | Estado | Responsable | Enlazado a |', '|---|---|---|---|---|---|', ...rows].join('\n');
+    },
+  },
+  {
+    name: 'ddl',
+    description:
+      'Esquema físico de las tablas en el dialecto de su motor de base de datos (engine): CREATE TABLE de PostgreSQL, MySQL, SQL Server, Oracle, SQLite, BigQuery, Snowflake, Redshift y Databricks y de CQL (Cassandra), validador $jsonSchema de MongoDB, CreateTable de DynamoDB y esquema Avro de Kafka',
+    input: { description: 'documento de datos en JSON' },
+    options: [
+      { flags: '--engine <motor>', description: `fuerza el motor de todas las tablas (por defecto, el de cada una; ${DEFAULT_ENGINE} si no lo declara). Ver «iark data engines»` },
+      { flags: '--asset <activo>', description: 'solo esta tabla o las de esta base, almacén, lago o fuente' },
+      { flags: '--contract <contrato>', description: 'genera el esquema del contrato de datos (su servers[].type fija el motor) en lugar del de las columnas de los activos' },
+      { flags: '--schema <nombre>', description: 'esquema (o keyspace, o conjunto de datos) que califica el nombre de las tablas' },
+      { flags: '--format <formato>', description: 'script (por defecto) o json (solo el validador de MongoDB)', default: 'script' },
+    ],
+    run: ({ options, input, warn }) => {
+      const doc = readData(input);
+      const format = String(options.format ?? 'script');
+      if (format !== 'script' && format !== 'json') throw new DataImportError(`Formato inválido «${format}». Use: script, json.`);
+      try {
+        const { text, warnings } = toDdl(doc, {
+          engine: options.engine as string | undefined,
+          assetId: options.asset as string | undefined,
+          contractId: options.contract as string | undefined,
+          schema: options.schema as string | undefined,
+          format,
+        });
+        for (const w of warnings) warn?.(`aviso: ${w}`);
+        return text || '-- No hay tablas con columnas de las que generar un esquema.';
+      } catch (error) {
+        throw new DataImportError((error as Error).message);
+      }
+    },
+  },
+  {
+    name: 'engines',
+    description: 'Motores de base de datos del registro (para `engine`, `servers[].type` de un contrato y `iark data ddl`); con un motor, su catálogo de tipos y el tipo que usa para cada concepto',
+    args: [{ name: 'motor', description: 'id del motor (postgresql, mongodb…)' }],
+    run: ({ args }) => {
+      if (!args[0]) {
+        return ['| Motor | Nombre | Familia | Otros nombres | Tipos |', '|---|---|---|---|---|', ...listEngines().map((e) => `| ${e.id} | ${e.label} | ${e.family} | ${(e.aliases ?? []).join(', ') || '—'} | ${e.types.length} |`)].join('\n');
+      }
+      const engine = resolveEngine(args[0]);
+      if (!engine) throw new DataImportError(`Motor desconocido «${args[0]}». Motores: ${listEngines().map((e) => e.id).join(', ')}.`);
+      return [
+        `${engine.label} (${engine.id}) · ${engine.family}${engine.lenient ? ' · acepta cualquier nombre de tipo' : ''}`,
+        '',
+        `Tipos: ${engine.types.join(', ')}`,
+        '',
+        'Tipo que usa para cada concepto:',
+        ...TYPE_CONCEPTS.map((c) => `- ${c}: ${engine.concepts[c]}`),
+      ].join('\n');
     },
   },
   {

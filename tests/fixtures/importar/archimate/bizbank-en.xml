@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model xmlns="http://www.opengroup.org/xsd/archimate/3.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.opengroup.org/xsd/archimate/3.0/ http://www.opengroup.org/xsd/archimate/3.1/archimate3_Diagram.xsd" identifier="id-bizbank">
+  <name>BizBank - retail banking architecture</name>
+  <documentation>Capabilities, applications and technology behind the retail bank.</documentation>
+  <elements>
+    <element identifier="a-retail" xsi:type="BusinessActor"><name>Retail Banking</name></element>
+    <element identifier="a-cards" xsi:type="BusinessActor"><name>Cards &amp; Payments</name></element>
+    <element identifier="a-risk" xsi:type="BusinessActor"><name>Risk &amp; Compliance</name></element>
+    <element identifier="a-it" xsi:type="BusinessActor"><name>IT Operations</name></element>
+    <element identifier="a-customer" xsi:type="BusinessActor"><name>Customer</name></element>
+    <element identifier="c-onboarding" xsi:type="Capability">
+      <name>Customer onboarding</name>
+      <properties>
+        <property propertyDefinitionRef="d-importance"><value>Differentiating</value></property>
+        <property propertyDefinitionRef="d-maturity"><value>Level 2</value></property>
+        <property propertyDefinitionRef="d-owner"><value>Retail Banking</value></property>
+      </properties>
+    </element>
+    <element identifier="c-kyc" xsi:type="Capability">
+      <name>KYC &amp; AML screening</name>
+      <properties>
+        <property propertyDefinitionRef="d-importance"><value>core</value></property>
+        <property propertyDefinitionRef="d-maturity"><value>3 of 5</value></property>
+        <property propertyDefinitionRef="d-owner"><value>Risk &amp; Compliance</value></property>
+      </properties>
+    </element>
+    <element identifier="c-payments" xsi:type="Capability">
+      <name>Payments processing</name>
+      <properties>
+        <property propertyDefinitionRef="d-importance"><value>Core</value></property>
+        <property propertyDefinitionRef="d-maturity"><value>4</value></property>
+      </properties>
+    </element>
+    <element identifier="c-cards" xsi:type="Capability">
+      <name>Card issuing</name>
+      <properties>
+        <property propertyDefinitionRef="d-importance"><value>Commodity</value></property>
+        <property propertyDefinitionRef="d-maturity"><value>Managed</value></property>
+      </properties>
+    </element>
+    <element identifier="p-open" xsi:type="BusinessProcess"><name>Open account</name></element>
+    <element identifier="p-screen" xsi:type="BusinessProcess"><name>Screen applicant</name></element>
+    <element identifier="p-clear" xsi:type="BusinessProcess"><name>Clear payment</name></element>
+    <element identifier="s-online" xsi:type="BusinessService">
+      <name>Online account opening</name>
+      <properties>
+        <property propertyDefinitionRef="d-audience"><value>Retail customers</value></property>
+      </properties>
+    </element>
+    <element identifier="x-web" xsi:type="ApplicationComponent">
+      <name>Mobile banking app</name>
+      <properties>
+        <property propertyDefinitionRef="d-cost"><value>$1.2M</value></property>
+        <property propertyDefinitionRef="d-users"><value>1,250,000</value></property>
+        <property propertyDefinitionRef="d-strategy"><value>Invest</value></property>
+        <property propertyDefinitionRef="d-criticality"><value>Mission critical</value></property>
+        <property propertyDefinitionRef="d-owner"><value>Retail Banking</value></property>
+        <property propertyDefinitionRef="d-lifecycle"><value>Production</value></property>
+      </properties>
+    </element>
+    <element identifier="x-core" xsi:type="ApplicationComponent">
+      <name>Core banking</name>
+      <properties>
+        <property propertyDefinitionRef="d-vendor"><value>Temenos</value></property>
+        <property propertyDefinitionRef="d-cost"><value>4500000</value></property>
+        <property propertyDefinitionRef="d-users"><value>3200</value></property>
+        <property propertyDefinitionRef="d-strategy"><value>Retire</value></property>
+        <property propertyDefinitionRef="d-eol"><value>2028-06-30</value></property>
+        <property propertyDefinitionRef="d-lifecycle"><value>Phase out</value></property>
+        <property propertyDefinitionRef="d-criticality"><value>Critical</value></property>
+        <property propertyDefinitionRef="d-owner"><value>IT Operations</value></property>
+      </properties>
+    </element>
+    <element identifier="x-core2" xsi:type="ApplicationComponent">
+      <name>Core banking (next gen)</name>
+      <properties>
+        <property propertyDefinitionRef="d-vendor"><value>Thought Machine</value></property>
+        <property propertyDefinitionRef="d-lifecycle"><value>Planned</value></property>
+        <property propertyDefinitionRef="d-criticality"><value>Critical</value></property>
+        <property propertyDefinitionRef="d-owner"><value>IT Operations</value></property>
+      </properties>
+    </element>
+    <element identifier="x-screen" xsi:type="ApplicationComponent">
+      <name>Screening engine</name>
+      <properties>
+        <property propertyDefinitionRef="d-vendor"><value>Fenergo</value></property>
+        <property propertyDefinitionRef="d-external"><value>SaaS</value></property>
+        <property propertyDefinitionRef="d-criticality"><value>High</value></property>
+        <property propertyDefinitionRef="d-owner"><value>Risk &amp; Compliance</value></property>
+      </properties>
+    </element>
+    <element identifier="x-cards" xsi:type="ApplicationComponent">
+      <name>Card management</name>
+      <properties>
+        <property propertyDefinitionRef="d-criticality"><value>Medium</value></property>
+        <property propertyDefinitionRef="d-owner"><value>Cards &amp; Payments</value></property>
+      </properties>
+    </element>
+    <element identifier="n-dc" xsi:type="Node"><name>Primary data center</name></element>
+    <element identifier="n-aws" xsi:type="Node"><name>AWS eu-west-1</name></element>
+    <element identifier="t-db2" xsi:type="SystemSoftware">
+      <name>IBM Db2 LUW 11.5</name>
+      <properties>
+        <property propertyDefinitionRef="d-eol"><value>Apr 2027</value></property>
+      </properties>
+    </element>
+    <element identifier="t-eks" xsi:type="SystemSoftware"><name>Amazon EKS</name></element>
+    <element identifier="t-svc" xsi:type="TechnologyService"><name>Managed message queue</name></element>
+  </elements>
+  <relationships>
+    <relationship identifier="r1" source="a-retail" target="a-cards" xsi:type="Composition" />
+    <relationship identifier="r2" source="c-onboarding" target="c-kyc" xsi:type="Composition" />
+    <relationship identifier="r3" source="a-retail" target="p-open" xsi:type="Assignment" />
+    <relationship identifier="r4" source="a-risk" target="p-screen" xsi:type="Assignment" />
+    <relationship identifier="r5" source="p-open" target="c-onboarding" xsi:type="Realization" />
+    <relationship identifier="r6" source="p-screen" target="c-kyc" xsi:type="Realization" />
+    <relationship identifier="r7" source="p-clear" target="c-payments" xsi:type="Realization" />
+    <relationship identifier="r8" source="p-open" target="p-screen" xsi:type="Triggering"><name>applicant data</name></relationship>
+    <relationship identifier="r9" source="p-screen" target="p-clear" xsi:type="Flow" />
+    <relationship identifier="r10" source="p-open" target="s-online" xsi:type="Realization" />
+    <relationship identifier="r11" source="x-web" target="c-onboarding" xsi:type="Realization" />
+    <relationship identifier="r12" source="x-web" target="p-open" xsi:type="Serving" />
+    <relationship identifier="r13" source="x-core" target="c-payments" xsi:type="Realization" />
+    <relationship identifier="r14" source="x-core2" target="c-payments" xsi:type="Realization" />
+    <relationship identifier="r15" source="x-core" target="p-clear" xsi:type="Serving" />
+    <relationship identifier="r15b" source="x-core2" target="p-clear" xsi:type="Serving" />
+    <relationship identifier="r16" source="x-screen" target="c-kyc" xsi:type="Realization" />
+    <relationship identifier="r17" source="x-screen" target="p-screen" xsi:type="Serving" />
+    <relationship identifier="r18" source="x-cards" target="c-cards" xsi:type="Realization" />
+    <relationship identifier="r19" source="x-web" target="x-core" xsi:type="Flow"><name>account requests</name></relationship>
+    <relationship identifier="r20" source="x-core" target="x-cards" xsi:type="Flow" />
+    <relationship identifier="r21" source="t-db2" target="x-core" xsi:type="Serving" />
+    <relationship identifier="r22" source="t-eks" target="x-web" xsi:type="Serving" />
+    <relationship identifier="r23" source="t-eks" target="x-screen" xsi:type="Serving" />
+    <relationship identifier="r24" source="n-dc" target="t-db2" xsi:type="Assignment" />
+    <relationship identifier="r25" source="n-aws" target="t-eks" xsi:type="Assignment" />
+    <relationship identifier="r26" source="n-aws" target="t-svc" xsi:type="Composition" />
+    <relationship identifier="r27" source="t-svc" target="x-cards" xsi:type="Serving" />
+    <relationship identifier="r28" source="x-core" target="x-core2" xsi:type="Association" isDirected="true"><name>replaced by</name></relationship>
+  </relationships>
+  <propertyDefinitions>
+    <propertyDefinition identifier="d-importance" type="string"><name>Importance</name></propertyDefinition>
+    <propertyDefinition identifier="d-maturity" type="string"><name>Maturity</name></propertyDefinition>
+    <propertyDefinition identifier="d-owner" type="string"><name>Owner</name></propertyDefinition>
+    <propertyDefinition identifier="d-audience" type="string"><name>Audience</name></propertyDefinition>
+    <propertyDefinition identifier="d-cost" type="string"><name>annual cost</name></propertyDefinition>
+    <propertyDefinition identifier="d-users" type="string"><name>users</name></propertyDefinition>
+    <propertyDefinition identifier="d-strategy" type="string"><name>strategy</name></propertyDefinition>
+    <propertyDefinition identifier="d-criticality" type="string"><name>criticality</name></propertyDefinition>
+    <propertyDefinition identifier="d-lifecycle" type="string"><name>lifecycle</name></propertyDefinition>
+    <propertyDefinition identifier="d-vendor" type="string"><name>vendor</name></propertyDefinition>
+    <propertyDefinition identifier="d-eol" type="string"><name>end of life</name></propertyDefinition>
+    <propertyDefinition identifier="d-external" type="string"><name>external</name></propertyDefinition>
+  </propertyDefinitions>
+</model>

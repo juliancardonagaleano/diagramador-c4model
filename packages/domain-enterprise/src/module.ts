@@ -6,6 +6,7 @@ import { enterpriseEditor } from './editor';
 import { toDrawio } from './export/drawio';
 import { toMermaid } from './export/mermaid';
 import { toSvg } from './export/render';
+import { fromArchimate, looksLikeArchimate } from './import/fromArchimate';
 import { fromMermaid } from './import/fromMermaid';
 import { analyzeEnterprise } from './issues';
 import { enterpriseDocumentSchema, enterpriseJsonSchema } from './schema';
@@ -18,6 +19,15 @@ const mermaidImporter: Importer<EnterpriseDocument> = {
   extensions: ['.mmd', '.mermaid', '.md'],
   detect: looksLikeMermaid,
   import: (text, ctx) => fromMermaid(text, { name: ctx.name, fallbackName: ctx.fallbackName }),
+};
+
+/** Modelo de ArchiMate: el formato de intercambio del Open Group (`.xml`) o el nativo de Archi (`.archimate`). */
+const archimateImporter: Importer<EnterpriseDocument> = {
+  id: 'archimate',
+  label: 'ArchiMate',
+  extensions: ['.xml', '.archimate'],
+  detect: looksLikeArchimate,
+  import: (text, ctx) => fromArchimate(text, { name: ctx.name, fallbackName: ctx.fallbackName, lang: typeof ctx.extra?.lang === 'string' ? ctx.extra.lang : undefined }),
 };
 
 const mermaidExporter: Exporter<EnterpriseDocument> = {
@@ -59,7 +69,7 @@ export const enterpriseModule: DomainModule<EnterpriseDocument> = {
   schema: enterpriseDocumentSchema as unknown as DomainModule<EnterpriseDocument>['schema'],
   jsonSchema: enterpriseJsonSchema,
   validate: (doc): ModuleIssue[] => analyzeEnterprise(doc),
-  importers: [mermaidImporter],
+  importers: [mermaidImporter, archimateImporter],
   exporters: [mermaidExporter, svgExporter, drawioExporter],
   ai: enterpriseAiSpec,
   entities: (doc): EntityRef[] => [

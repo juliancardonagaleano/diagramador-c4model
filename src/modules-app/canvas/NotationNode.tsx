@@ -8,11 +8,28 @@ export type NotationNodeType = Node<FlowNodeData, 'notation'>;
 
 const POSITIONS: Record<PortSide, Position> = { top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left };
 
+/** Ficha de un icono de proveedor (un servicio de una nube): fondo blanco, borde y trazos del color de acento, sobre la esquina del nodo. */
+function ProviderIcon({ id, paths, color, zone }: { id: string; paths: string[]; color: string; zone?: boolean }) {
+  return (
+    <svg className={zone ? 'cv-cloud-icon cv-cloud-icon-zone' : 'cv-cloud-icon'} width={24} height={24} viewBox="0 0 24 24" aria-hidden="true" data-testid={`icon-${id}`} data-provider-icon={color}>
+      <rect x={0.75} y={0.75} width={22.5} height={22.5} rx={5} fill="#ffffff" stroke={color} strokeWidth={1.5} />
+      <g transform="translate(4 4)" fill="none" stroke={color} strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+        {paths.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>
+    </svg>
+  );
+}
+
 /** Nodo del lienzo: la figura y el color los dicta la notación del módulo; los nodos con hijos se dibujan como zona. */
 function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
   const { node, notation, group, width, height } = data;
   const fill = node.fill ?? notation.fill;
   const ink = textColorFor(fill);
+  // El icono propio del nodo (el servicio de una nube) sustituye al de su tipo; con color de acento es una ficha de proveedor.
+  const provider = node.icon && node.icon.length > 0 && node.iconColor ? node.icon : undefined;
+  const icon = node.icon ?? notation.icon;
 
   if (group) {
     const line = node.stroke ?? fill;
@@ -20,6 +37,7 @@ function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
     return (
       <div className="cv-group" style={{ width, height, borderColor: line, ...(node.border ? { borderStyle: node.border } : {}), ...tint }} data-selected={selected || undefined} data-testid={`node-${node.id}`} data-kind={node.kind}>
         <Handle type="target" position={Position.Left} />
+        {provider && <ProviderIcon id={node.id} paths={provider} color={node.iconColor!} zone />}
         <span className="cv-group-title" style={{ color: line }}>
           {notation.glyph} {notation.label}: {node.label}
           {node.ref && (
@@ -37,12 +55,17 @@ function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
     <div className="cv-node" style={{ width, height, color: ink }} data-selected={selected || undefined} data-testid={`node-${node.id}`} data-kind={node.kind} data-shape={notation.shape}>
       <ShapeSvg shape={notation.shape} width={width} height={height} fill={fill} stroke={node.stroke ?? notation.stroke} dashed={node.dashed} />
       <Handle type="target" position={Position.Left} />
-      {notation.icon && notation.icon.length > 0 && (
-        <svg className="cv-type-icon" width={16} height={16} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" data-testid={`icon-${node.id}`}>
-          {notation.icon.map((d, i) => (
-            <path key={i} d={d} />
-          ))}
-        </svg>
+      {provider ? (
+        <ProviderIcon id={node.id} paths={provider} color={node.iconColor!} />
+      ) : (
+        icon &&
+        icon.length > 0 && (
+          <svg className="cv-type-icon" width={16} height={16} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" data-testid={`icon-${node.id}`}>
+            {icon.map((d, i) => (
+              <path key={i} d={d} />
+            ))}
+          </svg>
+        )
       )}
       {node.lines ? (
         <div className="cv-node-text cv-card-text">

@@ -51,6 +51,30 @@ test.describe('datos: lienzo con gobierno, ERD y contratos', () => {
     await shot(page, 'erd-pata-de-gallo');
   });
 
+  test('el selector «Notación» del ERD cambia a UML: sin patas de gallo y con la multiplicidad junto a cada extremo', async ({ page }) => {
+    const errors = await open(page);
+    await selectView(page, 'erd');
+    const notation = page.getByTestId('canvas-variant');
+    await expect(notation).toHaveValue('erd');
+    await expect(page.locator('label.cv-edge-kind', { has: notation })).toContainText('Notación');
+    await expect(notation.locator('option')).toHaveText(['Pata de gallo', 'UML']);
+    await expect(page.getByTestId('edge-multiplicity-pedido-lineas-source')).toHaveCount(0);
+
+    await selectView(page, 'erd:uml', 'canvas-variant');
+    await expect(page.getByTestId('canvas-view')).toHaveValue('erd');
+    await expect(page.getByTestId('edge-multiplicity-pedido-lineas-source')).toHaveText('1');
+    await expect(page.getByTestId('edge-multiplicity-pedido-lineas-target')).toHaveText('1..*');
+    await expect(page.getByTestId('edge-end-pedido-lineas-source')).toHaveCount(0);
+    // Sin opcionalidad declarada, el lado «muchos» admite cero: 0..*.
+    await expect(page.getByTestId('edge-multiplicity-cliente-ventas-target')).toHaveText('0..*');
+    await expect(page.locator('[data-testid="node-erp-lineas"] li[data-emphasis="key"]').first()).toContainText('PK,FK pedido_id');
+    await shot(page, 'erd-uml');
+
+    await selectView(page, 'erd', 'canvas-variant');
+    await expect(page.getByTestId('edge-end-pedido-lineas-target')).toHaveAttribute('data-end', 'many');
+    expect(errors).toEqual([]);
+  });
+
   test('el mapa de calor colorea el linaje por clasificación', async ({ page }) => {
     await open(page);
     await selectView(page, 'calor:clasificacion');
@@ -99,6 +123,46 @@ test.describe('datos: lienzo con gobierno, ERD y contratos', () => {
     await text.blur();
     await expect(page.getByTestId('attachment-diagnostics')).toContainText('Tipo lógico desconocido');
     await shot(page, 'contrato-de-datos');
+  });
+
+  test('el contrato declara el motor de su servidor: avisa de un tipo que el motor no tiene y ofrece los suyos', async ({ page }) => {
+    const errors = await open(page);
+    // El panel de propiedades del almacén ofrece el motor y el borrador del contrato lo hereda como servers[].type.
+    await page.getByTestId('node-dwh').click({ position: { x: 6, y: 6 } });
+    await expect(page.getByTestId('inspector').getByLabel('Motor de base de datos')).toHaveValue('snowflake');
+    await page.getByTestId('node-dwh-dim-cliente').click();
+    await page.getByTestId('attachment-new').click();
+    const text = page.getByTestId('attachment-text');
+    await expect(text).toHaveValue(/servers:\n {2}- server: dwh\n {4}type: snowflake\n/);
+    await expect(page.getByTestId('attachment-diagnostics')).not.toContainText('no existe en');
+
+    // Un tipo de otro motor: aviso con su línea y el equivalente de Snowflake.
+    await text.fill((await text.inputValue()).replace('physicalType: int\n', 'physicalType: varchar2(20)\n'));
+    await text.blur();
+    const diagnostics = page.getByTestId('attachment-diagnostics');
+    await expect(diagnostics).toContainText('El tipo «varchar2(20)» de «dim_cliente.cliente_key» no existe en Snowflake');
+    await expect(diagnostics).toContainText('¿Quisiste decir «varchar»');
+
+    // Los tipos del motor se ofrecen como sugerencias y se escriben sobre la selección.
+    const suggestions = page.getByTestId('attachment-suggestions');
+    await expect(suggestions).toContainText('Tipos de Snowflake');
+    await suggestions.locator('summary').click();
+    await text.evaluate((el: HTMLTextAreaElement) => {
+      const start = el.value.indexOf('varchar2(20)');
+      el.focus();
+      el.setSelectionRange(start, start + 'varchar2(20)'.length);
+      el.scrollTop = Math.max(0, (el.value.slice(0, start).split('\n').length - 4) * 18);
+    });
+    await shot(page, 'contrato-por-motor');
+    await page.getByTestId('suggestion-number').click();
+    await expect(text).toHaveValue(/physicalType: number\n/);
+    await expect(diagnostics).not.toContainText('no existe en');
+
+    // El mismo contrato con otro servidor se valida contra ese motor.
+    await text.fill((await text.inputValue()).replace('type: snowflake', 'type: postgres'));
+    await text.blur();
+    await expect(diagnostics).toContainText('no existe en PostgreSQL');
+    expect(errors).toEqual([]);
   });
 
   test('el linaje de columnas se edita en el pipeline y la vista de impacto de columna llega hasta el informe', async ({ page }) => {

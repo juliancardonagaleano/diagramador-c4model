@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { basename, extname } from 'node:path';
+import { extname } from 'node:path';
 import { Command, InvalidArgumentError } from 'commander';
 import { applyLayoutToView, autoLayoutDocumentWithQuality, layoutView } from '@core/layout/elkLayout';
 import { formatQuality, type LayoutQuality } from '@core/layout/quality';
@@ -20,7 +20,7 @@ import { createDefaultRegistry, DEFAULT_MODULE } from './registry';
 import { createSuiteServer } from './serve';
 import { registerTrace } from './trace';
 import { genericExport, genericGenerate, genericPrompt, genericSchema, genericValidate, readModuleDocument } from './generic';
-import { CliError, dslIncludeOptions, extractJson, info, readDocument, readInput, writeOutput } from './io';
+import { CliError, dslIncludeOptions, extractJson, fallbackDocumentName, info, readDocument, readInput, writeOutput } from './io';
 
 const CLI_VERSION = '0.1.0';
 
@@ -85,7 +85,7 @@ async function importSource(
     const list = ids.length > 1 ? `${ids.slice(0, -1).join(', ')} o ${ids[ids.length - 1]}` : ids.join(', ');
     throw new CliError(`No se reconoce el formato${input.fromFile ? ` de "${input.file}"` : ' de la entrada'}: use --format ${list}.`, 2);
   }
-  const fallbackName = input.fromFile && input.file ? basename(input.file).replace(/\.(drawio|xml|dsl|txt|mmd|mermaid|md)$/i, '') : undefined;
+  const fallbackName = input.fromFile && input.file ? fallbackDocumentName(input.file, module.importers.flatMap((i) => i.extensions)) : undefined;
   const outcome = await importer.import(input.raw, {
     name: input.name,
     fallbackName,
@@ -309,10 +309,10 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
 
   program
     .command('import')
-    .description('Importa un diagrama de draw.io (.drawio), un DSL de Structurizr (.dsl) o un diagrama de Mermaid (.mmd) y lo convierte en un documento C4 en JSON')
-    .argument('[archivo]', 'archivo de entrada: .drawio, .dsl o .mmd (o "-" para stdin)')
+    .description('Importa un diagrama o un modelo de otro formato y lo convierte en un documento JSON del módulo. En C4: draw.io (.drawio), DSL de Structurizr (.dsl) o Mermaid (.mmd); los demás módulos aceptan además sus propios formatos (ver `iark modules`)')
+    .argument('[archivo]', 'archivo de entrada: .drawio, .dsl, .mmd o el de un formato del módulo (o "-" para stdin)')
     .option('--stdin', 'leer el archivo de la entrada estándar')
-    .option('--format <formato>', 'formato de entrada: auto|drawio|dsl|mermaid (auto lo deduce de la extensión o del contenido)', 'auto')
+    .option('--format <formato>', 'formato de entrada: auto o el id de un importador del módulo (en C4: drawio, dsl, mermaid; los demás, en `iark modules`). auto lo deduce de la extensión o del contenido', 'auto')
     .option('--module <id>', 'módulo de la suite que importa el documento (ver `iark modules`)', DEFAULT_MODULE)
     .option('-o, --out <archivo.json>', 'archivo de salida (por defecto stdout)')
     .option('--name <nombre>', 'nombre del diagrama (por defecto, el del workspace del DSL o el nombre del archivo)')
