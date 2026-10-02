@@ -12,7 +12,7 @@ const withoutKey = <T extends object>(value: T, key: string): T => {
 
 /** Los contratos de datos del documento como adjuntos con editor propio: YAML estilo Open Data Contract. */
 export const contractAttachments: AttachmentSpec<DataDocument> = {
-  label: 'Contratos de datos',
+  label: 'Contratos',
   singular: 'contrato de datos',
   formats: [{ id: 'odcs', label: 'Open Data Contract (YAML)', language: 'yaml', extension: '.yaml', description: 'Esquema, claves, clasificación y acuerdos de servicio de un activo de datos.' }],
 

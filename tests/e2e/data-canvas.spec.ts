@@ -90,7 +90,7 @@ test.describe('datos: lienzo con gobierno, ERD y contratos', () => {
     await open(page);
     await page.getByTestId('node-dwh-dim-cliente').click();
     await page.getByTestId('attachment-new').click();
-    await expect(page.getByRole('tab', { name: 'Contratos de datos' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'Contratos' })).toHaveAttribute('aria-selected', 'true');
     const text = page.getByTestId('attachment-text');
     await expect(text).toHaveValue(/kind: DataContract/);
     await expect(text).toHaveValue(/primaryKey: true/);
