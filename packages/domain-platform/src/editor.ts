@@ -1,10 +1,12 @@
 import { uniqueId, type EdgeNotation, type EditResult, type EditorAction, type EditorGraph, type EditorNode, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
 import { duplicateEnvironment, findEnvironment, nextEnvironment, promoteDeployments, scaleReplicas, toggleApproval } from './actions';
 import { formatCost } from './costs';
+import { drawMatrix, matrixIsDrawn } from './export/matrix';
 import { DEPENDENCY_STYLES, EXPOSURE_ZONES, EXTERNAL_COLOR, RESOURCE_COLORS, RESOURCE_SHAPES, SERVICE_COLORS, SERVICE_SHAPES, buildScene } from './export/render';
 import { canonicalProvider, iconFields, reconcileIcon } from './icons/editor';
 import { subjectOfNetwork, subjectOfResource, subjectOfService } from './icons';
 import { dependencyEnvironmentViolation, exposureViolation, hostViolation, placementViolation } from './rules';
+import { resourceSchema } from './schema';
 import {
   CRITICALITIES,
   CRITICALITY_LABELS,
@@ -100,6 +102,7 @@ const INSTANCE_FIELDS: FieldSpec[] = [
 const COST: FieldSpec = { key: 'monthlyCost', label: 'Coste mensual', type: 'number', min: 0, step: 1, hint: 'En la moneda del espacio de trabajo (USD si no se indica); alimenta la vista de costes' };
 const CPU: FieldSpec = { key: 'cpuLimit', label: 'Límite de CPU', type: 'text', hint: 'p. ej. 2 (vCPU) o 500m' };
 const MEMORY: FieldSpec = { key: 'memoryLimit', label: 'Límite de memoria', type: 'text', hint: 'p. ej. 4 GiB' };
+const EXPIRES: FieldSpec = { key: 'expiresAt', label: 'Caduca el', type: 'text', hint: 'AAAA-MM-DD; con ella el análisis avisa cuando está cerca' };
 const DEPLOYMENT_FIELDS: FieldSpec[] = [...INSTANCE_FIELDS, COST, CPU, MEMORY];
 
 function nodeFields(kind: string, doc: PlatformDocument, values?: Record<string, unknown>): FieldSpec[] {
@@ -136,6 +139,7 @@ function nodeFields(kind: string, doc: PlatformDocument, values?: Record<string,
       { key: 'owner', label: 'Responsable', type: 'text' },
       COST,
       { key: 'region', label: 'Región', type: 'text' },
+      ...(kind === 'certificate' ? [EXPIRES] : []),
       CPU,
       MEMORY,
       ...iconFields(doc, values, kind as ResourceKind),
@@ -308,7 +312,7 @@ function metadataBadges(doc: PlatformDocument, nodeId: string, includeCost: bool
   }
   if (target?.type === 'element') {
     const r = doc.resources.find((x) => x.id === target.id);
-    if (r) return [...cost(r), ...(r.region ? [`región ${r.region}`] : []), ...limits(r)];
+    if (r) return [...cost(r), ...(r.region ? [`región ${r.region}`] : []), ...(r.expiresAt ? [`caduca ${r.expiresAt}`] : []), ...limits(r)];
     const s = doc.services.find((x) => x.id === target.id);
     if (s) return objectives(s);
   }
@@ -415,7 +419,9 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
 
   project(doc, viewId): EditorGraph {
     const view = findView(doc, viewId);
-    const scene = buildScene(doc, view);
+    // La comparación de varios entornos es una matriz: su escena, su leyenda y su colocación vienen de `drawMatrix`.
+    const matrix = matrixIsDrawn(view) ? drawMatrix(doc, view) : undefined;
+    const scene = matrix?.scene ?? buildScene(doc, view);
     const all = indexElements(doc);
     const networks = new Map(doc.networks.map((n) => [n.id, n]));
     const kinds = new Map(NODE_KIND_NOTATION.map((k) => [k.kind, k]));
@@ -452,7 +458,7 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
         kind: n.cls,
         label,
         sublabel: rest[0],
-        badges: [...(n.diff && n.badge ? [n.badge] : []), ...rest.slice(1).filter(Boolean), ...metadataBadges(doc, id, view.type !== 'costs')],
+        badges: [...(n.diff && n.badge ? [n.badge] : []), ...rest.slice(1).filter(Boolean), ...(matrix ? [] : metadataBadges(doc, id, view.type !== 'costs'))],
         parentId: n.groupId,
         ref: shownAsInstance ? undefined : (n.elementId ? (all.get(n.elementId)?.item as { ref?: string } | undefined)?.ref : undefined),
         fill: n.fill,
@@ -465,6 +471,7 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
     return {
       nodes,
       edges: [...scene.edges].map(([id, e]) => ({ id, kind: e.kind, source: e.source, target: e.target, label: e.label })),
+      ...(matrix ? { legend: matrix.legend } : {}),
     };
   },
 
@@ -592,9 +599,10 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
         }
         if (e.kind === 'resource') {
           const current = e.item as Resource;
-          const patched = reconcileIcon(doc, patchObject(current, patch, ['name', 'description', 'kind', 'environmentId', 'networkId', 'technology', 'version', 'status', 'iac', 'owner', 'ref', 'tags', 'monthlyCost', 'region', 'cpuLimit', 'memoryLimit', 'provider', 'service']), patch, subjectOfResource);
+          const patched = reconcileIcon(doc, patchObject(current, patch, ['name', 'description', 'kind', 'environmentId', 'networkId', 'technology', 'version', 'status', 'iac', 'owner', 'ref', 'tags', 'monthlyCost', 'region', 'cpuLimit', 'memoryLimit', 'expiresAt', 'provider', 'service']), patch, subjectOfResource);
           if (!patched.ok) return fail(patched.reason);
           const next = patched.value;
+          if (next.expiresAt !== undefined && !resourceSchema.shape.expiresAt.safeParse(next.expiresAt).success) return fail('La fecha de caducidad debe tener la forma AAAA-MM-DD (p. ej. 2026-12-31).');
           if (next.monthlyCost !== undefined && (!Number.isFinite(next.monthlyCost) || next.monthlyCost < 0)) return fail('El coste mensual es un número igual o mayor que cero.');
           // Solo se comprueba lo que cambia: un documento que ya incumple la regla sigue editándose.
           const misplaced = next.kind !== current.kind || next.networkId !== current.networkId ? placementViolation(doc, next.kind, next.networkId) : undefined;
@@ -668,6 +676,12 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
       default:
         return fail('Los pasos de un pipeline se quitan editando sus entornos.');
     }
+  },
+
+  /** Solo la matriz de comparación de varios entornos tiene colocación propia (una cuadrícula); las demás vistas, el autolayout por capas. */
+  layout(doc, viewId) {
+    const view = findView(doc, viewId);
+    return matrixIsDrawn(view) ? drawMatrix(doc, view).layout : undefined;
   },
 
   canConnect(doc, kind, sourceId, targetId) {

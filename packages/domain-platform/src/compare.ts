@@ -6,6 +6,10 @@ import { ENVIRONMENT_KINDS, RESOURCE_LABELS, type Deployment, type Environment, 
  * están en los dos pero con otra versión o con otras réplicas. Es lo que dibuja la vista `compare:<A>:<B>` y lo que cuenta
  * el informe de diferencias. Los servicios se corresponden por id; los recursos, por nombre o, si no, por lo poco que se pueda
  * deducir con certeza (ver `pairResources`), y cada par dice cómo se emparejó (`MatchedBy`).
+ *
+ * Con tres o más entornos (`compare:<A>:<B>:<C>…` o `compare:all`) la comparación es una matriz: una fila por servicio (o por
+ * recurso emparejado) y una columna por entorno, y cada celda se compara con la de la referencia, que es el primer entorno de
+ * la lista (`compareMatrix`). Comparar la referencia con cada columna es, por construcción, la comparación de dos entornos de siempre.
  */
 export type DiffKind = 'only-a' | 'only-b' | 'version' | 'replicas';
 
@@ -97,9 +101,9 @@ const SINGLETON_KINDS: ResourceKind[] = ['cluster', 'gateway', 'secret-store', '
 /** Palabras de un texto: sin acentos, en minúsculas y sin signos («k8s-dev» → k8s, dev). */
 const tokensOf = (text: string): string[] => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 
-/** Lo que, dicho en el nombre de un recurso, señala a un entorno: las palabras de cualquier clase de entorno («prod», «producción»…) y el id y el nombre del suyo. */
-function environmentPhrases(env: Environment): Set<string> {
-  const phrases = new Set([...ENVIRONMENT_WORDS, tokensOf(env.id).join(' '), tokensOf(env.name).join(' ')]);
+/** Lo que, dicho en el nombre de un recurso, señala a un entorno: las palabras de cualquier clase de entorno («prod», «producción»…) y el id y el nombre del suyo (o de varios, si el lado agrupa recursos de más de uno). */
+function environmentPhrases(env: Environment | Environment[]): Set<string> {
+  const phrases = new Set([...ENVIRONMENT_WORDS, ...[env].flat().flatMap((e) => [tokensOf(e.id).join(' '), tokensOf(e.name).join(' ')])]);
   phrases.delete('');
   return phrases;
 }
@@ -151,7 +155,7 @@ interface ResourcePair {
  * versión que no existen. Los grupos se cuentan sobre todos los recursos del entorno, no solo sobre los que quedan libres: si hay
  * dos colas Kafka y una ya se emparejó por nombre, la otra de cada lado no tiene por qué ser la misma.
  */
-function pairResources(left: Resource[], right: Resource[], a: Environment, b: Environment): ResourcePair[] {
+function pairResources(left: Resource[], right: Resource[], a: Environment | Environment[], b: Environment | Environment[]): ResourcePair[] {
   const pairs: ResourcePair[] = [];
   let restLeft = [...left];
   let restRight = [...right];
@@ -206,6 +210,20 @@ function pairResources(left: Resource[], right: Resource[], a: Environment, b: E
   return [...pairs, ...restLeft.map((l): ResourcePair => ({ a: l })), ...restRight.map((r): ResourcePair => ({ b: r }))];
 }
 
+/** Recursos de un entorno que se comparan: los que no están dados de baja. */
+const liveResources = (doc: PlatformDocument, environmentId: string): Resource[] => doc.resources.filter((r) => r.environmentId === environmentId && r.status !== 'decommissioned');
+
+/** En qué se distingue lo que un servicio tiene en un entorno (`b`) de lo que tiene en el de referencia (`a`). */
+function serviceKinds(a: Presence | undefined, b: Presence | undefined): DiffKind[] {
+  if (a && !b) return ['only-a'];
+  if (b && !a) return ['only-b'];
+  if (!a || !b) return [];
+  return [...(sameVersions(a.versions, b.versions) ? [] : (['version'] as const)), ...(a.replicas === b.replicas ? [] : (['replicas'] as const))];
+}
+
+/** Lo mismo para un par de recursos: solo en uno de los dos, o con otra versión. */
+const resourceKinds = (a: Resource | undefined, b: Resource | undefined): DiffKind[] => (a && !b ? ['only-a'] : b && !a ? ['only-b'] : (a?.version ?? '') !== (b?.version ?? '') ? ['version'] : []);
+
 export function compareEnvironments(doc: PlatformDocument, aId: string, bId: string): EnvironmentComparison {
   const a = doc.environments.find((e) => e.id === aId);
   const b = doc.environments.find((e) => e.id === bId);
@@ -216,19 +234,10 @@ export function compareEnvironments(doc: PlatformDocument, aId: string, bId: str
     const pa = presenceIn(doc.deployments.filter((d) => d.serviceId === service.id && d.environmentId === a.id));
     const pb = presenceIn(doc.deployments.filter((d) => d.serviceId === service.id && d.environmentId === b.id));
     if (!pa && !pb) continue;
-    const kinds: DiffKind[] = [];
-    if (pa && !pb) kinds.push('only-a');
-    else if (pb && !pa) kinds.push('only-b');
-    else if (pa && pb) {
-      if (!sameVersions(pa.versions, pb.versions)) kinds.push('version');
-      if (pa.replicas !== pb.replicas) kinds.push('replicas');
-    }
-    services.push({ service, ...(pa ? { a: pa } : {}), ...(pb ? { b: pb } : {}), kinds });
+    services.push({ service, ...(pa ? { a: pa } : {}), ...(pb ? { b: pb } : {}), kinds: serviceKinds(pa, pb) });
   }
-  const resourcesOf = (id: string): Resource[] => doc.resources.filter((r) => r.environmentId === id && r.status !== 'decommissioned');
-  const resources = pairResources(resourcesOf(a.id), resourcesOf(b.id), a, b).map(({ a: ra, b: rb, matchedBy }): ResourceDifference => {
-    const kinds: DiffKind[] = ra && !rb ? ['only-a'] : rb && !ra ? ['only-b'] : (ra?.version ?? '') !== (rb?.version ?? '') ? ['version'] : [];
-    return { ...(ra ? { a: ra } : {}), ...(rb ? { b: rb } : {}), kinds, ...(ra && rb && matchedBy ? { matchedBy } : {}) };
+  const resources = pairResources(liveResources(doc, a.id), liveResources(doc, b.id), a, b).map(({ a: ra, b: rb, matchedBy }): ResourceDifference => {
+    return { ...(ra ? { a: ra } : {}), ...(rb ? { b: rb } : {}), kinds: resourceKinds(ra, rb), ...(ra && rb && matchedBy ? { matchedBy } : {}) };
   });
   return { a, b, services, resources };
 }
@@ -292,5 +301,217 @@ export function compareReport(doc: PlatformDocument, comparison: EnvironmentComp
   section('Recursos emparejados por inferencia', comparison.resources.filter((r) => r.matchedBy && !['name', 'normalized'].includes(r.matchedBy)).map((r) => `${resourceName(r.a!)} con «${r.b!.name}»${matchNote(r)}`));
   const totals = summarize(comparison);
   out.push(totals['only-a'] + totals['only-b'] + totals.version + totals.replicas === 0 ? 'Los dos entornos son equivalentes: mismos servicios, versiones y réplicas.' : `Iguales en ambos: ${totals.same} elemento(s).`);
+  return out.join('\n').trimEnd();
+}
+
+// --- Comparación de varios entornos: la matriz --------------------------------------------------------------------------------
+
+/**
+ * Lo que un servicio tiene en un entorno de la matriz y en qué se distingue de la referencia (el primer entorno). Con el mismo
+ * sentido que en la comparación de dos entornos, siendo A la referencia y B el entorno de la columna: `only-a` = la referencia lo
+ * tiene y este entorno no (falta); `only-b` = este entorno lo tiene y la referencia no. La celda de la referencia nunca difiere.
+ */
+export interface ServiceCell {
+  presence?: Presence;
+  kinds: DiffKind[];
+}
+
+/** Un servicio y sus celdas, una por entorno y en el mismo orden que `EnvironmentMatrix.environments`. */
+export interface ServiceRow {
+  service: Service;
+  cells: ServiceCell[];
+}
+
+/** Lo que un recurso (el emparejado con el de la referencia) es en un entorno de la matriz; `matchedBy` dice cómo se emparejó con el de la referencia. */
+export interface ResourceCell {
+  resource?: Resource;
+  kinds: DiffKind[];
+  matchedBy?: MatchedBy;
+}
+
+export interface ResourceRow {
+  cells: ResourceCell[];
+}
+
+/**
+ * Matriz de servicios y recursos por entorno. `environments[0]` es la referencia. Las filas de recursos son primero las de la
+ * referencia y luego las de recursos que ella no tiene (los de otros entornos que se corresponden entre sí van en la misma fila).
+ */
+export interface EnvironmentMatrix {
+  environments: Environment[];
+  services: ServiceRow[];
+  resources: ResourceRow[];
+}
+
+/** Palabras que, en la lista de una vista `compare:`, valen por «todos (los demás) entornos con contenido». */
+const ALL_WORDS = ['all', 'todos', 'todas'];
+
+/** Entornos que se pueden comparar (los que tienen recursos o despliegues), en el orden del documento. */
+export function comparableEnvironments(doc: PlatformDocument): Environment[] {
+  return doc.environments.filter((e) => doc.resources.some((r) => r.environmentId === e.id) || doc.deployments.some((d) => d.environmentId === e.id));
+}
+
+/** ¿El texto de una vista `compare:` pide «todos los entornos»? (Un entorno que se llame así tiene preferencia.) */
+export const isAllEnvironments = (doc: PlatformDocument, text: string): boolean => ALL_WORDS.includes(text.trim().toLowerCase()) && !findEnvironment(doc, text);
+
+/**
+ * Los entornos que nombra una vista `compare:` (el texto tras `compare:`), por id o por nombre y separados por «:»; el primero es
+ * la referencia. `<A>:<B>` y `<A>` solos significan lo de siempre (ver `resolveComparison`); `<A>:<B>:<C>…` compara tres o más;
+ * `all` son todos los entornos con contenido, en el orden del documento, y `<A>:all`, esos mismos con A como referencia.
+ * Un nombre de entorno con «:» se reconoce uniendo las partes.
+ */
+export function resolveEnvironments(doc: PlatformDocument, text: string): Environment[] {
+  const parts = text.split(':');
+  const notFound = (name: string): Error => new Error(`No existe el entorno «${name}». Entornos: ${doc.environments.map((e) => e.id).join(', ')}.`);
+  // `compare:<A>:<B>` de siempre: el segundo es un solo entorno aunque su nombre lleve «:».
+  const first = findEnvironment(doc, parts[0]);
+  const rest = findEnvironment(doc, parts.slice(1).join(':'));
+  if (parts.length > 2 && first && rest) return [first, rest];
+
+  const chosen: Environment[] = [];
+  let everyone = false;
+  for (let i = 0; i < parts.length; ) {
+    if (isAllEnvironments(doc, parts[i])) {
+      everyone = true;
+      i += 1;
+      continue;
+    }
+    let length = 1;
+    let found = findEnvironment(doc, parts[i]);
+    while (!found && i + length < parts.length) found = findEnvironment(doc, parts.slice(i, i + ++length).join(':'));
+    if (!found) throw notFound(parts[i]);
+    if (chosen.includes(found)) throw new Error(`El entorno «${found.name}» está repetido: elige entornos distintos para compararlos.`);
+    chosen.push(found);
+    i += length;
+  }
+  if (everyone) chosen.push(...comparableEnvironments(doc).filter((e) => !chosen.includes(e)));
+  if (chosen.length === 0) throw new Error('El documento no tiene entornos con contenido que comparar.');
+  if (chosen.length > 1) return chosen;
+  const other = everyone ? undefined : counterpart(doc, chosen[0].id);
+  if (!other) throw new Error(everyone ? `No hay otro entorno con contenido con el que comparar «${chosen[0].name}».` : `Indica con qué entorno comparar «${chosen[0].name}»: compare:${chosen[0].id}:<entorno>.`);
+  return [chosen[0], other];
+}
+
+/**
+ * Compara tres o más entornos con el primero (la referencia). Cada servicio con despliegue en alguno es una fila; cada celda dice si
+ * falta, sobra o difiere en versión o réplicas respecto a la de la referencia. Los recursos se emparejan con los de la referencia
+ * como en la comparación de dos entornos (`pairResources`, con su `matchedBy`); los que no tiene la referencia se emparejan entre
+ * sí (un balanceador que está en preproducción y en producción pero no en desarrollo es una sola fila).
+ */
+export function compareMatrix(doc: PlatformDocument, ids: string[]): EnvironmentMatrix {
+  const environments = ids.map((id) => {
+    const environment = doc.environments.find((e) => e.id === id);
+    if (!environment) throw new Error(`No existe el entorno «${id}». Entornos: ${doc.environments.map((e) => e.id).join(', ')}.`);
+    return environment;
+  });
+  if (environments.length < 2) throw new Error('Elige al menos dos entornos para compararlos.');
+  if (new Set(ids).size !== ids.length) throw new Error('Elige entornos distintos para compararlos.');
+
+  const services: ServiceRow[] = [];
+  for (const service of doc.services) {
+    const presences = environments.map((e) => presenceIn(doc.deployments.filter((d) => d.serviceId === service.id && d.environmentId === e.id)));
+    if (presences.every((p) => !p)) continue;
+    services.push({ service, cells: presences.map((presence, i) => ({ ...(presence ? { presence } : {}), kinds: i === 0 ? [] : serviceKinds(presences[0], presence) })) });
+  }
+
+  const columns = environments.map((e) => liveResources(doc, e.id));
+  const blank = (): ResourceCell[] => environments.map(() => ({ kinds: [] }));
+  const rows: ResourceRow[] = columns[0].map((resource) => ({ cells: blank().map((cell, i) => (i === 0 ? { resource, kinds: [] } : cell)) }));
+  const extras: ResourceRow[] = [];
+  environments.forEach((environment, i) => {
+    if (i === 0) return;
+    const leftovers: Resource[] = [];
+    for (const pair of pairResources(columns[0], columns[i], environments[0], environment)) {
+      if (pair.a) rows.find((row) => row.cells[0].resource === pair.a)!.cells[i] = { ...(pair.b ? { resource: pair.b, ...(pair.matchedBy ? { matchedBy: pair.matchedBy } : {}) } : {}), kinds: resourceKinds(pair.a, pair.b) };
+      else leftovers.push(pair.b!);
+    }
+    // Lo que la referencia no tiene: se empareja con lo ya visto en los entornos anteriores y, si no, abre una fila.
+    const seen = extras.map((row) => row.cells.find((c) => c.resource)!.resource!);
+    const merged = new Set<Resource>();
+    if (seen.length > 0) {
+      const earlier = environments.slice(1, i);
+      for (const pair of pairResources(seen, leftovers, earlier, environment)) {
+        if (!pair.a || !pair.b) continue;
+        extras.find((row) => row.cells.some((c) => c.resource === pair.a))!.cells[i] = { resource: pair.b, kinds: ['only-b'], ...(pair.matchedBy ? { matchedBy: pair.matchedBy } : {}) };
+        merged.add(pair.b);
+      }
+    }
+    for (const resource of leftovers.filter((r) => !merged.has(r))) extras.push({ cells: blank().map((cell, k) => (k === i ? { resource, kinds: ['only-b'] } : cell)) });
+  });
+  return { environments, services, resources: [...rows, ...extras] };
+}
+
+/** Cuántos elementos de cada entorno (menos la referencia) difieren de ella y de qué manera, servicios y recursos juntos; `same` son los que están en los dos y no difieren. */
+export function summarizeMatrix(matrix: EnvironmentMatrix): Array<{ environment: Environment; counts: Record<DiffKind | 'same', number> }> {
+  return matrix.environments.slice(1).map((environment, k) => {
+    const counts: Record<DiffKind | 'same', number> = { 'only-a': 0, 'only-b': 0, version: 0, replicas: 0, same: 0 };
+    const tally = (reference: unknown, here: unknown, kinds: DiffKind[]): void => {
+      if (reference && here && kinds.length === 0) counts.same += 1;
+      for (const kind of kinds) counts[kind] += 1;
+    };
+    for (const row of matrix.services) tally(row.cells[0].presence, row.cells[k + 1].presence, row.cells[k + 1].kinds);
+    for (const row of matrix.resources) tally(row.cells[0].resource, row.cells[k + 1].resource, row.cells[k + 1].kinds);
+    return { environment, counts };
+  });
+}
+
+/** Letra de la columna de un entorno en la matriz (A es la referencia); pasadas las 26, su número. */
+export const columnLetter = (index: number): string => (index < 26 ? String.fromCharCode(65 + index) : String(index + 1));
+
+const cellEscape = (s: string): string => s.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+
+/** Informe de la comparación de varios entornos en Markdown: una tabla de servicios y otra de recursos, y lo que difiere de la referencia en cada entorno. */
+export function matrixReport(matrix: EnvironmentMatrix): string {
+  const { environments } = matrix;
+  const reference = environments[0];
+  const head = (e: Environment, i: number): string => `${e.name} (${columnLetter(i)}${i === 0 ? ', referencia' : ''})`;
+  const out = [`Comparación de ${environments.length} entornos: ${environments.map((e, i) => `«${e.name}» (${columnLetter(i)}${i === 0 ? ', referencia' : ''})`).join(', ')}`, ''];
+  const marks = (kinds: DiffKind[]): string => {
+    const what = [kinds.includes('version') && 'versión', kinds.includes('replicas') && 'réplicas'].filter(Boolean).join(' y ');
+    return kinds.includes('only-b') ? ' (no está en la referencia)' : what ? ` ≠ ${what}` : '';
+  };
+  const table = (noun: string, explanation: string, rows: Array<{ label: string; cells: string[] }>): void => {
+    if (rows.length === 0) return;
+    out.push(`${noun} (${rows.length}): ${explanation}`, `| ${noun.replace(/s$/, '')} | ${environments.map((e, i) => cellEscape(head(e, i))).join(' | ')} |`, `|---|${environments.map(() => '---').join('|')}|`);
+    for (const row of rows) out.push(`| ${cellEscape(row.label)} | ${row.cells.map(cellEscape).join(' | ')} |`);
+    out.push('');
+  };
+  table(
+    'Servicios',
+    `versión y réplicas en cada entorno; «≠» marca lo que difiere de «${reference.name}»`,
+    matrix.services.map((row) => ({
+      label: row.service.name,
+      cells: row.cells.map((c, i) => (c.presence ? `${versionText(c.presence.versions)} ×${c.presence.replicas}${marks(c.kinds)}` : row.cells[0].presence && i > 0 ? '— falta' : '—')),
+    })),
+  );
+  const named = (row: ResourceRow): Resource => row.cells.find((c) => c.resource)!.resource!;
+  table(
+    'Recursos',
+    `cada fila reúne los que se corresponden entre entornos; «≠» marca lo que difiere de «${reference.name}»`,
+    matrix.resources.map((row) => ({
+      label: `${RESOURCE_LABELS[named(row).kind]} «${named(row).name}»`,
+      cells: row.cells.map((c, i) => {
+        if (!c.resource) return row.cells[0].resource && i > 0 ? '— falta' : '—';
+        const note = c.matchedBy && c.matchedBy !== 'name' && (c.kinds.length > 0 || c.matchedBy !== 'normalized') ? ` (${MATCH_NOTES[c.matchedBy]})` : '';
+        return `«${c.resource.name}» ${c.resource.version ? `v${c.resource.version}` : 'sin versión'}${marks(c.kinds)}${note}`;
+      }),
+    })),
+  );
+  const totals = summarizeMatrix(matrix);
+  const differences = totals.map(({ environment, counts }, k) => {
+    const parts = [
+      counts.version > 0 && `versión distinta: ${counts.version}`,
+      counts.replicas > 0 && `réplicas distintas: ${counts.replicas}`,
+      counts['only-a'] > 0 && `faltan: ${counts['only-a']}`,
+      counts['only-b'] > 0 && `no están en la referencia: ${counts['only-b']}`,
+    ].filter(Boolean);
+    return `- ${environment.name} (${columnLetter(k + 1)}): ${parts.length > 0 ? `${parts.join(' · ')} · ` : 'sin diferencias · '}iguales: ${counts.same}`;
+  });
+  out.push(`Diferencias frente a «${reference.name}» (A)`, ...differences, '');
+  const serviceCells = matrix.services.map((row) => row.cells.map((c) => ({ here: !!c.presence, kinds: c.kinds })));
+  const resourceCells = matrix.resources.map((row) => row.cells.map((c) => ({ here: !!c.resource, kinds: c.kinds })));
+  const identical = [...serviceCells, ...resourceCells].filter((cells) => cells.every((c) => c.here && c.kinds.length === 0)).length;
+  const different = [...serviceCells, ...resourceCells].some((cells) => cells.some((c) => c.kinds.length > 0));
+  out.push(different ? `Iguales en los ${environments.length} entornos: ${identical} elemento(s).` : `Los ${environments.length} entornos son equivalentes: mismos servicios, versiones y réplicas.`);
   return out.join('\n').trimEnd();
 }

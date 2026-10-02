@@ -1,5 +1,6 @@
 import type { CommandSpec } from '@iark/kernel';
-import { compareEnvironments, compareReport, resolveComparison } from './compare';
+import { findEnvironment } from './actions';
+import { compareEnvironments, compareMatrix, compareReport, matrixReport, resolveEnvironments } from './compare';
 import { dependencyGraph, reach, scopeEnvironment, type Reach, type ReachStep } from './graph';
 import { fromIntegrationJson } from './import/fromIntegration';
 import { PlatformImportError } from './import/fromMermaid';
@@ -64,17 +65,21 @@ export const platformCommands: CommandSpec[] = [
   },
   {
     name: 'compare',
-    description: 'Compara dos entornos (p. ej. preproducción y producción): servicios y recursos que solo están en uno, y los que difieren en versión o en réplicas',
+    description:
+      'Compara entornos (p. ej. preproducción y producción): servicios y recursos que solo están en uno, y los que difieren en versión o en réplicas. Con tres o más entornos (una lista separada por comas, o «todos») saca la matriz de servicios y recursos por entorno frente al primero, que es la referencia',
     input: { description: 'documento de plataforma en JSON' },
     args: [
-      { name: 'entornoA', description: 'id o nombre del primer entorno', required: true },
+      { name: 'entornoA', description: 'id o nombre del primer entorno (la referencia); también una lista separada por comas (dev,staging,prod) o «todos» para comparar todos los entornos con contenido', required: true },
       { name: 'entornoB', description: 'id o nombre del segundo (por defecto, el siguiente en el camino a producción)' },
     ],
     run: ({ args, input }) => {
       const doc = readPlatform(input);
       try {
-        const [a, b] = resolveComparison(doc, args[1] ? `${args[0]}:${args[1]}` : args[0]);
-        return compareReport(doc, compareEnvironments(doc, a.id, b.id));
+        // Cada argumento es un entorno o, si no lo es, una lista separada por comas; las listas se unen en una sola.
+        const names = args.filter(Boolean).flatMap((arg) => (findEnvironment(doc, arg) ? [arg] : arg.split(',')));
+        const environments = resolveEnvironments(doc, names.map((n) => n.trim()).join(':'));
+        if (environments.length > 2) return matrixReport(compareMatrix(doc, environments.map((e) => e.id)));
+        return compareReport(doc, compareEnvironments(doc, environments[0].id, environments[1].id));
       } catch (error) {
         throw new PlatformImportError((error as Error).message);
       }

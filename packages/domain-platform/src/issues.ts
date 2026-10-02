@@ -20,6 +20,23 @@ import {
 
 /** Recursos que guardan o mueven datos: si nadie depende de ellos sobran (o falta declarar quién los usa). */
 const DATA_KINDS: ResourceKind[] = ['database', 'cache', 'queue', 'storage'];
+/** Recursos transversales: no alojan servicios ni guardan datos, así que solo importan por lo que los une al resto. */
+const CROSS_CUTTING_KINDS: ResourceKind[] = ['region', 'namespace', 'certificate', 'monitoring'];
+/** Proveedores de nube en los que todo se aprovisiona en una región (en un centro de datos propio no la hay). */
+const REGIONAL_PROVIDERS = /\b(aws|amazon|azure|microsoft|gcp|google|oracle|oci|ibm|alibaba|aliyun|digital ?ocean|ovh|scaleway|hetzner|linode|akamai|vultr)\b/i;
+/** Recursos que viven en una región (el DNS, un certificado o la monitorización suelen ser globales). */
+const REGIONAL_KINDS: ResourceKind[] = ['cluster', 'vm', 'database', 'cache', 'queue', 'storage', 'load-balancer', 'gateway', 'secret-store', 'registry'];
+/** Días antes de la caducidad de un certificado en que se avisa (con más urgencia el primero). */
+const EXPIRY_WARNING_DAYS = 30;
+const EXPIRY_NOTICE_DAYS = 90;
+
+/** Días desde hoy (en UTC) hasta una fecha AAAA-MM-DD: negativos si ya pasó; `undefined` si no es una fecha. */
+function daysUntil(date: string, today: Date): number | undefined {
+  const time = Date.parse(`${date}T00:00:00Z`);
+  if (Number.isNaN(time)) return undefined;
+  return Math.round((time - Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())) / 86_400_000);
+}
+const daysText = (n: number): string => `${n} ${n === 1 ? 'día' : 'días'}`;
 
 const label = (e: Element): string => {
   if (e.kind === 'resource') return `${RESOURCE_LABELS[(e.item as Resource).kind]} «${e.name}»`;
@@ -36,9 +53,11 @@ const severe = (s: Service): boolean => s.criticality === 'high' || s.criticalit
  * Reglas de gobierno del modelo de plataforma (avisos que no invalidan el documento pero conviene corregir): servicios
  * sin despliegue o sin responsable, dependencias de recursos no aprovisionados o de otro entorno, entornos que no
  * replican lo que tiene otro, datos en redes públicas, puntos únicos de fallo en producción y pipelines que se saltan
- * entornos o aprobaciones.
+ * entornos o aprobaciones. Los recursos transversales (certificados, monitorización, regiones y espacios de nombres) tienen
+ * las suyas: certificados caducados o a punto de caducar (`expiresAt`), servicios de producción que ninguna monitorización cubre,
+ * recursos sin región donde el proveedor la exige y recursos sin dependencias. `today` es la fecha con la que se miden las caducidades.
  */
-export function analyzePlatform(doc: PlatformDocument): ModuleIssue[] {
+export function analyzePlatform(doc: PlatformDocument, today: Date = new Date()): ModuleIssue[] {
   const issues: ModuleIssue[] = [];
   const elements = indexElements(doc);
   const at = (id: string): Element => elements.get(id)!;
@@ -144,6 +163,7 @@ export function analyzePlatform(doc: PlatformDocument): ModuleIssue[] {
   }
 
   const inbound = new Set(doc.dependencies.map((d) => d.targetId));
+  const related = new Set(doc.dependencies.flatMap((d) => [d.sourceId, d.targetId]));
   for (const r of doc.resources) {
     const e = at(r.id);
     const network = r.networkId ? networks.get(r.networkId) : undefined;
@@ -155,6 +175,42 @@ export function analyzePlatform(doc: PlatformDocument): ModuleIssue[] {
     }
     if (isHost(r) && statusOf(r) === 'provisioned' && !doc.deployments.some((d) => d.hostId === r.id)) add('info', r.id, `${label(e)} no aloja ningún servicio.`);
     if (DATA_KINDS.includes(r.kind) && statusOf(r) === 'provisioned' && !inbound.has(r.id)) add('info', r.id, `${label(e)} no lo usa ningún servicio.`);
+    if (CROSS_CUTTING_KINDS.includes(r.kind) && statusOf(r) === 'provisioned' && !related.has(r.id)) {
+      add('info', r.id, `${label(e)}: no tiene ninguna dependencia, así que no se sabe a qué servicios o recursos afecta.`);
+    }
+    if (r.kind === 'certificate' && statusOf(r) !== 'decommissioned') {
+      const left = r.expiresAt ? daysUntil(r.expiresAt, today) : undefined;
+      if (left === undefined) {
+        if (productionLike(r.environmentId) && !r.expiresAt) add('info', r.id, `${label(e)} está en «${envName(r.environmentId)}» y no tiene fecha de caducidad (expiresAt): sin ella nadie avisa antes de que caduque.`);
+      } else if (left < 0) add('warning', r.id, `${label(e)} caducó el ${r.expiresAt} (hace ${daysText(-left)}): renuévalo.`);
+      else if (left <= EXPIRY_WARNING_DAYS) add('warning', r.id, `${label(e)} caduca ${left === 0 ? 'hoy' : `el ${r.expiresAt} (en ${daysText(left)})`}: renuévalo antes de que caduque.`);
+      else if (left <= EXPIRY_NOTICE_DAYS) add('info', r.id, `${label(e)} caduca el ${r.expiresAt} (en ${daysText(left)}).`);
+    }
+  }
+
+  // Monitorización: si el documento la modela, los servicios de producción tienen que estar cubiertos por alguna (ellos o el anfitrión donde corren).
+  const monitors = doc.resources.filter((r) => r.kind === 'monitoring' && statusOf(r) !== 'decommissioned');
+  if (monitors.length > 0) {
+    for (const env of doc.environments.filter((x) => x.kind === 'prod')) {
+      const here = new Set(monitors.filter((m) => m.environmentId === env.id).map((m) => m.id));
+      const watched = new Set(doc.dependencies.flatMap((d) => (here.has(d.sourceId) ? [d.targetId] : here.has(d.targetId) ? [d.sourceId] : [])));
+      for (const s of doc.services.filter((x) => !x.external)) {
+        const mine = doc.deployments.filter((d) => d.serviceId === s.id && d.environmentId === env.id);
+        if (mine.length === 0 || watched.has(s.id) || mine.some((d) => watched.has(d.hostId))) continue;
+        // Sin ninguna monitorización en el entorno solo se avisa de lo crítico: el resto sería repetir lo mismo en cada servicio.
+        if (here.size === 0 && !severe(s)) continue;
+        add(severe(s) ? 'warning' : 'info', s.id, `${label(at(s.id))} corre en «${env.name}» y ${here.size === 0 ? 'allí no hay ningún recurso de monitorización' : 'ningún recurso de monitorización lo cubre, ni a él ni al anfitrión donde corre'}.`);
+      }
+    }
+  }
+
+  // Región: en un proveedor de nube todo recurso está en una; basta que la indique el recurso, su entorno o una región modelada en el entorno.
+  for (const env of doc.environments) {
+    if (!env.provider || !REGIONAL_PROVIDERS.test(env.provider) || env.region?.trim()) continue;
+    if (doc.resources.some((r) => r.environmentId === env.id && r.kind === 'region' && statusOf(r) !== 'decommissioned')) continue;
+    for (const r of doc.resources.filter((x) => x.environmentId === env.id && REGIONAL_KINDS.includes(x.kind) && statusOf(x) !== 'decommissioned' && !x.region?.trim())) {
+      add(gap(env.id), r.id, `${label(at(r.id))} está en «${env.name}» (proveedor ${env.provider}), que exige región, y ni el recurso ni el entorno la indican.`);
+    }
   }
 
   for (const p of doc.pipelines) {

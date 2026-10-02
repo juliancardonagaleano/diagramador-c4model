@@ -1,15 +1,15 @@
 import { nextEnvironment } from './actions';
-import { compareEnvironments, resolveComparison } from './compare';
+import { comparableEnvironments, compareEnvironments, compareMatrix, isAllEnvironments, resolveEnvironments } from './compare';
 import { hasCosts } from './costs';
 import { dependencyGraph, reach, scopeEnvironment, scoped, type Reach } from './graph';
 import { indexElements, type PlatformDocument } from './types';
 
 export interface PlatformView {
-  /** `topology`, `env:<id>`, `delivery`, `costs` o, bajo demanda, `impact:<id>`, `depends:<id>`, `focus:<id>` y `compare:<A>:<B>`. */
+  /** `topology`, `env:<id>`, `delivery`, `costs` o, bajo demanda, `impact:<id>`, `depends:<id>`, `focus:<id>` y `compare:<A>:<B>[:<C>…]` (`compare:all`: todos los entornos). */
   id: string;
   type: 'topology' | 'environment' | 'delivery' | 'costs' | 'impact' | 'depends' | 'focus' | 'compare';
-  /** Entornos que compara la vista `compare` (A a la izquierda, B a la derecha). */
-  compareIds?: [string, string];
+  /** Entornos que compara la vista `compare` (A a la izquierda, B a la derecha; con tres o más es una matriz y el primero es la referencia). */
+  compareIds?: string[];
   title: string;
   /** Entorno al que se acota la vista (`environment` y las de impacto de un elemento de un solo entorno). */
   environmentId?: string;
@@ -95,7 +95,8 @@ function costs(doc: PlatformDocument): PlatformView {
 /**
  * Vistas derivadas del documento: la topología lógica (servicios, recursos y sus dependencias), una por entorno con
  * lo que hay desplegado en cada red y anfitrión, la entrega continua (pipelines) y, si hay costes declarados, los costes por entorno. Solo se listan las que tienen
- * contenido; la comparación de dos entornos consecutivos en el camino a producción (`compare:<A>:<B>`) se lista si ambos tienen despliegues. El impacto o las dependencias de un elemento concreto se piden por su id (ver `findView`).
+ * contenido; la comparación de dos entornos consecutivos en el camino a producción (`compare:<A>:<B>`) se lista si ambos tienen despliegues
+ * y, si hay tres o más entornos con contenido, también la matriz de todos ellos (`compare:all`). El impacto o las dependencias de un elemento concreto se piden por su id (ver `findView`).
  */
 export function listViews(doc: PlatformDocument): PlatformView[] {
   const views: PlatformView[] = [];
@@ -105,24 +106,37 @@ export function listViews(doc: PlatformDocument): PlatformView[] {
   }
   if (doc.pipelines.length > 0) views.push(delivery(doc));
   views.push(...promotionPairs(doc).map(([a, b]) => compareView(doc, `${a}:${b}`)));
+  if (comparableEnvironments(doc).length > 2) views.push(compareView(doc, 'all'));
   if (hasCosts(doc)) views.push(costs(doc));
   return views;
 }
 
-/** Vista de comparación de dos entornos (`compare:<A>:<B>`; con uno solo, se compara con el siguiente en el camino a producción). */
+/**
+ * Vista de comparación de entornos (`compare:<A>:<B>`; con uno solo, se compara con el siguiente en el camino a producción). Con
+ * tres o más (`compare:<A>:<B>:<C>…`, o `compare:all` para todos los que tienen contenido) es una matriz de servicios y recursos por
+ * entorno comparada con el primero, la referencia.
+ */
 export function compareView(doc: PlatformDocument, text: string): PlatformView {
-  const [a, b] = resolveComparison(doc, text);
-  const { services, resources } = compareEnvironments(doc, a.id, b.id);
-  const deployments = doc.deployments.filter((d) => d.environmentId === a.id || d.environmentId === b.id);
-  const ids = new Set([...services.map((s) => s.service.id), ...resources.flatMap((r) => [r.a?.id, r.b?.id].filter((id): id is string => !!id))]);
+  const environments = resolveEnvironments(doc, text);
+  const ids = environments.map((e) => e.id);
+  const compared = new Set<string>();
+  if (environments.length === 2) {
+    const { services, resources } = compareEnvironments(doc, ids[0], ids[1]);
+    for (const id of [...services.map((s) => s.service.id), ...resources.flatMap((r) => [r.a?.id, r.b?.id])]) if (id) compared.add(id);
+  } else {
+    const { services, resources } = compareMatrix(doc, ids);
+    for (const id of [...services.map((s) => s.service.id), ...resources.flatMap((r) => r.cells.map((c) => c.resource?.id))]) if (id) compared.add(id);
+  }
+  // `compare:all` conserva su id aunque cambien los entornos; con dos entornos o menos «todos» es una comparación de dos.
+  const everyone = environments.length > 2 && isAllEnvironments(doc, text);
   return {
-    id: `compare:${a.id}:${b.id}`,
+    id: everyone ? 'compare:all' : `compare:${ids.join(':')}`,
     type: 'compare',
-    title: `Comparación ${a.name} - ${b.name} - ${doc.workspace.name}`,
-    compareIds: [a.id, b.id],
-    elementIds: inDocumentOrder(doc, ids),
+    title: `Comparación ${everyone ? 'de todos los entornos' : environments.map((e) => e.name).join(' - ')} - ${doc.workspace.name}`,
+    compareIds: ids,
+    elementIds: inDocumentOrder(doc, compared),
     dependencyIds: [],
-    deploymentIds: deployments.map((d) => d.id),
+    deploymentIds: doc.deployments.filter((d) => ids.includes(d.environmentId)).map((d) => d.id),
     pipelineIds: [],
   };
 }
@@ -189,5 +203,5 @@ export function findView(doc: PlatformDocument, viewId?: string): PlatformView {
   if (bare && (bare.kind === 'service' || bare.kind === 'resource')) return traceView(doc, viewId);
   const environment = views.find((v) => v.id === `env:${viewId}`);
   if (environment) return environment;
-  throw new Error(`No existe la vista «${viewId}». Vistas disponibles: ${[...views.map((v) => v.id), 'impact:<elemento>', 'depends:<elemento>', 'focus:<elemento>', 'compare:<entorno>:<entorno>'].join(', ')}.`);
+  throw new Error(`No existe la vista «${viewId}». Vistas disponibles: ${[...views.map((v) => v.id), 'impact:<elemento>', 'depends:<elemento>', 'focus:<elemento>', 'compare:<entorno>:<entorno>[:<entorno>…]', 'compare:all'].join(', ')}.`);
 }
