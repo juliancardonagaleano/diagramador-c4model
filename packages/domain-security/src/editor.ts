@@ -1,5 +1,5 @@
 import { uniqueId, type EdgeNotation, type EditResult, type EditorGraph, type EditorNode, type EdgeMark, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
-import { ASSET_COLORS, ASSET_SHAPES, CONTROL_COLOR, CONTROL_SHAPE, FLOW_NODE_COLOR, FLOW_SHAPE, RISK_COLORS, THREAT_SHAPE, ZONE_STYLES, buildScene } from './export/render';
+import { ASSET_COLORS, ASSET_SHAPES, CONTROL_COLOR, CONTROL_SHAPE, FLOW_NODE_COLOR, FLOW_SHAPE, RISK_COLORS, STANDARD_STYLE, THREAT_SHAPE, ZONE_STYLES, buildScene, heatLayout, heatPlacement } from './export/render';
 import {
   ASSET_KINDS,
   ASSET_LABELS,
@@ -25,6 +25,7 @@ import {
   TRUST_LEVELS,
   flowName,
   indexElements,
+  parseHeatCell,
   trustOf,
   type Asset,
   type AssetKind,
@@ -48,6 +49,8 @@ import { findView } from './views';
  */
 const asset = (kind: AssetKind, glyph: string, width: number, height: number): NodeNotation => ({ kind, label: ASSET_LABELS[kind], glyph, shape: ASSET_SHAPES[kind], fill: ASSET_COLORS[kind], width, height });
 
+const CELL_SIZE = { width: 280, height: 96 };
+
 const NODE_KIND_NOTATION: NodeNotation[] = [
   asset('actor', '☺', 150, 96),
   asset('external', '▭', 200, 78),
@@ -57,6 +60,9 @@ const NODE_KIND_NOTATION: NodeNotation[] = [
   { kind: 'threat', label: 'Amenaza', glyph: '⚠', shape: THREAT_SHAPE, fill: RISK_COLORS.medium, width: 260, height: 84 },
   { kind: 'control', label: 'Control', glyph: '🛡', shape: CONTROL_SHAPE, fill: CONTROL_COLOR, width: 220, height: 78 },
   { kind: 'flow', label: 'Flujo de datos', glyph: '→', shape: FLOW_SHAPE, fill: FLOW_NODE_COLOR, width: 220, height: 70, addable: false },
+  // Contenedores de las vistas derivadas: las celdas de la matriz de calor (se les suelta una amenaza) y los catálogos de estándares.
+  { kind: 'cell', label: 'Celda de riesgo', glyph: '▦', shape: 'rect', fill: RISK_COLORS.medium, width: CELL_SIZE.width, height: CELL_SIZE.height, addable: false, container: true },
+  { kind: 'catalog', label: 'Estándar', glyph: '☰', shape: 'rect', fill: STANDARD_STYLE.stroke, width: 260, height: 140, addable: false, container: true },
 ];
 
 const EDGE_KIND_NOTATION: EdgeNotation[] = [
@@ -214,6 +220,10 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
     const bordering = new Set([...crossing.values()].flatMap((c) => [c.from.id, c.to.id]));
     const nodes: EditorNode[] = [];
     for (const [id, g] of scene.groups) {
+      if (g.kind === 'cell' || g.kind === 'catalog') {
+        nodes.push({ id, kind: g.kind, label: g.label, parentId: g.groupId, fill: g.style?.stroke, border: 'solid' });
+        continue;
+      }
       // El lienzo antepone la clase («Zona de confianza: …»), así que el título lleva el nombre y el nivel.
       const label = `${all.get(g.elementId)?.name ?? g.short} · ${TRUST_LABELS[g.trust]}`;
       nodes.push({ id, kind: 'zone', label: bordering.has(g.elementId) ? `${label} · frontera de confianza` : label, parentId: g.groupId, fill: ZONE_STYLES[g.trust].stroke, ...(bordering.has(g.elementId) ? { stroke: BOUNDARY_COLOR, dashed: true } : {}) });
@@ -252,7 +262,27 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
     };
   },
 
+  layout(doc, viewId) {
+    const view = findView(doc, viewId);
+    return view.type === 'heatmap' ? heatLayout(doc, view) : undefined;
+  },
+
+  drop(doc, id, targetId, viewId) {
+    const view = findView(doc, viewId);
+    const threat = doc.threats.find((t) => t.id === id);
+    if (view.type !== 'heatmap' || !threat) return undefined;
+    // Se suelta sobre una celda o sobre otra amenaza (la de su celda).
+    const other = doc.threats.find((t) => t.id === targetId);
+    const cell = parseHeatCell(targetId) ?? (other ? heatPlacement(doc, other, view.mode ?? 'inherent') : undefined);
+    if (!cell) return undefined;
+    const from = heatPlacement(doc, threat, view.mode ?? 'inherent');
+    if (from.likelihood === cell.likelihood && from.impact === cell.impact) return undefined;
+    if (view.mode === 'residual') return fail('El riesgo residual se calcula con los controles implementados y no se arrastra: cambia la probabilidad y el impacto en la matriz inherente (o añade controles).');
+    return ok({ ...doc, threats: doc.threats.map((t) => (t.id === id ? { ...t, likelihood: cell.likelihood, impact: cell.impact } : t)) }, id);
+  },
+
   fields(target, doc) {
+    if (target.kind === 'cell' || target.kind === 'catalog') return [];
     if (isFlowKind(target.kind)) return FLOW_FIELDS;
     if (target.type === 'edge') return [];
     return nodeFields(target.kind, doc);
@@ -270,6 +300,7 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
           return { type: 'node', kind: e.kind, values: { ...e.item } };
       }
     }
+    if (parseHeatCell(id) || id.startsWith('std:')) return { type: 'node', kind: id.startsWith('std:') ? 'catalog' : 'cell', values: {} };
     if (id.startsWith('t:')) return doc.threats.some((t) => t.id === id.slice(2)) ? { type: 'edge', kind: 'threat', values: {} } : undefined;
     if (id.startsWith('m:')) return { type: 'edge', kind: 'mitigates', values: {} };
     return undefined;
@@ -387,6 +418,7 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
           return ok({ ...doc, controls: doc.controls.filter((c) => c.id !== id), threats: doc.threats.map((t) => (t.controlIds ? { ...t, controlIds: t.controlIds.filter((c) => c !== id) } : t)) });
       }
     }
+    if (parseHeatCell(id) || id.startsWith('std:')) return fail('Las celdas de la matriz y los catálogos de estándares se derivan del documento: no se borran.');
     if (id.startsWith('t:')) return fail('Una amenaza siempre recae sobre algo: borra la amenaza o cambia sobre qué recae en sus propiedades.');
     if (id.startsWith('m:')) {
       const [, controlId, threatId] = id.split(':');

@@ -47,6 +47,8 @@ export function toMermaid(doc: SecurityDocument, options: { viewId?: string } = 
 
   const emit = (parent: string | undefined, depth: number): void => {
     for (const [id, g] of [...scene.groups].filter(([, x]) => x.groupId === parent)) {
+      // Mermaid no admite subgrafos vacíos (celdas sin amenazas de la matriz de calor).
+      if (![...scene.nodes.values()].some((n) => n.groupId === id) && ![...scene.groups.values()].some((x) => x.groupId === id)) continue;
       out.push(`${pad(depth)}subgraph ${alias(id)}["${esc(g.label)}"]`);
       emit(id, depth + 1);
       out.push(`${pad(depth)}end`);

@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { layoutGraph, pretty, type EditResult, type EditorSpec, type GraphLayout } from '@iark/kernel';
 import './canvas.css';
 import { ActionPrompt } from './ActionPrompt';
-import { absolutePositions, buildFlow, layoutLabelText, movedByDrag, structureKey, type FlowEdge, type FlowNode } from './flow';
+import { absolutePositions, buildFlow, dropTarget, layoutLabelText, movedByDrag, structureKey, type FlowEdge, type FlowNode } from './flow';
 import type { EditHistory } from './history';
 import { Inspector, type LinkTools } from './Inspector';
 import { NotationEdge } from './NotationEdge';
@@ -300,7 +300,19 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     window.addEventListener('pointercancel', stop, { signal: end.signal });
   };
 
-  const onDragStop = (): void => {
+  const onDragStop = (_event?: unknown, dragged?: { id: string }): void => {
+    if (dragged && !readOnly && document !== undefined && spec.drop) {
+      const nodes = builtRef.current.nodes;
+      const target = dropTarget(nodes, new Map(nodes.map((n) => [n.id, { width: n.width, height: n.height }])), dragged.id);
+      const result = target ? spec.drop(document, dragged.id, target, viewId) : undefined;
+      if (result) {
+        // Con efecto (o rechazado), la vista se recoloca: se sueltan las posiciones fijadas a mano.
+        setMoved(new Map());
+        writePositions(key, new Map());
+        if (commit(result)) setSelection(new Set([dragged.id]));
+        return;
+      }
+    }
     const next = new Map([...absolutePositions(builtRef.current.nodes)].map(([id, at]) => [id, { x: Math.round(at.x), y: Math.round(at.y) }] as const));
     setMoved(next);
     writePositions(key, next);
@@ -437,8 +449,8 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
             onNodeDoubleClick={(_, n) => follow(n.id)}
             onPaneClick={() => setSelection(NO_SELECTION)}
             onConnect={onConnect}
-            onNodeDragStop={onDragStop}
-            onSelectionDragStop={onDragStop}
+            onNodeDragStop={(event, node) => onDragStop(event, node)}
+            onSelectionDragStop={() => onDragStop()}
             deleteKeyCode={null}
             minZoom={0.1}
             maxZoom={2}

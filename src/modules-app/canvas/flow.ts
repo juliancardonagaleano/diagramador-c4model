@@ -94,6 +94,33 @@ export function movedByDrag(nodes: readonly Placed[], moved: ReadonlyMap<string,
   return next;
 }
 
+/**
+ * Elemento sobre el que se ha soltado `id`: el más pequeño (que no sea él ni descendiente suyo) que contiene el centro de
+ * su caja. Las posiciones son absolutas; `sizes` da el ancho y alto de cada nodo.
+ */
+export function dropTarget(nodes: readonly Placed[], sizes: ReadonlyMap<string, { width: number; height: number }>, id: string): string | undefined {
+  const absolute = absolutePositions(nodes);
+  const at = absolute.get(id);
+  const size = sizes.get(id);
+  if (!at || !size) return undefined;
+  const center = { x: at.x + size.width / 2, y: at.y + size.height / 2 };
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const inside = (candidate: string): boolean => {
+    for (let p = byId.get(candidate)?.parentId, depth = 0; p && depth < 20; p = byId.get(p)?.parentId, depth++) if (p === id) return true;
+    return false;
+  };
+  let best: { id: string; area: number } | undefined;
+  for (const n of nodes) {
+    const box = absolute.get(n.id);
+    const dims = sizes.get(n.id);
+    if (n.id === id || !box || !dims || inside(n.id)) continue;
+    if (center.x < box.x || center.x > box.x + dims.width || center.y < box.y || center.y > box.y + dims.height) continue;
+    const area = dims.width * dims.height;
+    if (!best || area < best.area) best = { id: n.id, area };
+  }
+  return best?.id;
+}
+
 const notationOf = (spec: EditorSpec<unknown>, kind: string): NodeNotation => spec.nodeKinds.find((k) => k.kind === kind) ?? FALLBACK_NODE;
 const edgeNotationOf = (spec: EditorSpec<unknown>, kind: string): EdgeNotation => spec.edgeKinds.find((k) => k.kind === kind) ?? FALLBACK_EDGE;
 
@@ -158,7 +185,7 @@ export function buildFlow(
       const notation = notationOf(spec, n.kind);
       const abs = absolute.get(n.id)!;
       const parent = n.parentId && byId.has(n.parentId) ? absolute.get(n.parentId) : undefined;
-      const group = parents.has(n.id);
+      const group = parents.has(n.id) || notation.container === true;
       return {
         id: n.id,
         type: 'notation',

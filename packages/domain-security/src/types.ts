@@ -149,6 +149,8 @@ export const STRIDE_LABELS: Record<Stride, string> = {
   'denial-of-service': 'Denegación de servicio',
   'elevation-of-privilege': 'Elevación de privilegios',
 };
+/** Probabilidad en femenino («prob. alta»). */
+export const LIKELIHOOD_LABELS: Record<Likelihood, string> = { low: 'baja', medium: 'media', high: 'alta' };
 export const RATING_LABELS: Record<RiskRating, string> = { low: 'bajo', medium: 'medio', high: 'alto', critical: 'crítico' };
 export const STATUS_LABELS: Record<ThreatStatus, string> = { open: 'abierta', mitigated: 'mitigada', accepted: 'aceptada' };
 export const CONTROL_LABELS: Record<ControlKind, string> = {
@@ -179,6 +181,7 @@ const TRUST_RANK: Record<TrustLevel, number> = { untrusted: 0, dmz: 1, internal:
 const CLASSIFICATION_RANK: Record<Classification, number> = { public: 0, internal: 1, confidential: 2, restricted: 3 };
 const LIKELIHOOD_RANK: Record<Likelihood, number> = { low: 1, medium: 2, high: 3 };
 const IMPACT_RANK: Record<Impact, number> = { low: 1, medium: 2, high: 3, critical: 4 };
+const ratingOf = (score: number): RiskRating => (score <= 2 ? 'low' : score <= 4 ? 'medium' : score <= 6 ? 'high' : 'critical');
 
 export const trustOf = (z: Zone): TrustLevel => z.trust ?? 'internal';
 export const trustRank = (t: TrustLevel): number => TRUST_RANK[t];
@@ -190,8 +193,42 @@ export const sensitive = (c: Classification | undefined): boolean => c === 'conf
 /** Riesgo = probabilidad (1-3) × impacto (1-4): 1-2 bajo, 3-4 medio, 6 alto, 8-12 crítico. */
 export function riskOf(t: Threat): { score: number; rating: RiskRating } {
   const score = LIKELIHOOD_RANK[t.likelihood ?? 'medium'] * IMPACT_RANK[t.impact ?? 'medium'];
-  return { score, rating: score <= 2 ? 'low' : score <= 4 ? 'medium' : score <= 6 ? 'high' : 'critical' };
+  return { score, rating: ratingOf(score) };
 }
+
+export interface Residual {
+  likelihood: Likelihood;
+  impact: Impact;
+  score: number;
+  rating: RiskRating;
+  /** Controles implementados que mitigan la amenaza. */
+  implemented: number;
+  /** El riesgo residual es menor que el inherente. */
+  reduced: boolean;
+}
+
+/**
+ * Riesgo residual: lo que queda de una amenaza tras sus controles IMPLEMENTADOS (los previstos no cuentan). Regla: un control
+ * implementado baja la probabilidad un nivel (los controles evitan que ocurra); dos o más bajan también el impacto un nivel
+ * (los controles de detección y contención lo acotan). Nunca por debajo de «baja» / «bajo». Sin controles implementados, el
+ * residual es el inherente. No se guarda: se calcula a partir de los controles enlazados.
+ */
+export function residualOf(doc: SecurityDocument, t: Threat): Residual {
+  const implemented = new Set((t.controlIds ?? []).filter((id) => doc.controls.some((c) => c.id === id && controlStatusOf(c) === 'implemented'))).size;
+  const likelihood = LIKELIHOODS[Math.max(0, LIKELIHOOD_RANK[t.likelihood ?? 'medium'] - (implemented >= 1 ? 1 : 0) - 1)];
+  const impact = IMPACTS[Math.max(0, IMPACT_RANK[t.impact ?? 'medium'] - (implemented >= 2 ? 1 : 0) - 1)];
+  const score = LIKELIHOOD_RANK[likelihood] * IMPACT_RANK[impact];
+  return { likelihood, impact, score, rating: ratingOf(score), implemented, reduced: score < riskOf(t).score };
+}
+
+/** Celda de la matriz de calor (probabilidad × impacto) en la que cae una amenaza o un riesgo residual. */
+export const heatCellId = (likelihood: Likelihood, impact: Impact): string => `cell:${likelihood}:${impact}`;
+export function parseHeatCell(id: string): { likelihood: Likelihood; impact: Impact } | undefined {
+  const [prefix, likelihood, impact] = id.split(':');
+  return prefix === 'cell' && (LIKELIHOODS as readonly string[]).includes(likelihood) && (IMPACTS as readonly string[]).includes(impact) ? { likelihood: likelihood as Likelihood, impact: impact as Impact } : undefined;
+}
+export const cellScore = (likelihood: Likelihood, impact: Impact): number => LIKELIHOOD_RANK[likelihood] * IMPACT_RANK[impact];
+export const cellRating = (likelihood: Likelihood, impact: Impact): RiskRating => ratingOf(cellScore(likelihood, impact));
 
 /** Todos los elementos del documento por id. */
 export function indexElements(doc: SecurityDocument): Map<string, Element> {

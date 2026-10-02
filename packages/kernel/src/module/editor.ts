@@ -27,6 +27,8 @@ export interface NodeNotation {
   height: number;
   /** Si el tipo se ofrece en la paleta (por defecto sí). */
   addable?: boolean;
+  /** Se dibuja siempre como zona (aunque no tenga hijos): una celda vacía de una matriz donde se pueden soltar elementos. */
+  container?: boolean;
   /** Icono del tipo en la esquina del nodo: trazados de una caja de 16 × 16 (como `EdgeMark.icon`). */
   icon?: string[];
 }
@@ -245,6 +247,13 @@ export interface EditorSpec<TDoc> {
    * lienzo aplica el autolayout común por capas.
    */
   layout?(document: TDoc, viewId?: string): GraphLayout | undefined | Promise<GraphLayout | undefined>;
+  /**
+   * Soltar el nodo `id` sobre `targetId` (el elemento más pequeño que contiene su centro; nunca él mismo ni un descendiente):
+   * p. ej. arrastrar una amenaza a otra celda de la matriz de calor cambia su probabilidad e impacto. `undefined` si soltarlo
+   * ahí no significa nada (el nodo se queda donde se dejó); un fallo se avisa y el nodo vuelve a su sitio. Si tiene efecto, el
+   * lienzo descarta las posiciones fijadas a mano para que la vista se recoloque.
+   */
+  drop?(document: TDoc, id: string, targetId: string, viewId?: string): EditResult<TDoc> | undefined;
   /** Operaciones sobre la selección (la barra del lienzo las muestra tras los botones de edición). */
   actions?: Array<EditorAction<TDoc>>;
   /** Documentos de texto asociados a los elementos, con su propio editor (los contratos de una integración). */
