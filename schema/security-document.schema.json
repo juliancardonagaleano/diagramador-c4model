@@ -254,6 +254,9 @@
               "minLength": 1,
               "maxLength": 120
             }
+          },
+          "suggested": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -306,6 +309,15 @@
           },
           "owner": {
             "type": "string"
+          },
+          "standard": {
+            "type": "string",
+            "enum": [
+              "asvs",
+              "nist-800-53",
+              "iso-27001",
+              "cis"
+            ]
           }
         },
         "required": [

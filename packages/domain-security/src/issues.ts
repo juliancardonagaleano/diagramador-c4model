@@ -130,6 +130,11 @@ export function analyzeSecurity(doc: SecurityDocument): ModuleIssue[] {
   }
   for (const c of doc.controls) if (!covered.has(c.id)) add('info', c.id, `${label(at(c.id))} no mitiga ninguna amenaza.`);
 
+  // Si algún control remite a un estándar, los que no lo declaran se salen de la cobertura.
+  if (doc.controls.some((c) => c.standard !== undefined)) {
+    for (const c of doc.controls) if (c.standard === undefined) add('info', c.id, `${label(at(c.id))} no indica a qué estándar remite (OWASP ASVS, NIST 800-53, ISO 27001, CIS) y queda fuera de la cobertura.`);
+  }
+
   // Con un análisis en marcha, lo que cruza fronteras o guarda datos sensibles debería tener sus amenazas estudiadas.
   if (doc.threats.length > 0) {
     const threatened = new Set(doc.threats.map((t) => t.targetId));

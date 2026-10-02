@@ -37,6 +37,9 @@ export type ThreatStatus = (typeof THREAT_STATUSES)[number];
 
 export const CONTROL_KINDS = ['authentication', 'authorization', 'encryption', 'logging', 'validation', 'network', 'rate-limit', 'backup', 'secrets', 'other'] as const;
 export type ControlKind = (typeof CONTROL_KINDS)[number];
+/** Estándares de seguridad a los que un control puede remitir (opcional): OWASP ASVS, NIST SP 800-53, ISO/IEC 27001 y CIS Controls. */
+export const CONTROL_STANDARDS = ['asvs', 'nist-800-53', 'iso-27001', 'cis'] as const;
+export type ControlStandard = (typeof CONTROL_STANDARDS)[number];
 export const CONTROL_STATUSES = ['planned', 'implemented'] as const;
 export type ControlStatus = (typeof CONTROL_STATUSES)[number];
 
@@ -94,6 +97,8 @@ export interface Threat {
   status?: ThreatStatus;
   description?: string;
   controlIds?: string[];
+  /** Propuesta automática («Sugerir amenazas») pendiente de aceptar o descartar. */
+  suggested?: boolean;
 }
 
 export interface Control {
@@ -104,6 +109,8 @@ export interface Control {
   status?: ControlStatus;
   description?: string;
   owner?: string;
+  /** Estándar al que remite el control (cobertura por estándar). */
+  standard?: ControlStandard;
 }
 
 export interface SecurityDocument {
@@ -156,6 +163,7 @@ export const CONTROL_LABELS: Record<ControlKind, string> = {
   secrets: 'Gestión de secretos',
   other: 'Otro control',
 };
+export const STANDARD_LABELS: Record<ControlStandard, string> = { asvs: 'OWASP ASVS', 'nist-800-53': 'NIST 800-53', 'iso-27001': 'ISO 27001', cis: 'CIS Controls' };
 export const CONTROL_STATUS_LABELS: Record<ControlStatus, string> = { planned: 'prevista', implemented: 'implementada' };
 
 /** Categorías STRIDE que se aplican a cada tipo de elemento de un diagrama de flujo de datos. */

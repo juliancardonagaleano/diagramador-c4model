@@ -1,4 +1,4 @@
-import { uniqueId, type EdgeNotation, type EditResult, type EditorGraph, type EditorNode, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
+import { uniqueId, type EdgeNotation, type EditResult, type EditorGraph, type EditorNode, type EdgeMark, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
 import { ASSET_COLORS, ASSET_SHAPES, CONTROL_COLOR, CONTROL_SHAPE, FLOW_NODE_COLOR, FLOW_SHAPE, RISK_COLORS, THREAT_SHAPE, ZONE_STYLES, buildScene } from './export/render';
 import {
   ASSET_KINDS,
@@ -9,11 +9,13 @@ import {
   CLASSIFICATION_LABELS,
   CONTROL_KINDS,
   CONTROL_LABELS,
+  CONTROL_STANDARDS,
   CONTROL_STATUSES,
   CONTROL_STATUS_LABELS,
   IMPACTS,
   LIKELIHOODS,
   RATING_LABELS,
+  STANDARD_LABELS,
   STATUS_LABELS,
   STRIDE,
   STRIDE_BY_ELEMENT,
@@ -33,6 +35,8 @@ import {
   type Threat,
   type Zone,
 } from './types';
+import type { Crossing } from './graph';
+import { crossingLabel, crossingsById, needsAuthentication, securityActions } from './modeling';
 import { findView } from './views';
 
 /**
@@ -62,6 +66,13 @@ const EDGE_KIND_NOTATION: EdgeNotation[] = [
   { kind: 'threat', label: 'amenaza a', stroke: '#c92a2a', line: 'dashed', width: 1.5 },
   { kind: 'mitigates', label: 'mitiga', stroke: CONTROL_COLOR, line: 'solid', width: 1.5 },
 ];
+
+const BOUNDARY_COLOR = '#c92a2a';
+const boundaryMark = (c: Crossing): EdgeMark => ({
+  text: '⛨',
+  color: BOUNDARY_COLOR,
+  title: `Cruza frontera de confianza: ${crossingLabel(c)}${c.direction === 'ingress' ? ' (entra a una zona más confiable: exige autenticación)' : ''}`,
+});
 
 const flowKindOf = (f: Flow): string => (f.encrypted === true ? 'flow-encrypted' : f.encrypted === false ? 'flow-plain' : 'flow');
 const isFlowKind = (kind: string): boolean => kind === 'flow' || kind === 'flow-encrypted' || kind === 'flow-plain';
@@ -130,6 +141,7 @@ function nodeFields(kind: string, doc: SecurityDocument): FieldSpec[] {
         { key: 'kind', label: 'Clase', type: 'select', options: options(CONTROL_KINDS, CONTROL_LABELS) },
         { key: 'status', label: 'Estado', type: 'select', options: options(CONTROL_STATUSES, CONTROL_STATUS_LABELS), allowEmpty: true, hint: 'si no se indica, implementada' },
         { key: 'owner', label: 'Responsable', type: 'text' },
+        { key: 'standard', label: 'Estándar', type: 'select', options: options(CONTROL_STANDARDS, STANDARD_LABELS), allowEmpty: true, hint: 'opcional: para la cobertura por estándar' },
       ];
     default:
       return isFlowKind(kind) ? FLOW_FIELDS : [NAME, DESCRIPTION];
@@ -189,6 +201,7 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
   nodeKinds: NODE_KIND_NOTATION,
   edgeKinds: EDGE_KIND_NOTATION,
   defaultEdgeKind: 'flow',
+  actions: securityActions,
 
   project(doc, viewId): EditorGraph {
     const view = findView(doc, viewId);
@@ -196,15 +209,21 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
     const all = indexElements(doc);
     const flows = new Map(doc.flows.map((f) => [f.id, f]));
     const kinds = new Map(NODE_KIND_NOTATION.map((k) => [k.kind, k]));
+    const crossing = crossingsById(doc);
+    // Frontera de confianza (a la Microsoft TMT): borde discontinuo rojo en las zonas que cruza algún flujo.
+    const bordering = new Set([...crossing.values()].flatMap((c) => [c.from.id, c.to.id]));
     const nodes: EditorNode[] = [];
     for (const [id, g] of scene.groups) {
       // El lienzo antepone la clase («Zona de confianza: …»), así que el título lleva el nombre y el nivel.
-      nodes.push({ id, kind: 'zone', label: `${all.get(g.elementId)?.name ?? g.short} · ${TRUST_LABELS[g.trust]}`, parentId: g.groupId, fill: ZONE_STYLES[g.trust].stroke });
+      const label = `${all.get(g.elementId)?.name ?? g.short} · ${TRUST_LABELS[g.trust]}`;
+      nodes.push({ id, kind: 'zone', label: bordering.has(g.elementId) ? `${label} · frontera de confianza` : label, parentId: g.groupId, fill: ZONE_STYLES[g.trust].stroke, ...(bordering.has(g.elementId) ? { stroke: BOUNDARY_COLOR, dashed: true } : {}) });
     }
     for (const [id, n] of scene.nodes) {
       const [label = id, ...rest] = n.lines;
       const notation = kinds.get(n.cls) ?? kinds.get('process')!;
-      const badges = [...rest.slice(1), ...(n.note ? [n.note] : [])].filter(Boolean);
+      const item = all.get(n.elementId)?.item;
+      const extra = n.cls === 'threat' && (item as Threat).suggested ? ['sugerida'] : n.cls === 'control' && (item as Control).standard ? [STANDARD_LABELS[(item as Control).standard!]] : [];
+      const badges = [...rest.slice(1), ...(n.note ? [n.note] : []), ...extra].filter(Boolean);
       nodes.push({
         id,
         kind: n.cls,
@@ -215,7 +234,7 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
         ref: (all.get(n.elementId)?.item as { ref?: string } | undefined)?.ref,
         fill: n.fill,
         stroke: n.stroke === '#0f172a55' ? undefined : n.stroke,
-        dashed: n.dashed,
+        dashed: n.dashed || (n.cls === 'threat' && (item as Threat).suggested === true) || undefined,
         width: widthFor(n.lines, notation.width, n.cls === 'threat' || n.cls === 'control' ? 400 : 300),
       });
     }
@@ -228,6 +247,7 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
         target: e.target,
         label: e.label,
         width: e.kind === 'flow' ? e.width : undefined,
+        marks: e.kind === 'flow' && crossing.has(id) ? [boundaryMark(crossing.get(id)!)] : undefined,
       })),
     };
   },
@@ -297,7 +317,10 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
     if (isFlowKind(kind)) {
       const id = uniqueId(`${sourceId}-a-${targetId}`, all.keys());
       const created: Flow = { id, sourceId, targetId, ...(kind === 'flow-encrypted' ? { encrypted: true } : kind === 'flow-plain' ? { encrypted: false } : {}) };
-      return ok({ ...doc, flows: [...doc.flows, created] }, id);
+      const next = { ...doc, flows: [...doc.flows, created] };
+      // Un flujo hacia una zona más confiable nace autenticado (token); se puede cambiar, pero no dejar sin autenticación.
+      if (needsAuthentication(crossingsById(next).get(id))) created.authentication = 'token';
+      return ok(next, id);
     }
     if (kind === 'threat') {
       const [threatId, target] = all.get(sourceId)?.kind === 'threat' ? [sourceId, targetId] : [targetId, sourceId];
@@ -327,6 +350,7 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
       }
       case 'flow': {
         const next = patchObject(e.item as Flow, patch, ['description', 'protocol', 'classification', 'encrypted', 'authentication']);
+        if (next.authentication === 'none' && (e.item as Flow).authentication !== 'none' && needsAuthentication(crossingsById(doc).get(id))) return fail('Un flujo que entra en una zona más confiable debe autenticar a quien lo envía.');
         return ok({ ...doc, flows: doc.flows.map((f) => (f.id === id ? next : f)) }, id);
       }
       case 'threat': {
@@ -339,7 +363,7 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
         return ok({ ...doc, threats: doc.threats.map((t) => (t.id === id ? next : t)) }, id);
       }
       default:
-        return ok({ ...doc, controls: doc.controls.map((c) => (c.id === id ? patchObject(c, patch, ['name', 'description', 'kind', 'status', 'owner']) : c)) }, id);
+        return ok({ ...doc, controls: doc.controls.map((c) => (c.id === id ? patchObject(c, patch, ['name', 'description', 'kind', 'status', 'owner', 'standard']) : c)) }, id);
     }
   },
 
@@ -380,6 +404,9 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
     if (isFlowKind(kind)) {
       if (s.kind !== 'asset' || t.kind !== 'asset') return 'Un flujo de datos une dos activos.';
       if (doc.flows.some((f) => f.sourceId === sourceId && f.targetId === targetId)) return 'Ese flujo ya existe.';
+      const outside = (a: Asset): boolean => a.kind === 'actor' || a.kind === 'external';
+      const [from, to] = [s.item as Asset, t.item as Asset];
+      if ((outside(from) && to.kind === 'datastore') || (from.kind === 'datastore' && outside(to))) return 'Un actor o sistema externo no habla directamente con un almacén de datos: pasa por un proceso.';
       return undefined;
     }
     if (kind === 'threat') {
