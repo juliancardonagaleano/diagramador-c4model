@@ -398,10 +398,9 @@ export async function layoutView(doc: PlatformDocument, viewId?: string, options
 
 export async function toSvg(doc: PlatformDocument, viewId?: string): Promise<string> {
   const { view, layout, nodes, fittedGroups, edges, groupStyles } = await layoutView(doc, viewId);
-  const legend = matrixIsDrawn(view) ? drawMatrix(doc, view).legend : undefined;
   return renderGraphSvg(layout, {
     title: view.title,
-    ...(legend ? { legend } : {}),
+    ...(matrixIsDrawn(view) ? { legend: drawMatrix(doc, view).legend } : {}),
     node: (id) => nodes.get(id)!,
     edge: (id) => {
       const e = edges.get(id)!;
