@@ -398,6 +398,7 @@ iark convert   plataforma.json --module platform --out impacto.svg --view impact
 iark import    produccion.mmd --module platform --out plataforma.json                  # flowchart → documento
 iark generate  "Tienda con Kubernetes, PostgreSQL y Kafka en desarrollo y producción" --module platform --json plataforma.json
 iark platform deployments plataforma.json                                              # dónde corre cada servicio en cada entorno y qué versiones difieren
+iark platform compare     dev prod plataforma.json                                     # compara dos entornos: lo que solo está en uno y las versiones o réplicas que difieren; dice cómo emparejó cada recurso si no fue por nombre
 iark platform impact      kafka-prod plataforma.json [--direction dependencies|both] [--env prod]   # qué se cae si falla, con los responsables a avisar
 iark platform from-integration mapa.json                                               # sistemas de un mapa de integración → servicios y recursos con URN
 ```
