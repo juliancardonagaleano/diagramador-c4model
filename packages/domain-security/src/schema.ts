@@ -5,6 +5,7 @@ import {
   AUTHENTICATIONS,
   CLASSIFICATIONS,
   CONTROL_KINDS,
+  CONTROL_STANDARDS,
   CONTROL_STATUSES,
   ELEMENT_LABELS,
   IMPACTS,
@@ -64,6 +65,7 @@ export const threatSchema = z.object({
   status: z.enum(THREAT_STATUSES).optional(),
   description: z.string().optional(),
   controlIds: z.array(idSchema).optional(),
+  suggested: z.boolean().optional(),
 });
 
 export const controlSchema = z.object({
@@ -73,6 +75,7 @@ export const controlSchema = z.object({
   status: z.enum(CONTROL_STATUSES).optional(),
   description: z.string().optional(),
   owner: z.string().optional(),
+  standard: z.enum(CONTROL_STANDARDS).optional(),
 });
 
 /** Esquema estructural + reglas de integridad (ids únicos, zonas sin ciclos, flujos entre activos, amenazas sobre activos o flujos, controles existentes). */
