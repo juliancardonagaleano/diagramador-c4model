@@ -406,7 +406,7 @@ describe('generación con IA', () => {
     expect(refine).toContain('"id": "dwh-dim-cliente"');
     expect(refine).toContain('Añade un informe');
     const schema = dataAiSpec.generationJsonSchema() as { properties: Record<string, unknown> };
-    expect(Object.keys(schema.properties)).toEqual(['workspace', 'domains', 'assets', 'pipelines', 'relations']);
+    expect(Object.keys(schema.properties)).toEqual(['workspace', 'domains', 'assets', 'pipelines', 'relations', 'terms']);
   });
 });
 
