@@ -1036,6 +1036,8 @@ describe('iark: módulo de seguridad', () => {
     const risks = run(['security', 'risks', sec]);
     expect(risks.status).toBe(0);
     expect(risks.stdout).toContain('| crítico (9) | Robo de credenciales de clientes (credential stuffing) |');
+    expect(risks.stdout).toContain('| Estado | Controles | Residual |');
+    expect(risks.stdout).toContain('Abiertas por riesgo residual: 0 crítico, 2 alto, 2 medio, 0 bajo');
     expect(run(['security', 'risks', sec, '--status', 'accepted']).stdout).toContain('Denegación de servicio distribuida');
     expect(run(['security', 'risks', sec, '--status', 'cerrada']).status).toBe(2);
 
@@ -1046,6 +1048,30 @@ describe('iark: módulo de seguridad', () => {
     const exposure = run(['security', 'exposure', sec]);
     expect(exposure.stdout).toContain('Puntos de entrada desde zonas no confiables: 1');
     expect(exposure.stdout).toContain('Caminos hasta los activos que interesa proteger: 6');
+  });
+
+  it('security heatmap y standards: la matriz de calor (inherente o residual) y la cobertura de estándares', () => {
+    const heatmap = run(['security', 'heatmap', sec]);
+    expect(heatmap.status).toBe(0);
+    expect(heatmap.stdout).toContain('| Probabilidad \\ Impacto | bajo | medio | alto | crítico |');
+    expect(heatmap.stdout).toContain('- prob. alta × impacto alto · riesgo crítico (9) · 1 amenaza\n  - Robo de credenciales de clientes (credential stuffing)');
+    const residual = run(['security', 'heatmap', sec, '--residual']);
+    expect(residual.stdout).toContain('Matriz de calor (riesgo residual)');
+    expect(residual.stdout).toContain('| baja | 0 | 1 | 5 | 0 |');
+
+    // El ejemplo no remite a ningún estándar: se le añaden a algunos controles.
+    const json = JSON.parse(readFileSync(sec, 'utf8'));
+    for (const c of json.controls) if (c.id === 'tls-borde' || c.id === 'mfa') c.standard = 'asvs';
+    const withStandards = JSON.stringify(json);
+    expect(run(['security', 'standards', sec]).stdout).toMatch(/^Ningún control remite a un estándar/);
+    const all = run(['security', 'standards', '--stdin'], withStandards);
+    expect(all.status).toBe(0);
+    expect(all.stdout).toContain('| OWASP ASVS | 2 | 1 | 1 | 8 |');
+    const asvs = run(['security', 'standards', '--stdin', '--catalogo', 'asvs'], withStandards);
+    expect(asvs.stdout).toContain('Cobertura de estándares (OWASP ASVS)');
+    const bad = run(['security', 'standards', sec, '--catalogo', 'pci']);
+    expect(bad.status).toBe(2);
+    expect(bad.stderr).toMatch(/Catálogo inválido «pci»/);
   });
 
   it('security from-integration y from-platform crean el modelo con referencias URN', () => {

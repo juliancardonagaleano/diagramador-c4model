@@ -435,8 +435,10 @@ iark convert   seguridad.json --module security --out amenazas.svg --view threat
 iark convert   seguridad.json --module security --out alcance.svg --view blast:pedidos
 iark import    flujos.mmd --module security --out seguridad.json                       # flowchart → documento
 iark generate  "Tienda con WAF, API, base de datos y pasarela de pagos" --module security --json seguridad.json
-iark security risks    seguridad.json [--status open]                                  # registro de riesgos ordenado por riesgo, con estado y controles
+iark security risks    seguridad.json [--status open]                                  # registro de riesgos ordenado por riesgo inherente, con estado, controles y el riesgo residual que queda tras los implementados (↓ si baja)
+iark security heatmap  seguridad.json [--residual]                                     # matriz de calor probabilidad × impacto: amenazas por celda y qué amenazas hay en cada una; --residual, donde quedan tras los controles
 iark security stride   seguridad.json [--gaps]                                         # cobertura STRIDE: qué categorías aplican a cada activo y flujo y cuáles siguen sin analizar
+iark security standards seguridad.json [--catalogo asvs]                               # cobertura de estándares: por catálogo (asvs, nist-800-53, iso-27001, cis), sus controles y las amenazas cubiertas, con cobertura prevista o sin cobertura
 iark security exposure seguridad.json                                                  # superficie de ataque: entradas desde zonas no confiables y caminos hasta lo que interesa proteger
 iark security from-integration mapa.json                                               # mapa de integración → activos y flujos con URN (zonas por heurística)
 iark security from-platform plataforma.json [--env prod]                               # entorno de una plataforma → zonas por red, activos y flujos con URN

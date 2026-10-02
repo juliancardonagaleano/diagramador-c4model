@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import example from '../../../examples/seguridad-ejemplo.json';
+import { securityCommands } from './commands';
 import { securityEditor } from './editor';
 import { toDrawio } from './export/drawio';
 import { toMermaid } from './export/mermaid';
 import { heatLayout, toSvg } from './export/render';
 import { analyzeSecurity } from './issues';
 import { securityModule } from './module';
+import { threatCoverage } from './modeling';
 import { findView, listViews, standardsInUse, surfaceDepths, viewRefs } from './views';
-import { residualOf, type SecurityDocument } from './types';
+import { IMPACTS, LIKELIHOODS, LIKELIHOOD_LABELS, RATING_LABELS, heatCellId, residualOf, type SecurityDocument } from './types';
 
 const doc = securityModule.schema.parse(example) as SecurityDocument;
 const valid = (d: SecurityDocument): boolean => securityModule.schema.safeParse(d).success;
@@ -17,6 +19,10 @@ const withStandards: SecurityDocument = {
   ...doc,
   controls: doc.controls.map((c) => (c.id === 'mfa' || c.id === 'tls-borde' ? { ...c, standard: 'asvs' as const } : c.id === 'cifrado-reposo' ? { ...c, standard: 'nist-800-53' as const } : c)),
 };
+
+/** Ejecuta un comando del CLI sobre un documento y devuelve su salida. */
+const run = (name: string, input: unknown, options: Record<string, unknown> = {}): string =>
+  securityCommands.find((c) => c.name === name)!.run({ args: [], options, input: typeof input === 'string' ? input : JSON.stringify(input) }) as string;
 
 describe('riesgo residual', () => {
   const threat = (id: string) => doc.threats.find((t) => t.id === id)!;
@@ -153,5 +159,134 @@ describe('superficie de ataque', () => {
     expect(toMermaid(doc, { viewId: 'surface' })).toContain('flowchart');
     const direct: SecurityDocument = { ...doc, flows: [...doc.flows, { id: 'directo', sourceId: 'cliente', targetId: 'pedidos', encrypted: true, authentication: 'token' }] };
     expect(messages(direct).some((m) => /a proteger y recibe flujos directamente desde una zona no confiable/.test(m))).toBe(true);
+  });
+});
+
+describe('comando heatmap', () => {
+  const lines = (text: string): string[] => text.split('\n');
+
+  it('imprime la matriz probabilidad × impacto con el número de amenazas por celda y las de cada celda no vacía', () => {
+    const text = run('heatmap', example);
+    expect(lines(text)[0]).toBe('Matriz de calor - Seguridad de la tienda en línea');
+    expect(lines(text).filter((l) => l.startsWith('| '))).toEqual([
+      '| Probabilidad \\ Impacto | bajo | medio | alto | crítico |',
+      '| alta | 0 | 1 | 1 | 0 |',
+      '| media | 0 | 1 | 2 | 2 |',
+      '| baja | 0 | 1 | 1 | 1 |',
+    ]);
+    // Solo las celdas no vacías, de mayor a menor riesgo, con sus amenazas; las reducidas por controles llevan la marca residual.
+    expect(lines(text).filter((l) => l.startsWith('- '))).toEqual([
+      '- prob. alta × impacto alto · riesgo crítico (9) · 1 amenaza',
+      '- prob. media × impacto crítico · riesgo crítico (8) · 2 amenazas',
+      '- prob. alta × impacto medio · riesgo alto (6) · 1 amenaza',
+      '- prob. media × impacto alto · riesgo alto (6) · 2 amenazas',
+      '- prob. media × impacto medio · riesgo medio (4) · 1 amenaza',
+      '- prob. baja × impacto crítico · riesgo medio (4) · 1 amenaza',
+      '- prob. baja × impacto alto · riesgo medio (3) · 1 amenaza',
+      '- prob. baja × impacto medio · riesgo bajo (2) · 1 amenaza',
+    ]);
+    expect(text).toContain('  - Robo de credenciales de clientes (credential stuffing) · Suplantación · Cliente · abierta · residual ↓ alto (6) con 1 control');
+    expect(text).toContain('  - Acceso a pedidos de otros clientes (IDOR) · Elevación de privilegios · Servicio de pedidos · abierta\n');
+    expect(text).toContain('Amenazas: 10 · por riesgo: 3 crítico, 3 alto, 3 medio, 1 bajo · con riesgo residual menor que el inherente: 6');
+  });
+
+  it('con --residual coloca las amenazas donde quedan tras los controles implementados y dice de dónde vienen', () => {
+    const text = run('heatmap', example, { residual: true });
+    expect(lines(text)[0]).toBe('Matriz de calor (riesgo residual) - Seguridad de la tienda en línea');
+    expect(lines(text).filter((l) => l.startsWith('| '))).toEqual([
+      '| Probabilidad \\ Impacto | bajo | medio | alto | crítico |',
+      '| alta | 0 | 0 | 0 | 0 |',
+      '| media | 0 | 2 | 2 | 0 |',
+      '| baja | 0 | 1 | 5 | 0 |',
+    ]);
+    expect(text).toContain('- prob. baja × impacto alto · riesgo medio (3) · 5 amenazas');
+    expect(text).toContain('  - Inyección SQL en el servicio de pedidos · Manipulación · Servicio de pedidos · mitigada · residual ↓ desde crítico (8) · 2 controles');
+    expect(text).toContain('Amenazas: 10 · por riesgo residual: 0 crítico, 2 alto, 7 medio, 1 bajo · con riesgo residual menor que el inherente: 6');
+  });
+
+  it('coloca cada amenaza en la misma celda que la vista de la matriz de calor del lienzo', () => {
+    for (const [viewId, residual] of [['heatmap', false], ['heatmap:residual', true]] as const) {
+      const text = run('heatmap', example, { residual });
+      const canvas = securityEditor.project(doc, viewId);
+      for (const l of [...LIKELIHOODS].reverse()) {
+        const counts = IMPACTS.map((i) => canvas.nodes.filter((n) => n.kind === 'threat' && n.parentId === heatCellId(l, i)).length);
+        expect(lines(text)).toContain(`| ${LIKELIHOOD_LABELS[l]} | ${counts.join(' | ')} |`);
+      }
+      for (const t of doc.threats) {
+        const cell = canvas.nodes.find((n) => n.id === t.id)!.parentId!;
+        const [, l, i] = cell.split(':');
+        const header = lines(text).findIndex((x) => x.startsWith(`- prob. ${LIKELIHOOD_LABELS[l as (typeof LIKELIHOODS)[number]]} × impacto ${RATING_LABELS[i as (typeof IMPACTS)[number]]} `));
+        expect(header).toBeGreaterThan(-1);
+        const next = lines(text).findIndex((x, k) => k > header && !x.startsWith('  - '));
+        expect(lines(text).slice(header + 1, next).some((x) => x.startsWith(`  - ${t.title} · `))).toBe(true);
+      }
+    }
+  });
+
+  it('sin amenazas lo dice y las entradas inválidas fallan con un mensaje claro', () => {
+    expect(run('heatmap', { ...doc, threats: [] })).toBe('El documento no define amenazas.');
+    expect(() => run('heatmap', 'no es json')).toThrow(/no es JSON válido/);
+  });
+});
+
+describe('comando standards', () => {
+  const lines = (text: string): string[] => text.split('\n');
+
+  it('sin controles con estándar dice que no hay cobertura que mostrar', () => {
+    expect(run('standards', example)).toMatch(/^Ningún control remite a un estándar/);
+  });
+
+  it('resume cada catálogo y detalla sus controles y qué amenazas cubre, con cobertura prevista o sin cobertura', () => {
+    const text = run('standards', withStandards);
+    expect(lines(text)[0]).toBe('Cobertura de estándares - Seguridad de la tienda en línea');
+    expect(lines(text).filter((l) => /^\| (OWASP|NIST|Todos)/.test(l))).toEqual([
+      '| OWASP ASVS | 2 | 1 | 1 | 8 |',
+      '| NIST 800-53 | 1 | 1 | 0 | 9 |',
+      '| Todos los estándares | 3 | 2 | 1 | 7 |',
+    ]);
+    expect(lines(text).filter((l) => l.startsWith('## '))).toEqual(['## OWASP ASVS · 2 controles', '## NIST 800-53 · 1 control']);
+    expect(text).toContain('| Autenticación multifactor para clientes | Autenticación | prevista | 1 amenaza |');
+    expect(text).toContain('| TLS 1.3 obligatorio en el borde | Cifrado | implementada | 1 amenaza |');
+    // Cubierta por un control implementado del catálogo; con cobertura prevista (el otro control no tiene estándar); sin cobertura.
+    expect(text).toMatch(/\| medio \(3\) \| Interceptación del tráfico del cliente \| Navegación y compra \| mitigada \| cubierta \| TLS 1\.3 obligatorio en el borde \|/);
+    expect(text).toMatch(/\| crítico \(9\) \| Robo de credenciales de clientes \(credential stuffing\) \| Cliente \| abierta \| cobertura prevista \| Autenticación multifactor para clientes \(prevista\) \|/);
+    expect(text).toContain('| medio (4) | Correos con datos del pedido en claro | Confirmación del pedido | abierta | sin cobertura | — |');
+    expect(text).toContain('Cubiertas: 1 · Con cobertura prevista: 1 · Sin cobertura: 8');
+  });
+
+  it('con --catalogo solo muestra ese catálogo (sin distinguir mayúsculas), con los huecos respecto a él', () => {
+    const text = run('standards', withStandards, { catalogo: 'ASVS' });
+    expect(lines(text)[0]).toBe('Cobertura de estándares (OWASP ASVS) - Seguridad de la tienda en línea');
+    expect(text).toContain('TLS 1.3 obligatorio en el borde');
+    expect(text).not.toContain('Cifrado en reposo');
+    expect(text).not.toContain('## ');
+    // Una amenaza cubierta por otro catálogo sigue sin cobertura en este.
+    expect(text).toContain('| crítico (8) | Exfiltración de datos personales de la base de pedidos | Base de pedidos | mitigada | sin cobertura | — |');
+    expect(run('standards', withStandards, { catalogo: 'nist-800-53' })).toContain('| cubierta | Cifrado en reposo con claves gestionadas (KMS) |');
+  });
+
+  it('cuenta lo mismo que la vista de cobertura de estándares del lienzo', () => {
+    for (const standard of standardsInUse(withStandards)) {
+      const view = findView(withStandards, `standards:${standard}`);
+      const canvas = securityEditor.project(withStandards, view.id);
+      const count = (note: string): number => canvas.nodes.filter((n) => n.kind === 'threat' && n.badges?.join(' ').includes(note)).length;
+      const covered = withStandards.threats.filter((t) => threatCoverage(withStandards, view.controlIds, t).level === 'covered').length;
+      expect(covered).toBe(count('cubierta en'));
+      const text = run('standards', withStandards, { catalogo: standard });
+      expect(text).toContain(`Cubiertas: ${count('cubierta en')} · Con cobertura prevista: ${count('cobertura prevista en')} · Sin cobertura: ${count('sin cobertura en')}`);
+    }
+  });
+
+  it('threatCoverage solo cuenta los controles del conjunto y distingue implementados de previstos', () => {
+    const robo = withStandards.threats.find((t) => t.id === 'robo-credenciales')!;
+    // mfa (prevista, ASVS) y limitación de tasa (implementada, sin estándar).
+    expect(threatCoverage(withStandards, findView(withStandards, 'standards:asvs').controlIds, robo)).toMatchObject({ level: 'planned', controls: [{ id: 'mfa' }] });
+    expect(threatCoverage(withStandards, [...findView(withStandards, 'standards:asvs').controlIds, 'limitacion-tasa'], robo).level).toBe('covered');
+    expect(threatCoverage(withStandards, findView(withStandards, 'standards:nist-800-53').controlIds, robo)).toEqual({ level: 'none', controls: [] });
+  });
+
+  it('avisa si el catálogo no lo usa ningún control y rechaza uno desconocido', () => {
+    expect(run('standards', withStandards, { catalogo: 'cis' })).toBe('Ningún control remite a CIS Controls. Estándares en uso: OWASP ASVS, NIST 800-53.');
+    expect(() => run('standards', withStandards, { catalogo: 'pci' })).toThrow(/Catálogo inválido «pci». Use: asvs, nist-800-53, iso-27001, cis\./);
   });
 });
