@@ -1,7 +1,13 @@
-import type { Box, EdgeNotation, EditorEdge, EditorGraph, EditorNode, EditorSpec, GraphLayout, NodeNotation } from '@iark/kernel';
+import type { Box, EdgeNotation, EditorEdge, EditorGraph, EditorNode, EditorSpec, GraphLayout, NodeNotation, PortSide } from '@iark/kernel';
 
 export const FALLBACK_NODE: NodeNotation = { kind: '?', label: 'Elemento', glyph: '□', shape: 'rect', fill: '#475569', width: 180, height: 72 };
 export const FALLBACK_EDGE: EdgeNotation = { kind: '?', label: 'Relación', stroke: '#475569', line: 'solid', width: 1.5 };
+
+/** Asa añadida a un nodo, además de la de entrada a la izquierda y la de salida a la derecha, para las aristas que la colocación de la vista ancla en otro lado. */
+export interface ExtraHandle {
+  type: 'source' | 'target';
+  side: PortSide;
+}
 
 export interface FlowNodeData extends Record<string, unknown> {
   node: EditorNode;
@@ -9,6 +15,7 @@ export interface FlowNodeData extends Record<string, unknown> {
   group: boolean;
   width: number;
   height: number;
+  handles?: ExtraHandle[];
 }
 
 export interface FlowNode {
@@ -30,12 +37,17 @@ export interface FlowEdgeData extends Record<string, unknown> {
   notation: EdgeNotation;
   /** Selección desde la etiqueta de la arista (que se dibuja fuera del SVG de las aristas). */
   onPick?(id: string, additive: boolean): void;
+  /** Coordenada del tramo central que fija la colocación de la vista (su `y` si la arista sale por arriba o abajo, su `x` si sale de un lado). */
+  bend?: number;
 }
 
 export interface FlowEdge {
   id: string;
   source: string;
   target: string;
+  /** Asa de origen y de destino cuando la colocación de la vista ancla la arista en un lado distinto del de las asas por defecto. */
+  sourceHandle?: string;
+  targetHandle?: string;
   type: 'notation';
   style: { stroke: string; strokeWidth: number; strokeDasharray?: string };
   markerEnd?: { type: 'arrowclosed' | 'arrow'; color: string };
@@ -179,6 +191,20 @@ export function buildFlow(
   // Cada grupo queda por encima del que lo contiene y todos los elementos por encima de cualquier grupo.
   const leafZ = Math.max(0, ...graph.nodes.filter((n) => parents.has(n.id)).map((n) => depth(n.id))) + 1;
 
+  // Aristas que la colocación de la vista ancla en un lado (arriba o abajo de las etapas, por ejemplo): sus nodos llevan el asa.
+  const anchors = new Map((layout?.edges ?? []).flatMap((r) => (r.sides ? [[r.id, r] as const] : [])));
+  const extra = new Map<string, ExtraHandle[]>();
+  const need = (id: string, handle: ExtraHandle): void => {
+    const list = extra.get(id) ?? [];
+    if (!list.some((h) => h.type === handle.type && h.side === handle.side)) extra.set(id, [...list, handle]);
+  };
+  for (const e of graph.edges) {
+    const sides = byId.has(e.source) && byId.has(e.target) ? anchors.get(e.id)?.sides : undefined;
+    if (!sides) continue;
+    if (sides.source !== 'right') need(e.source, { type: 'source', side: sides.source });
+    if (sides.target !== 'left') need(e.target, { type: 'target', side: sides.target });
+  }
+
   const nodes: FlowNode[] = [...graph.nodes]
     .sort((a, b) => depth(a.id) - depth(b.id))
     .map((n) => {
@@ -191,7 +217,7 @@ export function buildFlow(
         type: 'notation',
         position: parent ? { x: abs.x - parent.x, y: abs.y - parent.y } : { x: abs.x, y: abs.y },
         ...(parent ? { parentId: n.parentId } : {}),
-        data: { node: n, notation, group, width: abs.width, height: abs.height },
+        data: { node: n, notation, group, width: abs.width, height: abs.height, ...(extra.has(n.id) ? { handles: extra.get(n.id) } : {}) },
         width: abs.width,
         height: abs.height,
         style: { width: abs.width, height: abs.height },
@@ -204,15 +230,21 @@ export function buildFlow(
     .map((e) => {
       const notation = edgeNotationOf(spec, e.kind);
       const width = e.width ?? notation.width ?? 1.5;
+      const route = anchors.get(e.id);
+      const sides = route?.sides;
+      const vertical = sides?.source === 'top' || sides?.source === 'bottom';
+      const bend = route && route.points.length >= 4 ? route.points[1][vertical ? 'y' : 'x'] : undefined;
       return {
         id: e.id,
         source: e.source,
         target: e.target,
+        ...(sides && sides.source !== 'right' ? { sourceHandle: sides.source } : {}),
+        ...(sides && sides.target !== 'left' ? { targetHandle: sides.target } : {}),
         type: 'notation',
         style: { stroke: notation.stroke, strokeWidth: width, strokeDasharray: DASH[notation.line ?? 'solid'] },
         ...(notation.arrowEnd === false ? {} : { markerEnd: { type: notation.head === 'open' ? ('arrow' as const) : ('arrowclosed' as const), color: notation.stroke } }),
         ...(notation.arrowStart ? { markerStart: { type: 'arrowclosed' as const, color: notation.stroke } } : {}),
-        data: { edge: e, notation },
+        data: { edge: e, notation, ...(bend !== undefined ? { bend } : {}) },
       };
     });
 

@@ -50,11 +50,20 @@ export interface Point {
   y: number;
 }
 
+/** Lado de un nodo por el que sale o entra una arista. */
+export type PortSide = 'top' | 'right' | 'bottom' | 'left';
+
 export interface EdgeRoute {
   id: string;
   points: Point[];
   /** Centro de la etiqueta, si tiene. */
   label?: Point;
+  /**
+   * Lado del nodo de origen por el que sale la ruta y del de destino por el que llega, cuando la colocación propia de una
+   * vista lo decide (p. ej. los flujos de valor, que bajan de la etapa a la capacidad). El lienzo ancla ahí la arista en
+   * lugar de usar las asas laterales; el autolayout por capas no lo rellena.
+   */
+  sides?: { source: PortSide; target: PortSide };
 }
 
 export interface GraphLayout {
