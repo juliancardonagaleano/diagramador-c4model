@@ -3,6 +3,8 @@ import { duplicateEnvironment, findEnvironment, nextEnvironment, promoteDeployme
 import { formatCost } from './costs';
 import { drawMatrix, matrixIsDrawn } from './export/matrix';
 import { DEPENDENCY_STYLES, EXPOSURE_ZONES, EXTERNAL_COLOR, RESOURCE_COLORS, RESOURCE_SHAPES, SERVICE_COLORS, SERVICE_SHAPES, buildScene } from './export/render';
+import { canonicalProvider, iconFields, reconcileIcon } from './icons/editor';
+import { subjectOfNetwork, subjectOfResource, subjectOfService } from './icons';
 import { dependencyEnvironmentViolation, exposureViolation, hostViolation, placementViolation } from './rules';
 import { resourceSchema } from './schema';
 import {
@@ -103,7 +105,7 @@ const MEMORY: FieldSpec = { key: 'memoryLimit', label: 'Límite de memoria', typ
 const EXPIRES: FieldSpec = { key: 'expiresAt', label: 'Caduca el', type: 'text', hint: 'AAAA-MM-DD; con ella el análisis avisa cuando está cerca' };
 const DEPLOYMENT_FIELDS: FieldSpec[] = [...INSTANCE_FIELDS, COST, CPU, MEMORY];
 
-function nodeFields(kind: string, doc: PlatformDocument): FieldSpec[] {
+function nodeFields(kind: string, doc: PlatformDocument, values?: Record<string, unknown>): FieldSpec[] {
   const environment: FieldSpec = { key: 'environmentId', label: 'Entorno', type: 'select', options: doc.environments.map((e) => ({ value: e.id, label: e.name })) };
   const network = (key: string, label: string): FieldSpec => ({ key, label, type: 'select', options: doc.networks.map((n) => ({ value: n.id, label: `${n.name} (${doc.environments.find((e) => e.id === n.environmentId)?.name ?? n.environmentId})` })), allowEmpty: true });
   if ((SERVICE_KINDS as readonly string[]).includes(kind) || kind === 'external') {
@@ -118,6 +120,7 @@ function nodeFields(kind: string, doc: PlatformDocument): FieldSpec[] {
       { key: 'slo', label: 'SLO (objetivo interno)', type: 'text', hint: 'p. ej. 99,9 % de disponibilidad' },
       { key: 'sla', label: 'SLA (compromiso con el cliente)', type: 'text', hint: 'p. ej. 99,5 %' },
       { key: 'external', label: 'Externo (SaaS, no se despliega aquí)', type: 'boolean' },
+      ...iconFields(doc, values),
       REF,
       TAGS,
     ];
@@ -139,13 +142,14 @@ function nodeFields(kind: string, doc: PlatformDocument): FieldSpec[] {
       ...(kind === 'certificate' ? [EXPIRES] : []),
       CPU,
       MEMORY,
+      ...iconFields(doc, values, kind as ResourceKind),
       REF,
       TAGS,
     ];
   }
   switch (kind) {
     case 'network':
-      return [NAME, DESCRIPTION, environment, network('parentId', 'Red que la contiene'), { key: 'exposure', label: 'Exposición', type: 'select', options: options(EXPOSURES, EXPOSURE_LABELS), allowEmpty: true, hint: 'si no se indica, privada' }, { key: 'cidr', label: 'CIDR', type: 'text' }];
+      return [NAME, DESCRIPTION, environment, network('parentId', 'Red que la contiene'), { key: 'exposure', label: 'Exposición', type: 'select', options: options(EXPOSURES, EXPOSURE_LABELS), allowEmpty: true, hint: 'si no se indica, privada' }, { key: 'cidr', label: 'CIDR', type: 'text' }, ...iconFields(doc, values, values?.parentId ? undefined : 'network')];
     case 'pipeline':
     case 'step':
       return [
@@ -442,6 +446,7 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
         ref: (element?.item as { ref?: string } | undefined)?.ref,
         fill: network ? NETWORK_FILLS[exposureOf(network)] : undefined,
         ...(network ? { border: EXPOSURE_ZONES[exposureOf(network)].border } : {}),
+        ...(g.icon ? { icon: g.icon.paths, iconColor: g.icon.color } : {}),
       });
     }
     for (const [id, n] of scene.nodes) {
@@ -460,6 +465,7 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
         stroke: n.stroke === '#0f172a55' ? undefined : n.stroke,
         dashed: n.dashed,
         width: widthFor(n.lines, notation.width),
+        ...(n.icon && n.iconColor ? { icon: n.icon, iconColor: n.iconColor } : {}),
       });
     }
     return {
@@ -469,8 +475,8 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
     };
   },
 
-  fields(target, doc) {
-    if (target.type === 'node') return nodeFields(target.kind, doc);
+  fields(target, doc, values) {
+    if (target.type === 'node') return nodeFields(target.kind, doc, values);
     return EDGE_FIELDS[(DEPENDENCY_KINDS as readonly string[]).includes(target.kind) ? 'dependency' : target.kind] ?? [];
   },
 
@@ -480,10 +486,10 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
     switch (target.type) {
       case 'element': {
         const e = indexElements(doc).get(target.id)!;
-        if (e.kind === 'service') return { type: 'node', kind: (e.item as Service).external ? 'external' : ((e.item as Service).kind ?? 'service'), values: { ...e.item } };
-        if (e.kind === 'resource') return { type: 'node', kind: (e.item as Resource).kind, values: { ...e.item } };
+        if (e.kind === 'service') return { type: 'node', kind: (e.item as Service).external ? 'external' : ((e.item as Service).kind ?? 'service'), values: canonicalProvider(doc, { ...(e.item as Service) }) };
+        if (e.kind === 'resource') return { type: 'node', kind: (e.item as Resource).kind, values: canonicalProvider(doc, { ...(e.item as Resource) }) };
         if (e.kind === 'pipeline') return { type: 'node', kind: 'pipeline', values: { ...e.item, stages: stagesToText((e.item as Pipeline).stages) } };
-        return { type: 'node', kind: e.kind, values: { ...e.item } };
+        return { type: 'node', kind: e.kind, values: e.kind === 'network' ? canonicalProvider(doc, { ...(e.item as Network) }) : { ...e.item } };
       }
       case 'pipeline': {
         const p = doc.pipelines.find((x) => x.id === target.pipelineId)!;
@@ -587,11 +593,15 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
       case 'element': {
         const e = all.get(target.id)!;
         if (e.kind === 'service') {
-          return ok({ ...doc, services: doc.services.map((s) => (s.id === e.id ? patchObject(s, patch, ['name', 'description', 'kind', 'technology', 'owner', 'repo', 'criticality', 'slo', 'sla', 'external', 'ref', 'tags']) : s)) }, id);
+          const patched = reconcileIcon(doc, patchObject(e.item as Service, patch, ['name', 'description', 'kind', 'technology', 'owner', 'repo', 'criticality', 'slo', 'sla', 'external', 'ref', 'tags', 'provider', 'service']), patch, subjectOfService);
+          if (!patched.ok) return fail(patched.reason);
+          return ok({ ...doc, services: doc.services.map((s) => (s.id === e.id ? patched.value : s)) }, id);
         }
         if (e.kind === 'resource') {
           const current = e.item as Resource;
-          const next = patchObject(current, patch, ['name', 'description', 'kind', 'environmentId', 'networkId', 'technology', 'version', 'status', 'iac', 'owner', 'ref', 'tags', 'monthlyCost', 'region', 'cpuLimit', 'memoryLimit', 'expiresAt']);
+          const patched = reconcileIcon(doc, patchObject(current, patch, ['name', 'description', 'kind', 'environmentId', 'networkId', 'technology', 'version', 'status', 'iac', 'owner', 'ref', 'tags', 'monthlyCost', 'region', 'cpuLimit', 'memoryLimit', 'expiresAt', 'provider', 'service']), patch, subjectOfResource);
+          if (!patched.ok) return fail(patched.reason);
+          const next = patched.value;
           if (next.expiresAt !== undefined && !resourceSchema.shape.expiresAt.safeParse(next.expiresAt).success) return fail('La fecha de caducidad debe tener la forma AAAA-MM-DD (p. ej. 2026-12-31).');
           if (next.monthlyCost !== undefined && (!Number.isFinite(next.monthlyCost) || next.monthlyCost < 0)) return fail('El coste mensual es un número igual o mayor que cero.');
           // Solo se comprueba lo que cambia: un documento que ya incumple la regla sigue editándose.
@@ -604,7 +614,9 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
           return ok({ ...doc, resources: doc.resources.map((r) => (r.id === e.id ? next : r)) }, id);
         }
         if (e.kind === 'network') {
-          const next = patchObject(e.item as Network, patch, ['name', 'description', 'environmentId', 'parentId', 'exposure', 'cidr']);
+          const patchedNetwork = reconcileIcon(doc, patchObject(e.item as Network, patch, ['name', 'description', 'environmentId', 'parentId', 'exposure', 'cidr', 'provider', 'service']), patch, subjectOfNetwork);
+          if (!patchedNetwork.ok) return fail(patchedNetwork.reason);
+          const next = patchedNetwork.value;
           if (next.parentId === next.id) return fail('Una red no puede contenerse a sí misma.');
           const exposed = next.exposure !== (e.item as Network).exposure ? exposureViolation(doc, e.id, next.exposure) : undefined;
           if (exposed) return fail(exposed);

@@ -3,6 +3,8 @@
  * aprovisionados (clústeres, bases de datos, colas…), servicios, dónde se despliega cada servicio, de quién depende y los
  * pipelines de CI/CD que los construyen y promueven. No guarda coordenadas: los diagramas se calculan al exportar.
  */
+import type { IconPack } from './icons/types';
+
 export const PLATFORM_DOCUMENT_VERSION = '1.0' as const;
 
 /** De más a menos cercano al desarrollo: el orden en que un servicio debería promocionarse. */
@@ -57,6 +59,9 @@ export interface Network {
   exposure?: Exposure;
   cidr?: string;
   description?: string;
+  /** Proveedor de nube y servicio con cuyo icono se dibuja (una VPC de `aws`: `provider: 'aws'`, `service: 'vpc'`). */
+  provider?: string;
+  service?: string;
 }
 
 export interface Resource {
@@ -84,6 +89,12 @@ export interface Resource {
   /** Límite de CPU (vCPU, p. ej. «8») y de memoria (p. ej. «32 GiB»). */
   cpuLimit?: string;
   memoryLimit?: string;
+  /**
+   * Proveedor de nube (`aws`, `azure`… o el de un paquete propio) y servicio (`rds`, `sql-database`…) con cuyo icono se dibuja el
+   * recurso. Si indica el proveedor y no el servicio, se sugiere el que encaje con su clase y su tecnología, si es inequívoco.
+   */
+  provider?: string;
+  service?: string;
 }
 
 export interface Service {
@@ -103,6 +114,9 @@ export interface Service {
   external?: boolean;
   ref?: string;
   tags?: string[];
+  /** Servicio de nube que lo ejecuta o que es (una función en `aws` + `lambda`): como en `Resource`, decide su icono. */
+  provider?: string;
+  service?: string;
 }
 
 /** Dónde se ejecuta un servicio en un entorno. */
@@ -153,7 +167,14 @@ export interface Pipeline {
 
 export interface PlatformDocument {
   version: typeof PLATFORM_DOCUMENT_VERSION;
-  workspace: { name: string; description?: string; /** Moneda de los costes (código ISO, p. ej. «EUR»); si no se indica, USD. */ currency?: string };
+  workspace: {
+    name: string;
+    description?: string;
+    /** Moneda de los costes (código ISO, p. ej. «EUR»); si no se indica, USD. */
+    currency?: string;
+    /** Paquetes de iconos propios de este documento (un proveedor que no es AWS ni Azure, o los iconos oficiales con licencia): se superponen a los registrados. */
+    iconPacks?: IconPack[];
+  };
   environments: Environment[];
   networks: Network[];
   resources: Resource[];

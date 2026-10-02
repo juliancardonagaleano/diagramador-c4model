@@ -90,6 +90,9 @@
 
 /* Icono del tipo en la esquina del nodo y leyenda de colores de la vista. */
 .cv-type-icon { position: absolute; top: 5px; left: 7px; opacity: 0.85; pointer-events: none; }
+/* Ficha de un icono de proveedor (un servicio de una nube): cabalga sobre la esquina del nodo; en una zona, sobre la superior derecha. */
+.cv-cloud-icon { position: absolute; top: -8px; left: -8px; z-index: 1; pointer-events: none; filter: drop-shadow(0 1px 1px rgb(15 23 42 / 0.25)); }
+.cv-cloud-icon-zone { left: auto; right: -8px; }
 .cv-legend { margin: 8px; padding: 6px 10px; border: 1px solid var(--wb-border); border-radius: 8px; background: var(--wb-surface, #fff); color: var(--wb-text-2); font-size: 11px; }
 .cv-legend strong { display: block; margin-bottom: 4px; font-size: 11px; }
 .cv-legend ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; }

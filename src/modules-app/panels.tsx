@@ -423,7 +423,7 @@ export function ImportPanel({ controller, state, notify }: PanelProps) {
         )}
         {warnings.length > 0 && (
           <div className="wb-note" style={{ margin: 0 }}>
-            <strong>No se pudo importar tal cual:</strong>
+            <strong>{warnings.length === 1 ? 'Aviso de la importación:' : `${warnings.length} avisos de la importación:`}</strong>
             <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
               {warnings.map((w, i) => (
                 <li key={i}>{w}</li>
