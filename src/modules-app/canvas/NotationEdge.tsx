@@ -1,6 +1,6 @@
-import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type Edge, type EdgeProps } from '@xyflow/react';
+import { BaseEdge, EdgeLabelRenderer, Position, getSmoothStepPath, type Edge, type EdgeProps } from '@xyflow/react';
 import { memo } from 'react';
-import type { EdgeMark } from '@iark/kernel';
+import { edgeEndPaths, type EdgeEnd, type EdgeMark } from '@iark/kernel';
 import { edgeLabelText, type FlowEdgeData } from './flow';
 
 export type NotationEdgeType = Edge<FlowEdgeData, 'notation'>;
@@ -28,6 +28,29 @@ function Mark({ mark, edgeId, index }: { mark: EdgeMark; edgeId: string; index: 
   );
 }
 
+const OUTWARD: Record<Position, { x: number; y: number }> = {
+  [Position.Left]: { x: -1, y: 0 },
+  [Position.Right]: { x: 1, y: 0 },
+  [Position.Top]: { x: 0, y: -1 },
+  [Position.Bottom]: { x: 0, y: 1 },
+};
+
+/** Remate de pata de gallo en el extremo de una relación: la línea sale del nodo en la dirección de su asa, hacia fuera. */
+function EdgeEndGlyph({ end, at, position, id, side }: { end: EdgeEnd; at: { x: number; y: number }; position: Position; id: string; side: 'source' | 'target' }) {
+  // `edgeEndPaths` espera la dirección en que va la línea desde el nodo (hacia fuera del asa).
+  const dir = OUTWARD[position];
+  return (
+    <path
+      d={edgeEndPaths(end, at, dir).join(' ')}
+      className="cv-edge-end"
+      fill="none"
+      strokeLinecap="round"
+      data-testid={`edge-end-${id}-${side}`}
+      data-end={end}
+    />
+  );
+}
+
 /** Relación del lienzo: línea con ángulos rectos, estilo de la notación y, sobre ella, las insignias gráficas y la etiqueta. */
 /** Adorno en el origen de la línea (rombo de la composición, punto de la asignación): sale por la derecha del nodo de origen. */
 function Tail({ kind, x, y, color }: { kind: 'diamond' | 'dot'; x: number; y: number; color: string }) {
@@ -49,6 +72,8 @@ function NotationEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePositi
       {selected && <path d={path} className="cv-edge-halo" fill="none" strokeWidth={(typeof style?.strokeWidth === 'number' ? style.strokeWidth : 1.5) + 6} />}
       <BaseEdge id={id} path={path} markerStart={markerStart} markerEnd={markerEnd} style={style} />
       {data?.notation.tail && <Tail kind={data.notation.tail} x={sourceX} y={sourceY} color={String(style?.stroke ?? '#475569')} />}
+      {data?.edge.ends?.source && <EdgeEndGlyph end={data.edge.ends.source} at={{ x: sourceX, y: sourceY }} position={sourcePosition} id={id} side="source" />}
+      {data?.edge.ends?.target && <EdgeEndGlyph end={data.edge.ends.target} at={{ x: targetX, y: targetY }} position={targetPosition} id={id} side="target" />}
       {(marks.length > 0 || text) && (
         <EdgeLabelRenderer>
           <div

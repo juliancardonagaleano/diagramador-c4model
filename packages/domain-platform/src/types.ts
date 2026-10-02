@@ -75,6 +75,13 @@ export interface Resource {
   description?: string;
   ref?: string;
   tags?: string[];
+  /** Coste mensual del recurso (en la moneda del espacio de trabajo). */
+  monthlyCost?: number;
+  /** Región donde está aprovisionado (si difiere de la del entorno). */
+  region?: string;
+  /** Límite de CPU (vCPU, p. ej. «8») y de memoria (p. ej. «32 GiB»). */
+  cpuLimit?: string;
+  memoryLimit?: string;
 }
 
 export interface Service {
@@ -87,6 +94,9 @@ export interface Service {
   owner?: string;
   repo?: string;
   criticality?: Criticality;
+  /** Objetivo de nivel de servicio interno (p. ej. «99,9 % disponibilidad») y compromiso con el cliente (p. ej. «99,5 %»). */
+  slo?: string;
+  sla?: string;
   /** Servicio de un tercero (SaaS): no se despliega en la plataforma. */
   external?: boolean;
   ref?: string;
@@ -102,6 +112,10 @@ export interface Deployment {
   hostId: string;
   replicas?: number;
   version?: string;
+  /** Coste mensual de esta instancia (se suma al de los recursos en la vista de costes) y límites por réplica. */
+  monthlyCost?: number;
+  cpuLimit?: string;
+  memoryLimit?: string;
 }
 
 /** De quién depende un servicio o un recurso (el origen depende del destino). */
@@ -137,7 +151,7 @@ export interface Pipeline {
 
 export interface PlatformDocument {
   version: typeof PLATFORM_DOCUMENT_VERSION;
-  workspace: { name: string; description?: string };
+  workspace: { name: string; description?: string; /** Moneda de los costes (código ISO, p. ej. «EUR»); si no se indica, USD. */ currency?: string };
   environments: Environment[];
   networks: Network[];
   resources: Resource[];
@@ -200,6 +214,8 @@ export const STATUS_LABELS: Record<ResourceStatus, string> = { planned: 'previst
 export const DEPENDENCY_LABELS: Record<DependencyKind, string> = { calls: 'llama a', messages: 'envía mensajes a', data: 'usa los datos de' };
 
 export const PIPELINE_LABELS: Record<PipelineKind, string> = { ci: 'CI', cd: 'CD', 'ci-cd': 'CI/CD', iac: 'Infraestructura como código' };
+
+export const currencyOf = (doc: PlatformDocument): string => doc.workspace.currency?.trim() || 'USD';
 
 export const isHost = (r: Resource): boolean => HOST_KINDS.includes(r.kind);
 export const statusOf = (r: Resource): ResourceStatus => r.status ?? 'provisioned';

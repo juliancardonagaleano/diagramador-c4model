@@ -15,11 +15,18 @@
             "string",
             "null"
           ]
+        },
+        "currency": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
         "name",
-        "description"
+        "description",
+        "currency"
       ],
       "additionalProperties": false
     },
@@ -222,6 +229,30 @@
               "string",
               "null"
             ]
+          },
+          "monthlyCost": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cpuLimit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "memoryLimit": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -235,7 +266,11 @@
           "status",
           "iac",
           "owner",
-          "description"
+          "description",
+          "monthlyCost",
+          "region",
+          "cpuLimit",
+          "memoryLimit"
         ],
         "additionalProperties": false
       }
@@ -307,6 +342,18 @@
               }
             ]
           },
+          "slo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sla": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "external": {
             "type": [
               "boolean",
@@ -323,6 +370,8 @@
           "owner",
           "repo",
           "criticality",
+          "slo",
+          "sla",
           "external"
         ],
         "additionalProperties": false
@@ -356,6 +405,24 @@
               "string",
               "null"
             ]
+          },
+          "monthlyCost": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cpuLimit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "memoryLimit": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -364,7 +431,10 @@
           "environmentId",
           "hostId",
           "replicas",
-          "version"
+          "version",
+          "monthlyCost",
+          "cpuLimit",
+          "memoryLimit"
         ],
         "additionalProperties": false
       }

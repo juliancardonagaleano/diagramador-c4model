@@ -48,6 +48,10 @@ const generatedResource = z.object({
   iac: nullable(z.boolean()),
   owner: nullable(z.string()),
   description: nullable(z.string()),
+  monthlyCost: nullable(z.number()),
+  region: nullable(z.string()),
+  cpuLimit: nullable(z.string()),
+  memoryLimit: nullable(z.string()),
 });
 
 const generatedService = z.object({
@@ -59,6 +63,8 @@ const generatedService = z.object({
   owner: nullable(z.string()),
   repo: nullable(z.string()),
   criticality: nullable(z.enum(CRITICALITIES)),
+  slo: nullable(z.string()),
+  sla: nullable(z.string()),
   external: nullable(z.boolean()),
 });
 
@@ -69,6 +75,9 @@ const generatedDeployment = z.object({
   hostId: z.string(),
   replicas: nullable(z.number()),
   version: nullable(z.string()),
+  monthlyCost: nullable(z.number()),
+  cpuLimit: nullable(z.string()),
+  memoryLimit: nullable(z.string()),
 });
 
 const generatedDependency = z.object({
@@ -93,7 +102,7 @@ const generatedPipeline = z.object({
 });
 
 export const generatedPlatformSchema = z.object({
-  workspace: z.object({ name: z.string(), description: nullable(z.string()) }),
+  workspace: z.object({ name: z.string(), description: nullable(z.string()), currency: nullable(z.string()) }),
   environments: z.array(generatedEnvironment),
   networks: z.array(generatedNetwork),
   resources: z.array(generatedResource),
@@ -163,7 +172,7 @@ usuario (nombres, descripciones). Sé concreto y no inventes elementos que la de
 export function toGenerated(doc: PlatformDocument): GeneratedPlatform {
   const n = <T,>(v: T | undefined): T | null => v ?? null;
   return {
-    workspace: { name: doc.workspace.name, description: n(doc.workspace.description) },
+    workspace: { name: doc.workspace.name, description: n(doc.workspace.description), currency: n(doc.workspace.currency) },
     environments: doc.environments.map((e) => ({ id: e.id, name: e.name, description: n(e.description), kind: n(e.kind), provider: n(e.provider), region: n(e.region) })),
     networks: doc.networks.map((x) => ({ id: x.id, name: x.name, environmentId: x.environmentId, parentId: n(x.parentId), exposure: n(x.exposure), cidr: n(x.cidr), description: n(x.description) })),
     resources: doc.resources.map((r) => ({
@@ -178,6 +187,10 @@ export function toGenerated(doc: PlatformDocument): GeneratedPlatform {
       iac: n(r.iac),
       owner: n(r.owner),
       description: n(r.description),
+      monthlyCost: n(r.monthlyCost),
+      region: n(r.region),
+      cpuLimit: n(r.cpuLimit),
+      memoryLimit: n(r.memoryLimit),
     })),
     services: doc.services.map((s) => ({
       id: s.id,
@@ -188,9 +201,11 @@ export function toGenerated(doc: PlatformDocument): GeneratedPlatform {
       owner: n(s.owner),
       repo: n(s.repo),
       criticality: n(s.criticality),
+      slo: n(s.slo),
+      sla: n(s.sla),
       external: n(s.external),
     })),
-    deployments: doc.deployments.map((d) => ({ id: d.id, serviceId: d.serviceId, environmentId: d.environmentId, hostId: d.hostId, replicas: n(d.replicas), version: n(d.version) })),
+    deployments: doc.deployments.map((d) => ({ id: d.id, serviceId: d.serviceId, environmentId: d.environmentId, hostId: d.hostId, replicas: n(d.replicas), version: n(d.version), monthlyCost: n(d.monthlyCost), cpuLimit: n(d.cpuLimit), memoryLimit: n(d.memoryLimit) })),
     dependencies: doc.dependencies.map((d) => ({ id: d.id, sourceId: d.sourceId, targetId: d.targetId, kind: d.kind, protocol: n(d.protocol), description: n(d.description) })),
     pipelines: doc.pipelines.map((p) => ({
       id: p.id,

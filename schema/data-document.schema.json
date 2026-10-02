@@ -168,6 +168,11 @@
                 "name"
               ]
             }
+          },
+          "contractId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
           }
         },
         "required": [
@@ -286,6 +291,46 @@
           "sourceId",
           "targetId",
           "cardinality"
+        ]
+      }
+    },
+    "contracts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "odcs"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "format"
         ]
       }
     }

@@ -13,6 +13,7 @@ import {
   type Dependency,
   type DependencyKind,
   type EnvironmentKind,
+  type Exposure,
   type Network,
   type Pipeline,
   type PlatformDocument,
@@ -22,6 +23,7 @@ import {
   type Service,
   type ServiceKind,
 } from '../types';
+import { costsByEnvironment, formatCost } from '../costs';
 import { findView, type PlatformView } from '../views';
 
 export const SERVICE_COLORS: Record<ServiceKind, string> = { service: '#1168bd', worker: '#3b5bdb', job: '#7048e8', frontend: '#0b7285' };
@@ -43,18 +45,29 @@ export const RESOURCE_COLORS: Record<ResourceKind, string> = {
 /** Figuras de servicios y recursos (diagrama de despliegue): las mismas en el lienzo y en el SVG. */
 export const SERVICE_SHAPES: Record<ServiceKind, ShapeKind> = { service: 'rect', worker: 'rounded', job: 'hexagon', frontend: 'card' };
 export const RESOURCE_SHAPES: Record<ResourceKind, ShapeKind> = {
-  cluster: 'rect',
-  vm: 'rect',
+  cluster: 'cube',
+  vm: 'monitor',
   database: 'cylinder',
   cache: 'cylinder',
   storage: 'cylinder',
-  queue: 'pill',
-  'load-balancer': 'hexagon',
+  queue: 'pipe',
+  'load-balancer': 'diamond',
   gateway: 'chevron',
   dns: 'circle',
   'secret-store': 'hexagon',
   registry: 'card',
   other: 'rect',
+};
+/** Zonas de red según su exposición: pública, borde rojo continuo; privada, azul discontinuo; aislada, gris punteado. */
+export interface GroupStyle {
+  fill: string;
+  stroke: string;
+  border: 'solid' | 'dashed' | 'dotted';
+}
+export const EXPOSURE_ZONES: Record<Exposure, GroupStyle> = {
+  public: { fill: '#fff5f5', stroke: '#e03131', border: 'solid' },
+  private: { fill: '#f1f7fd', stroke: '#1c7ed6', border: 'dashed' },
+  isolated: { fill: '#f1f3f5', stroke: '#495057', border: 'dotted' },
 };
 const STAGE_COLORS: Record<EnvironmentKind, string> = { dev: '#2f9e44', test: '#e67700', staging: '#7048e8', prod: '#c92a2a', dr: '#495057' };
 const STEP_COLOR = '#475569';
@@ -131,6 +144,8 @@ export interface RenderedView {
   /** El mismo título, recortado si el grupo es demasiado estrecho (para el SVG, que no ajusta el texto). */
   fittedGroups: Map<string, string>;
   edges: Map<string, RenderedEdge>;
+  /** Relleno y borde de los grupos que los tienen propios (las redes). */
+  groupStyles: Map<string, GroupStyle>;
 }
 
 /** Un nodo de la escena: su estilo, el grupo que lo contiene y lo que hace falta para exportarlo a otros formatos. */
@@ -147,7 +162,7 @@ export interface SceneNode extends SvgNodeStyle {
 /** Lo que se dibuja de una vista, antes de colocarlo. */
 export interface Scene {
   nodes: Map<string, SceneNode>;
-  groups: Map<string, { label: string; /** Título más corto, para cuando el grupo es demasiado estrecho para el completo. */ short?: string; groupId?: string; /** Recurso (anfitrión), red o pipeline que representa. */ elementId: string }>;
+  groups: Map<string, { label: string; /** Título más corto, para cuando el grupo es demasiado estrecho para el completo. */ short?: string; groupId?: string; /** Recurso (anfitrión), red o pipeline que representa. */ elementId: string; /** Relleno y borde propios (las redes, según su exposición). */ style?: GroupStyle }>;
   edges: Map<string, RenderedEdge>;
 }
 
@@ -197,7 +212,7 @@ function environmentScene(doc: PlatformDocument, view: PlatformView): Scene {
     for (let id = r.networkId; id !== undefined && !drawnNetworks.has(id); id = networks.get(id)?.parentId) drawnNetworks.add(id);
   }
   for (const n of doc.networks.filter((x) => drawnNetworks.has(x.id))) {
-    scene.groups.set(n.id, { label: networkLabel(n), short: networkLabel(n, false), elementId: n.id, ...(n.parentId ? { groupId: n.parentId } : {}) });
+    scene.groups.set(n.id, { label: networkLabel(n), short: networkLabel(n, false), elementId: n.id, style: EXPOSURE_ZONES[exposureOf(n)], ...(n.parentId ? { groupId: n.parentId } : {}) });
   }
   for (const r of resources) {
     const groupId = r.networkId;
@@ -231,6 +246,26 @@ function environmentScene(doc: PlatformDocument, view: PlatformView): Scene {
   return scene;
 }
 
+/** Costes: un grupo por entorno (con su total mensual) que contiene los recursos y las instancias con coste, cada uno con su importe. */
+function costScene(doc: PlatformDocument, view: PlatformView): Scene {
+  const scene: Scene = { nodes: new Map(), groups: new Map(), edges: new Map() };
+  const services = new Map(doc.services.map((s) => [s.id, s]));
+  const shown = new Set(view.deploymentIds);
+  for (const cost of costsByEnvironment(doc)) {
+    const environment = doc.environments.find((e) => e.id === cost.environmentId)!;
+    const group = `c:${environment.id}`;
+    scene.groups.set(group, { label: `${environment.name} · ${formatCost(cost.total, doc)}`, elementId: environment.id });
+    const share = (amount: number): string => (cost.total > 0 ? ` (${Math.round((amount / cost.total) * 100)} %)` : '');
+    for (const r of doc.resources.filter((x) => x.environmentId === environment.id && x.monthlyCost !== undefined)) {
+      scene.nodes.set(r.id, { ...resourceNode(r, [`${formatCost(r.monthlyCost!, doc)}${share(r.monthlyCost!)}`]), groupId: group });
+    }
+    for (const d of doc.deployments.filter((x) => x.environmentId === environment.id && shown.has(x.id))) {
+      scene.nodes.set(`i:${d.id}`, { ...serviceNode(services.get(d.serviceId)!, [`${formatCost(d.monthlyCost!, doc)}${share(d.monthlyCost!)}`]), groupId: group });
+    }
+  }
+  return scene;
+}
+
 /** Pipelines: una cadena de pasos por pipeline (construir, y un paso por entorno), con los servicios que entran y los recursos que salen. */
 function deliveryScene(doc: PlatformDocument, view: PlatformView): Scene {
   const scene: Scene = { nodes: new Map(), groups: new Map(), edges: new Map() };
@@ -253,13 +288,17 @@ function deliveryScene(doc: PlatformDocument, view: PlatformView): Scene {
     };
     if (p.kind === 'ci' || p.kind === 'ci-cd') step(`${group}:build`, { fill: STEP_COLOR, stroke: DEFAULT_STROKE, badge: 'CI', lines: ['Construir y probar'] });
     if (p.kind === 'iac') step(`${group}:apply`, { fill: STEP_COLOR, stroke: DEFAULT_STROKE, badge: 'IaC', lines: ['Planificar y aplicar'] });
+    const versionIn = (serviceId: string, environmentId: string): string | undefined => doc.deployments.find((d) => d.serviceId === serviceId && d.environmentId === environmentId)?.version;
     p.stages.forEach((s, i) => {
       const environment = environments.get(s.environmentId);
+      // Versión promocionada: cuántos servicios del pipeline llevan en esta etapa otra versión que en la anterior (están por promover).
+      const previous = i > 0 ? environments.get(p.stages[i - 1].environmentId) : undefined;
+      const pending = previous ? p.serviceIds.filter((id) => { const [from, to] = [versionIn(id, previous.id), versionIn(id, s.environmentId)]; return from !== undefined && to !== undefined && from !== to; }).length : 0;
       step(`${group}:s${i}`, {
         fill: environment?.kind ? STAGE_COLORS[environment.kind] : '#1168bd',
         stroke: DEFAULT_STROKE,
         badge: p.kind === 'iac' ? 'Aplica en' : 'Despliega en',
-        lines: [environment?.name ?? s.environmentId, s.approval ? 'aprobación manual' : ''].filter(Boolean),
+        lines: [environment?.name ?? s.environmentId, s.approval ? 'aprobación manual' : '', pending > 0 && previous ? `${pending} con versión distinta de ${previous.name}` : ''].filter(Boolean),
       });
     });
     if (steps.length === 0) step(`${group}:run`, { fill: STEP_COLOR, stroke: DEFAULT_STROKE, lines: ['Ejecución'] });
@@ -270,11 +309,11 @@ function deliveryScene(doc: PlatformDocument, view: PlatformView): Scene {
   return scene;
 }
 
-const sizeOf = (style: SvgNodeStyle): { width: number; height: number } => ({ width: widthFor(style.lines, style.shape === 'pill' ? 170 : 180), height: NODE_HEIGHT });
+const sizeOf = (style: SvgNodeStyle): { width: number; height: number } => ({ width: widthFor(style.lines, style.shape === 'pill' || style.shape === 'pipe' ? 170 : 180), height: NODE_HEIGHT });
 
 /** Lo que hay que dibujar en una vista (nodos, grupos y flechas), sin coordenadas. */
 export function buildScene(doc: PlatformDocument, view: PlatformView): Scene {
-  return view.type === 'environment' ? environmentScene(doc, view) : view.type === 'delivery' ? deliveryScene(doc, view) : flatScene(doc, view);
+  return view.type === 'environment' ? environmentScene(doc, view) : view.type === 'delivery' ? deliveryScene(doc, view) : view.type === 'costs' ? costScene(doc, view) : flatScene(doc, view);
 }
 
 /** Coloca una vista con el autolayout genérico del kernel. */
@@ -287,11 +326,11 @@ export async function layoutView(doc: PlatformDocument, viewId?: string, options
   const layout = await layoutGraph(nodes, edges, groups, { direction: 'RIGHT', ...options });
   const widths = new Map(layout.groups.map((g) => [g.id, g.width]));
   const fitted = new Map([...scene.groups].map(([id, g]) => [id, g.short && g.label.length * 6.4 + 16 > (widths.get(id) ?? Infinity) ? g.short : g.label]));
-  return { view, layout, nodes: scene.nodes, groups: new Map([...scene.groups].map(([id, g]) => [id, g.label])), fittedGroups: fitted, edges: scene.edges };
+  return { view, layout, nodes: scene.nodes, groups: new Map([...scene.groups].map(([id, g]) => [id, g.label])), fittedGroups: fitted, edges: scene.edges, groupStyles: new Map([...scene.groups].flatMap(([id, g]) => (g.style ? [[id, g.style] as const] : []))) };
 }
 
 export async function toSvg(doc: PlatformDocument, viewId?: string): Promise<string> {
-  const { view, layout, nodes, fittedGroups, edges } = await layoutView(doc, viewId);
+  const { view, layout, nodes, fittedGroups, edges, groupStyles } = await layoutView(doc, viewId);
   return renderGraphSvg(layout, {
     title: view.title,
     node: (id) => nodes.get(id)!,
@@ -299,6 +338,6 @@ export async function toSvg(doc: PlatformDocument, viewId?: string): Promise<str
       const e = edges.get(id)!;
       return { stroke: e.stroke, dashed: e.dashed, label: e.label, width: e.width };
     },
-    group: (id) => ({ label: fittedGroups.get(id) ?? id }),
+    group: (id) => ({ label: fittedGroups.get(id) ?? id, ...groupStyles.get(id) }),
   });
 }

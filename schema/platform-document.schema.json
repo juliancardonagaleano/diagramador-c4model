@@ -21,6 +21,9 @@
         },
         "description": {
           "type": "string"
+        },
+        "currency": {
+          "type": "string"
         }
       }
     },
@@ -185,6 +188,19 @@
             "items": {
               "type": "string"
             }
+          },
+          "monthlyCost": {
+            "type": "number",
+            "minimum": 0
+          },
+          "region": {
+            "type": "string"
+          },
+          "cpuLimit": {
+            "type": "string"
+          },
+          "memoryLimit": {
+            "type": "string"
           }
         },
         "required": [
@@ -240,6 +256,12 @@
               "critical"
             ]
           },
+          "slo": {
+            "type": "string"
+          },
+          "sla": {
+            "type": "string"
+          },
           "external": {
             "type": "boolean"
           },
@@ -291,6 +313,16 @@
             "maximum": 9007199254740991
           },
           "version": {
+            "type": "string"
+          },
+          "monthlyCost": {
+            "type": "number",
+            "minimum": 0
+          },
+          "cpuLimit": {
+            "type": "string"
+          },
+          "memoryLimit": {
             "type": "string"
           }
         },

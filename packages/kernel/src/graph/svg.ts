@@ -31,6 +31,20 @@ export interface EdgeMark {
   title?: string;
 }
 
+/** Remate de un extremo de línea en notación de pata de gallo: `one` = una barra (uno); `many` = tres patas (varios). */
+export type EdgeEnd = 'one' | 'many';
+
+/**
+ * Glifo de pata de gallo en el punto `at` de una línea que sale hacia `dir` (vector unitario del nodo hacia fuera, es decir,
+ * hacia donde va la línea). Devuelve los segmentos como trazados SVG; los comparten el lienzo y el SVG exportado.
+ */
+export function edgeEndPaths(end: EdgeEnd, at: { x: number; y: number }, dir: { x: number; y: number }): string[] {
+  const n = { x: -dir.y, y: dir.x };
+  const pt = (along: number, across: number): string => `${Math.round((at.x + dir.x * along + n.x * across) * 10) / 10} ${Math.round((at.y + dir.y * along + n.y * across) * 10) / 10}`;
+  if (end === 'one') return [`M${pt(10, -6)} L${pt(10, 6)}`];
+  return [`M${pt(12, 0)} L${pt(0, -6)}`, `M${pt(12, 0)} L${pt(0, 0)}`, `M${pt(12, 0)} L${pt(0, 6)}`];
+}
+
 export interface SvgEdgeStyle {
   stroke: string;
   dashed?: boolean;
@@ -42,6 +56,8 @@ export interface SvgEdgeStyle {
   tail?: 'diamond' | 'dot';
   /** Punta de flecha: `open` es una «V» sin relleno; `none`, sin punta (por defecto, triángulo relleno). */
   head?: 'open' | 'none';
+  /** Remates de pata de gallo en el origen y el destino; si hay alguno, la línea no lleva punta de flecha. */
+  ends?: { source?: EdgeEnd; target?: EdgeEnd };
 }
 
 /** Leyenda de colores que se dibuja bajo el título. */
@@ -54,8 +70,8 @@ export interface SvgOptions {
   title?: string;
   node(id: string): SvgNodeStyle;
   edge(id: string): SvgEdgeStyle;
-  /** Etiqueta del grupo y, opcionalmente, su relleno y su borde (por defecto gris claro). */
-  group?(id: string): { label: string; fill?: string; stroke?: string };
+  /** Etiqueta del grupo y, opcionalmente, su relleno, su borde y el trazo del borde (por defecto gris claro y discontinuo). */
+  group?(id: string): { label: string; fill?: string; stroke?: string; border?: 'solid' | 'dashed' | 'dotted' };
   legend?: SvgLegend;
 }
 
@@ -135,15 +151,26 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
   for (const g of layout.groups) {
     const style = options.group?.(g.id);
     const label = style?.label ?? g.id;
-    out.push(`<rect x="${g.x}" y="${g.y}" width="${g.width}" height="${g.height}" rx="8" fill="${style?.fill ?? '#f8fafc'}" stroke="${style?.stroke ?? '#94a3b8'}" stroke-dasharray="6 4"/>`);
+    out.push(`<rect x="${g.x}" y="${g.y}" width="${g.width}" height="${g.height}" rx="8" fill="${style?.fill ?? '#f8fafc'}" stroke="${style?.stroke ?? '#94a3b8'}"${style?.border === 'solid' ? ' stroke-width="2"' : style?.border === 'dotted' ? ' stroke-width="2" stroke-dasharray="2 4"' : ' stroke-dasharray="6 4"'}/>`);
     out.push(`<text x="${g.x + 12}" y="${g.y + 22}" font-weight="700" fill="#475569">${esc(fit(label, g.width))}</text>`);
   }
 
   for (const e of layout.edges) {
     const style = options.edge(e.id);
     const d = e.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x} ${p.y}`).join(' ');
-    out.push(`<path d="${d}" fill="none" stroke="${style.stroke}" stroke-width="${style.width ?? 1.5}"${style.dashed ? ' stroke-dasharray="6 4"' : ''}${style.head === 'none' ? '' : ` marker-end="url(#${style.head === 'open' ? 'arrow-open' : 'arrow'})"`}/>`);
+    const ends = style.ends && (style.ends.source || style.ends.target) ? style.ends : undefined;
+    out.push(`<path d="${d}" fill="none" stroke="${style.stroke}" stroke-width="${style.width ?? 1.5}"${style.dashed ? ' stroke-dasharray="6 4"' : ''}${ends || style.head === 'none' ? '' : ` marker-end="url(#${style.head === 'open' ? 'arrow-open' : 'arrow'})"`}/>`);
     if (style.tail) out.push(renderTail(style.tail, e.points, style.stroke));
+    if (ends && e.points.length >= 2) {
+      const pts = e.points;
+      const last = pts.length - 1;
+      const unit = (a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number } => {
+        const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+        return { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+      };
+      const glyphs = [ends.source && edgeEndPaths(ends.source, pts[0], unit(pts[0], pts[1])), ends.target && edgeEndPaths(ends.target, pts[last], unit(pts[last], pts[last - 1]))];
+      for (const g of glyphs) if (g) out.push(`<path d="${g.join(' ')}" fill="none" stroke="${style.stroke}" stroke-width="${style.width ?? 1.5}" stroke-linecap="round"/>`);
+    }
     const marks = style.marks ?? [];
     const anchor = e.label ?? polylineMidpoint(e.points);
     const hasLabel = !!(style.label && e.label);

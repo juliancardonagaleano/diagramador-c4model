@@ -7,10 +7,10 @@
 
 import type { GraphLayout } from '../graph/layout';
 import type { ShapeKind } from '../graph/shapes';
-import type { EdgeMark } from '../graph/svg';
+import type { EdgeEnd, EdgeMark } from '../graph/svg';
 
 export type { ShapeKind } from '../graph/shapes';
-export type { EdgeMark } from '../graph/svg';
+export type { EdgeEnd, EdgeMark } from '../graph/svg';
 
 export type LineKind = 'solid' | 'dashed' | 'dotted';
 
@@ -60,12 +60,16 @@ export interface EditorNode {
   badges?: string[];
   /** Borde discontinuo (p. ej. un sistema externo). */
   dashed?: boolean;
+  /** Trazo del borde de un nodo que se dibuja como zona (por defecto discontinuo): una red pública, continua; una aislada, punteada. */
+  border?: 'solid' | 'dashed' | 'dotted';
   /** Color que sustituye al de la notación (p. ej. clasificación de un dato). */
   fill?: string;
   /** Borde que sustituye al de la notación (p. ej. rojo para un dato restringido). */
   stroke?: string;
   /** Líneas de detalle bajo el título, alineadas a la izquierda (las columnas de una tabla, los atributos de una entidad). */
   lines?: string[];
+  /** Énfasis de cada línea de `lines`, por posición: `key` (negrita, p. ej. una clave primaria) o `ref` (acento, p. ej. una clave foránea). */
+  lineEmphasis?: Array<'key' | 'ref' | undefined>;
   /** Tamaño que sustituye al de la notación (p. ej. una ficha crece con sus columnas). */
   width?: number;
   height?: number;
@@ -80,6 +84,8 @@ export interface EditorEdge {
   badges?: string[];
   /** Insignias gráficas sobre la línea: el número de paso, el icono de un patrón… (se dibujan antes que la etiqueta). */
   marks?: EdgeMark[];
+  /** Remates de pata de gallo en los extremos (modelo entidad-relación); sustituyen a la punta de flecha. */
+  ends?: { source?: EdgeEnd; target?: EdgeEnd };
   /** Grosor que sustituye al de la notación (p. ej. criticidad alta). */
   width?: number;
 }

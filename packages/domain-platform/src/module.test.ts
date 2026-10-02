@@ -336,7 +336,7 @@ describe('reglas de gobierno', () => {
 
 describe('vistas', () => {
   it('lista la topología, una vista por entorno con contenido y la entrega continua', () => {
-    expect(listViews(doc).map((v) => v.id)).toEqual(['topology', 'env:dev', 'env:prod', 'delivery']);
+    expect(listViews(doc).map((v) => v.id)).toEqual(['topology', 'env:dev', 'env:prod', 'delivery', 'costs']);
     const empty = parse({ environments: [{ id: 'e', name: 'E' }], services: [{ id: 's', name: 'S' }] });
     expect(listViews(empty)).toEqual([]);
     expect(() => findView(empty)).toThrow('El documento no tiene vistas que exportar');
@@ -370,7 +370,7 @@ describe('vistas', () => {
   });
 
   it('explica las vistas disponibles cuando no existe la pedida', () => {
-    expect(() => findView(doc, 'nada')).toThrow(/No existe la vista «nada»\. Vistas disponibles: topology, env:dev, env:prod, delivery, impact:<elemento>/);
+    expect(() => findView(doc, 'nada')).toThrow(/No existe la vista «nada»\. Vistas disponibles: topology, env:dev, env:prod, delivery, costs, impact:<elemento>/);
     expect(() => findView(doc, 'impact:entrega-servicios')).toThrow(/No existe el servicio ni el recurso/);
   });
 });
@@ -415,7 +415,7 @@ describe('exportación a Mermaid', () => {
     const text = toMermaid(doc, { viewId: 'delivery' });
     expect(text).toContain('subgraph entrega_servicios["CI/CD: Entrega de servicios (GitLab CI)"]');
     expect(text).toContain('subgraph infraestructura["Infraestructura como código: Infraestructura (Terraform)"]');
-    expect(text).toContain('p_entrega_servicios_s1["Producción<br/>aprobación manual"]:::step');
+    expect(text).toContain('p_entrega_servicios_s1["Producción<br/>aprobación manual<br/>4 con versión distinta de Desarrollo"]:::step');
     expect(text).toContain('tienda_web --> p_entrega_servicios_build');
     expect(text).toContain('p_infraestructura_s1 --> k8s_prod');
   });

@@ -1,7 +1,7 @@
 import { drawioShapeStyle } from '@iark/kernel';
 import { KIND_LABELS, type DataDocument } from '../types';
 import { listViews } from '../views';
-import { ASSET_SHAPES, KIND_COLORS, colorOf, entityLines, governanceLine, isDashed, layoutView, pipelineLine, relationLabel, strokeOf } from './render';
+import { ASSET_SHAPES, KIND_COLORS, colorOf, entityLines, governanceLine, isDashed, layoutView, pipelineLine, relationEnds, relationLabel, strokeOf } from './render';
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
 
@@ -41,9 +41,11 @@ export async function toDrawio(doc: DataDocument): Promise<string> {
     for (const e of layout.edges) {
       const { source, target, relation, pipeline } = edges.get(e.id)!;
       const dashed = isDashed(pipeline) ? 'dashed=1;' : '';
+      const ends = relation ? relationEnds(relation) : undefined;
+      const arrows = ends ? `startArrow=${ends.source === 'one' ? 'ERone' : 'ERmany'};startFill=0;endArrow=${ends.target === 'one' ? 'ERone' : 'ERmany'};endFill=0;` : 'endArrow=block;';
       const points = e.points.slice(1, -1).map((p) => `<mxPoint x="${p.x}" y="${p.y}"/>`).join('');
       cells.push(
-        `<mxCell id="e-${esc(e.id)}" value="${esc(relation ? relationLabel(relation) : '')}" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;${dashed}" edge="1" parent="1" source="n-${esc(source)}" target="n-${esc(target)}"><mxGeometry relative="1" as="geometry">${points ? `<Array as="points">${points}</Array>` : ''}</mxGeometry></mxCell>`,
+        `<mxCell id="e-${esc(e.id)}" value="${esc(relation ? relationLabel(relation) : '')}" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;${arrows}${dashed}" edge="1" parent="1" source="n-${esc(source)}" target="n-${esc(target)}"><mxGeometry relative="1" as="geometry">${points ? `<Array as="points">${points}</Array>` : ''}</mxGeometry></mxCell>`,
       );
     }
     pages.push(

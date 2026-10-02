@@ -41,6 +41,24 @@ describe('shapeParts', () => {
   });
 });
 
+describe('figuras de infraestructura', () => {
+  it('el cubo lleva aristas y la pantalla lleva peana; ambos desplazan el texto hacia su cara principal', () => {
+    expect(shapeParts('cube', 200, 78).filter((p) => p.role === 'detail')).toHaveLength(2);
+    expect(shapeParts('monitor', 200, 78).filter((p) => p.role === 'detail')).toHaveLength(2);
+    expect(textOffset('cube', 78)).toBeGreaterThan(0);
+    expect(textOffset('monitor', 78)).toBeLessThan(0);
+    expect(drawioShapeStyle('cube')).toContain('shape=cube');
+  });
+
+  it('un grupo con borde continuo o punteado se traza con su propio estilo', () => {
+    const layout = { nodes: [], groups: [{ id: 'g', x: 0, y: 0, width: 100, height: 60 }], edges: [], width: 100, height: 60 };
+    const draw = (border?: 'solid' | 'dashed' | 'dotted'): string => renderGraphSvg(layout, { node: () => ({ fill: '#000', stroke: '#000', lines: [] }), edge: () => ({ stroke: '#000' }), group: () => ({ label: 'G', stroke: '#e03131', border }) });
+    expect(draw('solid')).toContain('stroke="#e03131" stroke-width="2"/>');
+    expect(draw('dotted')).toContain('stroke-dasharray="2 4"');
+    expect(draw()).toContain('stroke-dasharray="6 4"');
+  });
+});
+
 describe('drawioShapeStyle', () => {
   it('traduce cada figura a un estilo de draw.io y las figuras sin equivalente van con esquinas redondeadas', () => {
     expect(drawioShapeStyle('cylinder')).toContain('shape=cylinder3');
