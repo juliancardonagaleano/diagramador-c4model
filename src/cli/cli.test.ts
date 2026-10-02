@@ -566,7 +566,7 @@ describe('iark: módulo de datos', () => {
   const dir = mkdtempSync(join(tmpdir(), 'iarkdata-'));
 
   it('modules lista el módulo de datos con sus formatos', () => {
-    expect(run(['modules']).stdout).toMatch(/^data {2}Arquitectura de datos {2}v0\.1\.0\n {4}importa: mermaid {2}· {2}exporta: mermaid, svg, drawio/m);
+    expect(run(['modules']).stdout).toMatch(/^data {2}Arquitectura de datos {2}v0\.1\.0\n {4}importa: mermaid, ddl, dbt {2}· {2}exporta: mermaid, svg, drawio/m);
   });
 
   it('validate --module data valida el documento y devuelve 2 con errores de estructura', () => {
