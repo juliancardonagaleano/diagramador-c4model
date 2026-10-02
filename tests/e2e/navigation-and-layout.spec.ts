@@ -41,6 +41,8 @@ test('autolayout, direcciones y navegación C1 → C2 → C3', async ({ page }) 
   await page.getByRole('button', { name: 'Dirección y distribución del autolayout' }).click();
   await page.getByText('Derecha → izquierda').click();
   await page.keyboard.press('Escape');
+  // El menú debe haberse cerrado del todo: si no, el clic siguiente en su botón alterna el menú que aún se cierra y no lo reabre.
+  await expect(page.getByText('Derecha → izquierda')).toBeHidden();
   await c4Ready(page);
   const q3 = (await page.getByTestId('layout-quality').textContent()) ?? '';
   expect(q3).toMatch(/←/);
@@ -55,6 +57,7 @@ test('autolayout, direcciones y navegación C1 → C2 → C3', async ({ page }) 
   await page.getByText('Automática (C1 ↓, C2/C3 →)').click();
   await page.keyboard.press('Escape');
   await page.mouse.click(5, 5);
+  await expect(page.getByText('Automática (C1 ↓, C2/C3 →)')).toBeHidden();
   await c4Ready(page);
   await expect(page.locator('.c4-breadcrumb')).toHaveAttribute('data-level', 'C2');
   await expect(page.locator('.c4-shape.shape-database')).toHaveCount(1);
