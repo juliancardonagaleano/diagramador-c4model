@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EditorSpec } from '@iark/kernel';
 import { FAKE_DOC, fakeEditor } from '../testing-editor';
-import { absolutePositions, buildFlow, dropTarget, edgeLabelText, layoutLabelText, movedByDrag, structureKey } from './flow';
+import { absolutePositions, buildFlow, dropTarget, edgeLabelText, followRoute, layoutLabelText, movedByDrag, routeInPlace, structureKey } from './flow';
 
 const spec = fakeEditor as unknown as EditorSpec<unknown>;
 const graph = fakeEditor.project(FAKE_DOC);
@@ -55,6 +55,67 @@ describe('aristas ancladas por la colocación de la vista', () => {
     expect(edge).toMatchObject({ targetHandle: 'top' });
     expect(edge.data.bend).toBeUndefined();
     expect(nodes.find((n) => n.id === 'api')?.data.handles).toBeUndefined();
+  });
+});
+
+describe('rutas con varios codos fijadas por la colocación de la vista', () => {
+  const boxes = { nodes: [{ id: 'api', x: 40, y: 20, width: 160, height: 64 }, { id: 'cola', x: 240, y: 140, width: 160, height: 56 }], groups: [], width: 500, height: 300 };
+  // Sale por abajo de «api», baja un poco, gira hacia la derecha, vuelve a bajar, gira a la izquierda y llega por arriba a «cola».
+  const long = { id: 'api-cola', points: [{ x: 120, y: 84 }, { x: 120, y: 100 }, { x: 420, y: 100 }, { x: 420, y: 120 }, { x: 320, y: 120 }, { x: 320, y: 140 }], sides: { source: 'bottom', target: 'top' } } as const;
+  const layout = { ...boxes, edges: [{ ...long, points: long.points.slice() }] };
+
+  it('la arista lleva el recorrido entero (y no un solo giro) mientras los nodos de sus extremos siguen donde la colocación los dejó', () => {
+    const { edges } = buildFlow(spec, graph, layout);
+    const edge = edges.find((e) => e.id === 'api-cola')!;
+    expect(edge.data.route).toEqual(long.points);
+    expect(edge.data.bend).toBeUndefined();
+    expect(edge).toMatchObject({ sourceHandle: 'bottom', targetHandle: 'top' });
+  });
+
+  it('si se mueve solo uno de los extremos la ruta ya no vale y la arista se traza como siempre entre sus asas', () => {
+    const { edges } = buildFlow(spec, graph, layout, new Map([['api', { x: 70, y: 20 }]]));
+    const edge = edges.find((e) => e.id === 'api-cola')!;
+    expect(edge.data.route).toBeUndefined();
+    expect(edge.data.bend).toBeUndefined();
+    expect(edge).toMatchObject({ sourceHandle: 'bottom', targetHandle: 'top' });
+    // Un nodo ajeno a la arista que se mueve no la afecta.
+    expect(buildFlow(spec, graph, layout, new Map([['worker', { x: 5, y: 5 }]])).edges.find((e) => e.id === 'api-cola')!.data.route).toEqual(long.points);
+  });
+
+  it('si los dos extremos se mueven lo mismo (se arrastra el grupo que los contiene) la ruta los acompaña', () => {
+    const { edges } = buildFlow(spec, graph, layout, new Map([['api', { x: 60, y: 50 }], ['cola', { x: 260, y: 170 }]]));
+    expect(edges.find((e) => e.id === 'api-cola')!.data.route).toEqual(long.points.map((p) => ({ x: p.x + 20, y: p.y + 30 })));
+  });
+
+  it('con un solo codo (cuatro puntos) la vista solo fija dónde gira, como antes', () => {
+    const one = { id: 'api-cola', points: [{ x: 120, y: 84 }, { x: 120, y: 112 }, { x: 320, y: 112 }, { x: 320, y: 140 }], sides: { source: 'bottom', target: 'top' } } as const;
+    const edge = buildFlow(spec, graph, { ...boxes, edges: [one] }).edges.find((e) => e.id === 'api-cola')!;
+    expect(edge.data.bend).toBe(112);
+    expect(edge.data.route).toBeUndefined();
+  });
+
+  it('routeInPlace: sin lados o con las anclas fuera de sitio no hay ruta, y se admite una holgura de un píxel', () => {
+    const [api, cola] = [boxes.nodes[0], boxes.nodes[1]];
+    expect(routeInPlace({ id: 'x', points: long.points.slice() }, api, cola)).toBeUndefined();
+    expect(routeInPlace(long, api, cola)).toEqual(long.points);
+    expect(routeInPlace(long, { ...api, x: api.x + 1 }, { ...cola, x: cola.x + 1 })).toBeDefined();
+    expect(routeInPlace(long, { ...api, y: api.y + 3 }, cola)).toBeUndefined();
+    expect(routeInPlace({ ...long, sides: { source: 'top', target: 'top' } }, api, cola)).toBeUndefined();
+  });
+
+  it('followRoute ancla la ruta a los extremos reales de la arista sin torcer el primer ni el último tramo', () => {
+    const followed = followRoute(long.points, { x: 121, y: 87 }, { x: 321, y: 137 });
+    expect(followed[0]).toEqual({ x: 121, y: 87 });
+    expect(followed[1]).toEqual({ x: 121, y: 100 });
+    expect(followed[2]).toEqual(long.points[2]);
+    expect(followed[4]).toEqual({ x: 321, y: 120 });
+    expect(followed[5]).toEqual({ x: 321, y: 137 });
+    for (let i = 1; i < followed.length; i += 1) expect(followed[i].x === followed[i - 1].x || followed[i].y === followed[i - 1].y).toBe(true);
+    // No modifica la ruta original.
+    expect(long.points[0]).toEqual({ x: 120, y: 84 });
+    // Con extremos en un lado, el tramo inicial es horizontal y se alinea en y.
+    const side = followRoute([{ x: 0, y: 10 }, { x: 20, y: 10 }, { x: 20, y: 60 }, { x: 40, y: 60 }, { x: 40, y: 80 }, { x: 60, y: 80 }], { x: 0, y: 12 }, { x: 60, y: 83 });
+    expect(side.map((p) => [p.x, p.y])).toEqual([[0, 12], [20, 12], [20, 60], [40, 60], [40, 83], [60, 83]]);
   });
 });
 

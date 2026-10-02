@@ -55,6 +55,10 @@ export type PortSide = 'top' | 'right' | 'bottom' | 'left';
 
 export interface EdgeRoute {
   id: string;
+  /**
+   * Recorrido completo, del origen al destino. El SVG y draw.io lo pintan tal cual; el lienzo, cuando la ruta trae más de un
+   * codo (más de cuatro puntos) y los nodos siguen donde la dejó la colocación, también (si se mueven, la arista se traza como siempre).
+   */
   points: Point[];
   /** Centro de la etiqueta, si tiene. */
   label?: Point;

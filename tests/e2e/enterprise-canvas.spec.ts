@@ -195,6 +195,62 @@ test.describe('lienzo empresarial: capas, mapa por criterio y relaciones nuevas'
     expect(errors).toEqual([]);
   });
 
+  test('una capacidad compartida por el primer y el tercer flujo se une por un pasillo libre: ninguna arista pisa un nodo ni un rótulo y, si se mueve una etapa, la arista se traza como siempre', async ({ page }) => {
+    const errors = await open(page);
+    await page.getByRole('tab', { name: 'Vista SVG' }).click();
+    await page.getByLabel('Documento JSON').fill(readFileSync('tests/fixtures/empresa-flujos-compartidos.json', 'utf8'));
+    await page.getByRole('tab', { name: 'Lienzo' }).click();
+    await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
+    await selectView(page, 'value-stream');
+    const id = 'gestion-clientes--enables--acompanar';
+    const line = page.locator(`.react-flow__edge[data-id="${id}"] path.react-flow__edge-path`);
+    await expect(line).toBeVisible();
+    await expect(page.getByTestId('node-acompanar').locator('.react-flow__handle-top')).toHaveCount(1);
+    await expect(page.getByTestId('node-gestion-clientes').locator('.react-flow__handle-bottom')).toHaveCount(1);
+
+    // Recorre cada línea punto a punto y anota los nodos (etapas y capacidades) y los rótulos de recuadro que atraviesa.
+    const crossed = (): Promise<string[]> =>
+      page.evaluate(() => {
+        const rects = [...document.querySelectorAll('[data-testid^="node-"]')]
+          .filter((el) => ['stage', 'capability'].includes(el.getAttribute('data-kind') ?? ''))
+          .map((el) => ({ name: el.getAttribute('data-testid')!, box: el.getBoundingClientRect() }))
+          .concat([...document.querySelectorAll('.cv-group-title')].map((el) => ({ name: `rótulo «${el.textContent}»`, box: el.getBoundingClientRect() })));
+        const found = new Set<string>();
+        for (const path of document.querySelectorAll<SVGPathElement>('.react-flow__edge path.react-flow__edge-path')) {
+          const m = path.getScreenCTM()!;
+          const total = path.getTotalLength();
+          for (let at = 0; at <= total; at += 2) {
+            const p = path.getPointAtLength(at);
+            const [x, y] = [m.a * p.x + m.c * p.y + m.e, m.b * p.x + m.d * p.y + m.f];
+            for (const { name, box } of rects) if (x > box.left + 2 && x < box.right - 2 && y > box.top + 2 && y < box.bottom - 2) found.add(`${path.closest('.react-flow__edge')?.getAttribute('data-id')} → ${name}`);
+          }
+        }
+        return [...found];
+      });
+    expect(await crossed()).toEqual([]);
+
+    // Sube por la derecha del segundo flujo, con cuatro giros redondeados, y llega por debajo de la capacidad.
+    const d = (await line.getAttribute('d'))!;
+    expect(d.match(/Q/g)).toHaveLength(4);
+    const [stage, group, capability] = await Promise.all([page.getByTestId('node-acompanar').boundingBox(), page.getByTestId('node-emitir').boundingBox(), page.getByTestId('node-gestion-clientes').boundingBox()]);
+    const route = (await line.boundingBox())!;
+    expect(route.x + route.width).toBeGreaterThan(group!.x + group!.width);
+    expect(route.y).toBeLessThan(capability!.y + capability!.height + 2);
+    expect(route.y + route.height).toBeGreaterThan(stage!.y - 30);
+    await shot(page, 'flujo-de-valor-rutas');
+
+    // Si se mueve la etapa, la ruta guardada ya no vale y la arista se traza entre sus asas, como las demás.
+    const box = (await page.getByTestId('node-acompanar').boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 12, { steps: 8 });
+    await page.mouse.up();
+    await expect.poll(async () => (await line.getAttribute('d')) !== d).toBe(true);
+    expect(((await line.getAttribute('d')) ?? '').match(/Q/g)?.length ?? 0).toBeLessThan(4);
+    await expect(line).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
   test('en el paisaje se puede arrastrar una asignación hacia una unidad que solo era responsable', async ({ page }) => {
     const errors = await open(page);
     await selectView(page, 'landscape');

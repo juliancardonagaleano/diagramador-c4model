@@ -1,4 +1,5 @@
 import type { GraphLayout } from './layout';
+import { polylineMidpoint } from './route';
 import { shapeParts, textOffset, type ShapeKind } from './shapes';
 
 /** Estilo de un nodo: lo decide el módulo (color por tipo, forma, insignia). */
@@ -78,21 +79,6 @@ export interface SvgOptions {
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const MARK = 20;
-
-/** Punto medio de una poligonal, medido sobre su longitud. */
-function polylineMidpoint(points: Array<{ x: number; y: number }>): { x: number; y: number } {
-  if (points.length === 0) return { x: 0, y: 0 };
-  const lengths = points.slice(1).map((p, i) => Math.hypot(p.x - points[i].x, p.y - points[i].y));
-  let left = lengths.reduce((a, b) => a + b, 0) / 2;
-  for (let i = 0; i < lengths.length; i++) {
-    if (left <= lengths[i] || i === lengths.length - 1) {
-      const t = lengths[i] === 0 ? 0 : Math.min(1, left / lengths[i]);
-      return { x: points[i].x + (points[i + 1].x - points[i].x) * t, y: points[i].y + (points[i + 1].y - points[i].y) * t };
-    }
-    left -= lengths[i];
-  }
-  return points[0];
-}
 
 function renderMark(mark: EdgeMark, cx: number, cy: number): string {
   const color = mark.color ?? '#334155';

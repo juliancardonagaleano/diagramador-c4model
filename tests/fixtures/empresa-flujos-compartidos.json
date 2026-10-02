@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "workspace": {"name": "Seguros Aurora - capacidad compartida entre flujos", "description": "Tres flujos de valor; «Gestión de clientes» habilita una etapa del primero y otra del tercero, así que su arista tiene que subir por los flujos intermedios"},
+  "capabilities": [
+    {"id": "gestion-clientes", "name": "Gestión de clientes", "importance": "core", "maturity": 3},
+    {"id": "marketing", "name": "Marketing digital", "importance": "differentiating", "maturity": 4},
+    {"id": "suscripcion", "name": "Suscripción de riesgos", "importance": "core", "maturity": 3},
+    {"id": "emision", "name": "Emisión de pólizas", "importance": "core", "maturity": 4},
+    {"id": "cobro-primas", "name": "Cobro de primas", "importance": "core", "maturity": 3},
+    {"id": "siniestros", "name": "Gestión de siniestros", "importance": "differentiating", "maturity": 2},
+    {"id": "fidelizacion", "name": "Fidelización", "importance": "supporting", "maturity": 2}
+  ],
+  "valueStreams": [
+    {"id": "captar", "name": "De la consulta a la oferta", "stakeholder": "Asegurado potencial"},
+    {"id": "emitir", "name": "De la oferta a la póliza", "stakeholder": "Asegurado"},
+    {"id": "atender", "name": "De la póliza a la renovación", "stakeholder": "Asegurado"}
+  ],
+  "valueStages": [
+    {"id": "atraer", "name": "Atraer", "streamId": "captar", "value": "interesado identificado"},
+    {"id": "cotizar", "name": "Cotizar", "streamId": "captar", "value": "oferta enviada"},
+    {"id": "contratar", "name": "Contratar", "streamId": "emitir", "value": "póliza firmada"},
+    {"id": "cobrar", "name": "Cobrar", "streamId": "emitir", "value": "prima cobrada"},
+    {"id": "acompanar", "name": "Acompañar", "streamId": "atender", "value": "cliente informado"},
+    {"id": "resolver", "name": "Resolver", "streamId": "atender", "value": "siniestro cerrado"},
+    {"id": "renovar", "name": "Renovar", "streamId": "atender", "value": "póliza renovada"}
+  ],
+  "relations": [
+    {"id": "gestion-clientes--enables--atraer", "kind": "enables", "sourceId": "gestion-clientes", "targetId": "atraer"},
+    {"id": "marketing--enables--atraer", "kind": "enables", "sourceId": "marketing", "targetId": "atraer"},
+    {"id": "suscripcion--enables--cotizar", "kind": "enables", "sourceId": "suscripcion", "targetId": "cotizar"},
+    {"id": "emision--enables--contratar", "kind": "enables", "sourceId": "emision", "targetId": "contratar"},
+    {"id": "cobro-primas--enables--cobrar", "kind": "enables", "sourceId": "cobro-primas", "targetId": "cobrar"},
+    {"id": "gestion-clientes--enables--acompanar", "kind": "enables", "sourceId": "gestion-clientes", "targetId": "acompanar"},
+    {"id": "siniestros--enables--resolver", "kind": "enables", "sourceId": "siniestros", "targetId": "resolver"},
+    {"id": "fidelizacion--enables--renovar", "kind": "enables", "sourceId": "fidelizacion", "targetId": "renovar"}
+  ]
+}
