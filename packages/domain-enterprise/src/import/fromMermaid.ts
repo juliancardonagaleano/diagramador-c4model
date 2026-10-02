@@ -10,7 +10,21 @@ import {
   type FlowNodeRef,
 } from '@iark/kernel';
 import { formatEnterpriseIssues, validateEnterpriseDocument } from '../schema';
-import { ENTERPRISE_DOCUMENT_VERSION, KIND_LABELS, relationBetween, type Application, type Capability, type DrawnKind, type EnterpriseDocument, type Process, type Relation, type Technology } from '../types';
+import {
+  ENTERPRISE_DOCUMENT_VERSION,
+  KIND_LABELS,
+  relationBetween,
+  type Application,
+  type BusinessService,
+  type Capability,
+  type DrawnKind,
+  type EnterpriseDocument,
+  type Process,
+  type Relation,
+  type Technology,
+  type ValueStage,
+  type ValueStream,
+} from '../types';
 
 export class EnterpriseImportError extends ModuleError {
   constructor(message: string) {
@@ -39,14 +53,17 @@ const slug = (s: string): string =>
     .slice(0, 60);
 
 /** Nombres (sin acentos, en minúsculas) con los que se reconoce un tipo: en la clase de un nodo o en el título de una capa. */
-const KIND_WORDS: Record<DrawnKind, string[]> = {
+type ImportKind = DrawnKind | 'service' | 'stage';
+const KIND_WORDS: Record<ImportKind, string[]> = {
   capability: ['capability', 'capabilities', 'capacidad', 'capacidades'],
   process: ['process', 'processes', 'proceso', 'procesos'],
   application: ['application', 'applications', 'app', 'apps', 'aplicacion', 'aplicaciones'],
   technology: ['technology', 'technologies', 'tech', 'tecnologia', 'tecnologias'],
+  service: ['service', 'services', 'servicio', 'servicios', 'servicio de negocio'],
+  stage: ['stage', 'stages', 'etapa', 'etapas'],
 };
 const normalize = (s: string): string => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-const kindFromWord = (word: string): DrawnKind | undefined => (Object.keys(KIND_WORDS) as DrawnKind[]).find((k) => KIND_WORDS[k].includes(normalize(word)));
+const kindFromWord = (word: string): ImportKind | undefined => (Object.keys(KIND_WORDS) as ImportKind[]).find((k) => KIND_WORDS[k].includes(normalize(word)));
 
 interface Group {
   alias: string;
@@ -55,14 +72,16 @@ interface Group {
   seq: number;
   parent?: string;
   /** Un `subgraph` cuyo título es un tipo («Aplicaciones») es una capa, no una capacidad. */
-  layer?: DrawnKind;
+  layer?: ImportKind;
 }
 
 /**
  * Importa un `flowchart` de Mermaid como documento empresarial. El tipo de cada nodo sale, por este orden, de su clase
  * (`:::application`, `class A capability`; también en español), del título de la capa que lo contiene («Aplicaciones»),
  * de su forma (`([ ])` = proceso, `[( )]` = tecnología) y, por último, de que esté dentro de un grupo (capacidad) o no
- * (aplicación). Un `subgraph` que no es una capa es una capacidad que contiene a las suyas. Cada flecha se convierte en
+ * (aplicación). Un `subgraph` que no es una capa es una capacidad que contiene a las suyas, salvo que contenga etapas
+ * (`:::stage`): entonces es un flujo de valor y sus etapas, en el orden del texto. Un nodo `:::service` es un servicio de
+ * negocio (la segunda línea, su audiencia) y una etapa, la segunda línea, el valor que aporta. Cada flecha se convierte en
  * la relación que admiten sus extremos (en cualquier sentido); la segunda línea del texto de una aplicación es su
  * tecnología y la de una tecnología, su versión.
  */
@@ -116,7 +135,10 @@ export function fromMermaid(source: string, options: EnterpriseImportOptions = {
 
   const ids = new Set<string>();
   const idOf = new Map<string, string>();
-  const kindOf = new Map<string, DrawnKind>();
+  const kindOf = new Map<string, ImportKind>();
+  const valueStreams: ValueStream[] = [];
+  const valueStages: ValueStage[] = [];
+  const businessServices: BusinessService[] = [];
   const capabilities: Capability[] = [];
   const processes: Process[] = [];
   const applications: Application[] = [];
@@ -126,6 +148,10 @@ export function fromMermaid(source: string, options: EnterpriseImportOptions = {
     idOf.set(alias, id);
     return id;
   };
+
+  // Un grupo que contiene etapas es un flujo de valor, no una capacidad.
+  const isStage = (n: { classes: Set<string> }): boolean => [...n.classes].some((c) => kindFromWord(c) === 'stage');
+  const streamGroups = new Set([...nodes.values()].filter((n) => isStage(n) && n.group !== undefined && !groups.get(n.group)?.layer).map((n) => n.group as string));
 
   // Los elementos se crean en el orden en que aparecen en el texto.
   const entries = [
@@ -138,6 +164,10 @@ export function fromMermaid(source: string, options: EnterpriseImportOptions = {
     if ('group' in entry) {
       const g = entry.group;
       const name = splitLabel(g.label).name || g.alias;
+      if (streamGroups.has(g.alias)) {
+        valueStreams.push({ id: take(g.alias, name, 'flujo-de-valor'), name });
+        continue;
+      }
       const id = take(g.alias, name, 'capacidad');
       kindOf.set(g.alias, 'capability');
       const parent = climb(g.parent, (x) => !x.layer);
@@ -151,10 +181,22 @@ export function fromMermaid(source: string, options: EnterpriseImportOptions = {
     const layer = climb(group, (g) => g.layer !== undefined)?.layer;
     const byClass = [...classes].map(kindFromWord).find((k) => k !== undefined);
     const byShape: DrawnKind | undefined = ref.shape === 'stadium' ? 'process' : ref.shape === 'cylinder' ? 'technology' : undefined;
-    const k: DrawnKind = byClass ?? layer ?? byShape ?? (container ? 'capability' : 'application');
+    const k: ImportKind = byClass ?? layer ?? byShape ?? (container ? 'capability' : 'application');
     kindOf.set(ref.alias, k);
     const id = take(ref.alias, name, k);
-    if (k === 'capability') {
+    if (k === 'stage') {
+      let stream = group && streamGroups.has(group) ? valueStreams.find((v) => v.id === idOf.get(group)) : undefined;
+      if (!stream) {
+        stream = valueStreams.find((v) => v.id === 'flujo-de-valor') ?? { id: pickId('flujo-de-valor', ids), name: 'Flujo de valor' };
+        if (!valueStreams.includes(stream)) {
+          ids.add(stream.id);
+          valueStreams.push(stream);
+        }
+      }
+      valueStages.push({ id, name, streamId: stream.id, ...(label.description ? { value: label.description } : {}) });
+    } else if (k === 'service') {
+      businessServices.push({ id, name, ...(label.description ? { audience: label.description } : {}) });
+    } else if (k === 'capability') {
       const parent = container && !layer ? idOf.get(container.alias) : undefined;
       capabilities.push({ id, name, ...(parent ? { parentId: parent } : {}) });
       if (container && layer) warnings.add(`«${name}» está dentro del grupo «${container.label}» y de una capa: se importa sin capacidad padre.`);
@@ -171,7 +213,7 @@ export function fromMermaid(source: string, options: EnterpriseImportOptions = {
   const relations: Relation[] = [];
   const nameOf = (alias: string): string => {
     const id = idOf.get(alias);
-    return [...capabilities, ...processes, ...applications, ...technologies].find((x) => x.id === id)?.name ?? alias;
+    return [...capabilities, ...processes, ...applications, ...technologies, ...valueStages, ...businessServices].find((x) => x.id === id)?.name ?? alias;
   };
   for (const e of edges) {
     const description = e.label ? splitLabel(e.label).name : '';
@@ -182,6 +224,12 @@ export function fromMermaid(source: string, options: EnterpriseImportOptions = {
           continue;
         }
         const [ka, kb] = [kindOf.get(a)!, kindOf.get(b)!];
+        if (!ka || !kb) {
+          warnings.add(`${e.where}: la arista ${a} → ${b} une un flujo de valor, que solo se relaciona con sus etapas; se omite.`);
+          continue;
+        }
+        // Las flechas entre etapas solo marcan su orden, que ya es el del texto.
+        if (ka === 'stage' && kb === 'stage') continue;
         const rule = relationBetween(ka, kb);
         if (!rule) {
           warnings.add(`${e.where}: «${nameOf(a)}» → «${nameOf(b)}» une ${KIND_LABELS[ka].toLowerCase()} con ${KIND_LABELS[kb].toLowerCase()}, que no se relacionan; se omite${ka === 'capability' && kb === 'capability' ? ' (usa grupos para la jerarquía de capacidades)' : ''}.`);
@@ -196,11 +244,11 @@ export function fromMermaid(source: string, options: EnterpriseImportOptions = {
     }
   }
 
-  if (capabilities.length + processes.length + applications.length + technologies.length === 0) {
+  if (capabilities.length + processes.length + applications.length + technologies.length + valueStages.length + businessServices.length === 0) {
     throw new EnterpriseImportError('El diagrama de Mermaid no define ningún elemento que se pueda importar.');
   }
   const name = options.name?.trim() || title?.trim() || options.fallbackName?.trim() || 'Arquitectura empresarial';
-  const result = validateEnterpriseDocument({ version: ENTERPRISE_DOCUMENT_VERSION, workspace: { name }, capabilities, processes, applications, technologies, relations });
+  const result = validateEnterpriseDocument({ version: ENTERPRISE_DOCUMENT_VERSION, workspace: { name }, capabilities, processes, applications, technologies, valueStreams, valueStages, businessServices, relations });
   if (!result.ok) throw new EnterpriseImportError(`No se pudo construir un documento válido a partir de Mermaid:\n${formatEnterpriseIssues(result.issues)}`);
   return { document: result.document, warnings: warnings.result() };
 }

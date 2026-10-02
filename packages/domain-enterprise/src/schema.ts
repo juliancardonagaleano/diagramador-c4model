@@ -80,6 +80,33 @@ export const technologySchema = z.object({
   tags: z.array(z.string()).optional(),
 });
 
+export const valueStreamSchema = z.object({
+  id: idSchema,
+  name: nameSchema,
+  description: z.string().optional(),
+  ownerId: idSchema.optional(),
+  stakeholder: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+export const valueStageSchema = z.object({
+  id: idSchema,
+  name: nameSchema,
+  description: z.string().optional(),
+  streamId: idSchema,
+  value: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+export const businessServiceSchema = z.object({
+  id: idSchema,
+  name: nameSchema,
+  description: z.string().optional(),
+  ownerId: idSchema.optional(),
+  audience: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+});
+
 export const relationSchema = z.object({
   id: idSchema,
   kind: z.enum(RELATION_KINDS),
@@ -98,6 +125,9 @@ export const enterpriseDocumentSchema = z
     processes: z.array(processSchema).default([]),
     applications: z.array(applicationSchema).default([]),
     technologies: z.array(technologySchema).default([]),
+    valueStreams: z.array(valueStreamSchema).default([]),
+    valueStages: z.array(valueStageSchema).default([]),
+    businessServices: z.array(businessServiceSchema).default([]),
     relations: z.array(relationSchema).default([]),
   })
   .superRefine((input, ctx) => {
@@ -112,6 +142,9 @@ export const enterpriseDocumentSchema = z
       ['process', 'processes', doc.processes],
       ['application', 'applications', doc.applications],
       ['technology', 'technologies', doc.technologies],
+      ['stream', 'valueStreams', doc.valueStreams],
+      ['stage', 'valueStages', doc.valueStages],
+      ['service', 'businessServices', doc.businessServices],
     ];
     for (const [kind, key, items] of collections) {
       items.forEach((item, i) => {
@@ -145,6 +178,8 @@ export const enterpriseDocumentSchema = z
       ['processes', doc.processes],
       ['applications', doc.applications],
       ['technologies', doc.technologies],
+      ['valueStreams', doc.valueStreams],
+      ['businessServices', doc.businessServices],
     ];
     for (const [key, items] of owned) {
       items.forEach((x, i) => {
@@ -154,6 +189,11 @@ export const enterpriseDocumentSchema = z
         else if (owner.kind !== 'unit') issue([key, i, 'ownerId'], `El responsable de "${x.id}" debe ser una unidad, pero "${owner.id}" es ${KIND_LABELS[owner.kind].toLowerCase()}`);
       });
     }
+    doc.valueStages.forEach((x, i) => {
+      const stream = elements.get(x.streamId);
+      if (!stream) issue(['valueStages', i, 'streamId'], `La etapa "${x.id}" referencia un flujo de valor inexistente: "${x.streamId}"`);
+      else if (stream.kind !== 'stream') issue(['valueStages', i, 'streamId'], `El flujo de la etapa "${x.id}" debe ser un flujo de valor, pero "${stream.id}" es ${KIND_LABELS[stream.kind].toLowerCase()}`);
+    });
     for (const [key, items] of [['applications', doc.applications], ['technologies', doc.technologies]] as const) {
       items.forEach((x, i) => {
         if (x.ref !== undefined && !parseUrn(x.ref)) issue([key, i, 'ref'], `La referencia de "${x.id}" no es una URN válida (urn:iark:<módulo>:<id>): "${x.ref}"`);

@@ -58,6 +58,30 @@ const generatedTechnology = z.object({
   endOfLife: nullable(z.string()),
 });
 
+const generatedStream = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: nullable(z.string()),
+  ownerId: nullable(z.string()),
+  stakeholder: nullable(z.string()),
+});
+
+const generatedStage = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: nullable(z.string()),
+  streamId: z.string(),
+  value: nullable(z.string()),
+});
+
+const generatedService = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: nullable(z.string()),
+  ownerId: nullable(z.string()),
+  audience: nullable(z.string()),
+});
+
 const generatedRelation = z.object({
   id: z.string(),
   kind: z.enum(RELATION_KINDS),
@@ -73,6 +97,10 @@ export const generatedEnterpriseSchema = z.object({
   processes: z.array(generatedProcess),
   applications: z.array(generatedApplication),
   technologies: z.array(generatedTechnology),
+  // Flujos de valor y servicios de negocio: opcionales (un modelo que no los produce sigue siendo válido).
+  valueStreams: z.array(generatedStream).default([]),
+  valueStages: z.array(generatedStage).default([]),
+  businessServices: z.array(generatedService).default([]),
   relations: z.array(generatedRelation),
 });
 
@@ -117,6 +145,11 @@ Elementos (todos con id único en kebab-case ASCII, compartido entre tipos):
 - "technologies": plataformas y tecnología sobre la que corren las aplicaciones (Kubernetes, AWS, PostgreSQL 16).
   kind: "platform", "infrastructure", "database", "runtime", "middleware" o "service". version si se conoce.
   lifecycle igual que en aplicaciones; endOfLife ("AAAA-MM" o "AAAA-MM-DD") solo si la descripción da la fecha de fin de soporte.
+- "valueStreams": flujos de valor de principio a fin vistos por quien recibe el valor (Del pedido a la entrega); stakeholder =
+  quien lo recibe. Sus etapas son "valueStages" (streamId = id del flujo), en el ORDEN en que ocurren; value = lo que aporta
+  la etapa. Solo si la descripción habla de un flujo, una cadena de valor o etapas; si no, déjalos vacíos.
+- "businessServices": servicios de negocio que la empresa ofrece a sus clientes (Envío a domicilio); audience = a quién.
+  Expone procesos y capacidades con la relación "exposes". Solo si la descripción los menciona; si no, vacío.
 
 Relaciones ("relations"), con estas reglas de origen → destino (sourceId → targetId):
 - "supports": aplicación → capacidad, o aplicación → proceso. La aplicación soporta a la capacidad o al proceso.
@@ -127,6 +160,8 @@ Relaciones ("relations"), con estas reglas de origen → destino (sourceId → t
 - "flows-to": flujo de información o de trabajo de una aplicación a otra, o de un proceso a otro.
 - "assigned-to": unidad → proceso que ejecuta (sourceId es la unidad).
 - "triggers": proceso → proceso al que pone en marcha.
+- "enables": capacidad → etapa de un flujo de valor que habilita (sourceId es la capacidad).
+- "exposes": servicio de negocio → proceso o capacidad que expone a sus clientes (sourceId es el servicio).
 Toda capacidad hoja debería estar soportada por al menos una aplicación (directamente o por un proceso que la realiza), y
 toda aplicación debería soportar algo y tener responsable.
 
@@ -166,6 +201,9 @@ export function toGenerated(doc: EnterpriseDocument): GeneratedEnterprise {
       lifecycle: n(t.lifecycle),
       endOfLife: n(t.endOfLife),
     })),
+    valueStreams: doc.valueStreams.map((v) => ({ id: v.id, name: v.name, description: n(v.description), ownerId: n(v.ownerId), stakeholder: n(v.stakeholder) })),
+    valueStages: doc.valueStages.map((v) => ({ id: v.id, name: v.name, description: n(v.description), streamId: v.streamId, value: n(v.value) })),
+    businessServices: doc.businessServices.map((b) => ({ id: b.id, name: b.name, description: n(b.description), ownerId: n(b.ownerId), audience: n(b.audience) })),
     relations: doc.relations.map((r) => ({ id: r.id, kind: r.kind, sourceId: r.sourceId, targetId: r.targetId, description: n(r.description) })),
   };
 }

@@ -368,6 +368,126 @@
         "additionalProperties": false
       }
     },
+    "valueStreams": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ownerId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stakeholder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "ownerId",
+          "stakeholder"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "valueStages": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "streamId": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "streamId",
+          "value"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "businessServices": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ownerId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "audience": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "ownerId",
+          "audience"
+        ],
+        "additionalProperties": false
+      }
+    },
     "relations": {
       "type": "array",
       "items": {
@@ -386,7 +506,9 @@
               "composes",
               "flows-to",
               "assigned-to",
-              "triggers"
+              "triggers",
+              "enables",
+              "exposes"
             ]
           },
           "sourceId": {
@@ -420,6 +542,9 @@
     "processes",
     "applications",
     "technologies",
+    "valueStreams",
+    "valueStages",
+    "businessServices",
     "relations"
   ],
   "additionalProperties": false

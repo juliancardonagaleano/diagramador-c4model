@@ -1,5 +1,5 @@
 import type { ViewRef } from '@iark/kernel';
-import { capabilityChildren, dependencyGraph, ownership, reach, unitTree, type Reach } from './graph';
+import { capabilityChildren, dependencyGraph, ownership, reach, stageCapabilities, streamStages, unitTree, type Reach } from './graph';
 import { indexElements, lifecycleOf, type Application, type EnterpriseDocument, type Technology } from './types';
 
 /** Criterio con el que se colorea el mapa de capacidades. */
@@ -13,9 +13,9 @@ export const CAPABILITY_COLOR_LABELS: Record<CapabilityColorMode, string> = {
 };
 
 export interface EnterpriseView {
-  /** `capabilities`, `landscape`, `roadmap`, `unit:<id>` o, bajo demanda, `impact:<id>`, `depends:<id>`, `focus:<id>` y `capabilities:<criterio>`. */
+  /** `capabilities`, `value-stream`, `landscape`, `roadmap`, `unit:<id>` o, bajo demanda, `impact:<id>`, `depends:<id>`, `focus:<id>` y `capabilities:<criterio>`. */
   id: string;
-  type: 'capabilities' | 'landscape' | 'roadmap' | 'unit' | 'impact' | 'depends' | 'focus';
+  type: 'capabilities' | 'value-stream' | 'landscape' | 'roadmap' | 'unit' | 'impact' | 'depends' | 'focus';
   /** Solo en el mapa de capacidades: con qué se colorea (por defecto, la madurez). */
   colorBy?: CapabilityColorMode;
   title: string;
@@ -36,7 +36,7 @@ interface Spec {
 }
 
 function drawnOrder(doc: EnterpriseDocument): string[] {
-  return [...doc.capabilities, ...doc.processes, ...doc.applications, ...doc.technologies, ...doc.units].map((x) => x.id);
+  return [...doc.capabilities, ...doc.valueStages, ...doc.processes, ...doc.businessServices, ...doc.applications, ...doc.technologies, ...doc.units].map((x) => x.id);
 }
 
 function build(doc: EnterpriseDocument, spec: Spec): EnterpriseView {
@@ -62,16 +62,37 @@ function build(doc: EnterpriseDocument, spec: Spec): EnterpriseView {
  * Elementos que entran en las vistas de relaciones: todos menos las capacidades con hijas que no se relacionan con nada
  * (son solo agrupación) y las unidades que no se relacionan con nada. Una unidad se dibuja si participa en una relación
  * (asignación a un proceso) o si está suelta del todo (no tiene jerarquía ni responsabilidades), para poder conectarla.
+ * Las etapas de un flujo de valor sin ninguna capacidad que las habilite se ven solo en la vista del flujo.
  */
 function drawable(doc: EnterpriseDocument): Set<string> {
   const children = capabilityChildren(doc);
   const related = new Set(doc.relations.flatMap((r) => [r.sourceId, r.targetId]));
   const units = new Set(doc.units.map((u) => u.id));
-  const owners = new Set([...doc.capabilities, ...doc.processes, ...doc.applications, ...doc.technologies].flatMap((x) => (x.ownerId ? [x.ownerId] : [])));
+  const owners = new Set([...doc.capabilities, ...doc.processes, ...doc.applications, ...doc.technologies, ...doc.valueStreams, ...doc.businessServices].flatMap((x) => (x.ownerId ? [x.ownerId] : [])));
   const hierarchy = new Set(doc.units.flatMap((u) => (u.parentId ? [u.id, u.parentId] : [])));
+  const stages = new Set(doc.valueStages.map((x) => x.id));
   return new Set(
-    drawnOrder(doc).filter((id) => (units.has(id) ? related.has(id) || (!owners.has(id) && !hierarchy.has(id)) : !(children.has(id) && !related.has(id)))),
+    drawnOrder(doc).filter((id) => (stages.has(id) ? related.has(id) : units.has(id) ? related.has(id) || (!owners.has(id) && !hierarchy.has(id)) : !(children.has(id) && !related.has(id)))),
   );
+}
+
+/**
+ * Flujos de valor: cada flujo con sus etapas en cadena y, debajo, las capacidades que las habilitan. Contiene los flujos,
+ * las etapas (en el orden de su flujo) y las capacidades que habilitan alguna; las relaciones son las de habilitación.
+ */
+function valueStreamView(doc: EnterpriseDocument): EnterpriseView {
+  const stages = streamStages(doc);
+  const enabling = stageCapabilities(doc);
+  const stageIds = doc.valueStreams.flatMap((s) => stages.get(s.id)!.map((x) => x.id));
+  const capabilityIds = new Set([...enabling.values()].flatMap((list) => list.map((c) => c.id)));
+  return {
+    id: 'value-stream',
+    type: 'value-stream',
+    title: `Flujos de valor - ${doc.workspace.name}`,
+    elementIds: [...doc.valueStreams.map((s) => s.id), ...stageIds, ...doc.capabilities.filter((c) => capabilityIds.has(c.id)).map((c) => c.id)],
+    contextIds: [],
+    relationIds: doc.relations.filter((r) => r.kind === 'enables').map((r) => r.id),
+  };
 }
 
 /** Un periodo de la hoja de ruta del ciclo de vida: sus elementos se dibujan en una columna. */
@@ -131,6 +152,7 @@ export function listViews(doc: EnterpriseDocument): EnterpriseView[] {
       relationIds: [],
     });
   }
+  if (doc.valueStreams.length > 0) views.push(valueStreamView(doc));
   const shown = drawable(doc);
   if (doc.relations.length > 0) {
     views.push(build(doc, { id: 'landscape', type: 'landscape', title: `Paisaje empresarial - ${doc.workspace.name}`, focus: shown }));
@@ -164,7 +186,7 @@ const TRACE: Record<string, { reach: Reach; type: EnterpriseView['type']; title:
 /** Vista de un elemento: lo que se apoya en él (impacto), aquello en lo que se apoya (dependencias) o ambos. */
 export function traceView(doc: EnterpriseDocument, elementId: string, mode: 'impact' | 'depends' | 'focus' = 'focus'): EnterpriseView {
   const element = indexElements(doc).get(elementId);
-  if (!element || element.kind === 'unit') throw new Error(`No existe el elemento «${elementId}» (capacidad, proceso, aplicación o tecnología).`);
+  if (!element || element.kind === 'unit' || element.kind === 'stream') throw new Error(`No existe el elemento «${elementId}» (capacidad, etapa, proceso, servicio, aplicación o tecnología).`);
   const { reach: direction, type, title } = TRACE[mode];
   const focus = new Set([elementId, ...reach(dependencyGraph(doc), elementId, direction).map((s) => s.id)]);
   return build(doc, { id: `${mode}:${elementId}`, type, title: `${title} «${element.name}»`, focus });
@@ -190,7 +212,7 @@ export function findView(doc: EnterpriseDocument, viewId?: string): EnterpriseVi
   if (prefix in TRACE && indexElements(doc).has(id)) return traceView(doc, id, prefix as 'impact' | 'depends' | 'focus');
   const elements = indexElements(doc);
   const bare = elements.get(viewId);
-  if (bare && bare.kind !== 'unit') return traceView(doc, viewId);
+  if (bare && bare.kind !== 'unit' && bare.kind !== 'stream') return traceView(doc, viewId);
   const unit = views.find((v) => v.id === `unit:${viewId}`);
   if (unit) return unit;
   throw new Error(`No existe la vista «${viewId}». Vistas disponibles: ${[...views.map((v) => v.id), ...(views.some((v) => v.id === 'capabilities') ? CAPABILITY_COLOR_MODES.filter((m) => m !== 'maturity').map((m) => `capabilities:${m}`) : []), 'impact:<elemento>', 'depends:<elemento>', 'focus:<elemento>'].join(', ')}.`);

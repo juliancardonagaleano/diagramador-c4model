@@ -1,5 +1,5 @@
-import { uniqueId, type EdgeNotation, type EditorAction, type EditorGraph, type EditorNode, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
-import { capabilityChildren } from './graph';
+import { uniqueId, type EdgeNotation, type EditResult, type EditorAction, type EditorGraph, type EditorNode, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
+import { capabilityChildren, stageCapabilities, streamStages } from './graph';
 import {
   CONTEXT_COLOR,
   EDGE_STYLES,
@@ -14,6 +14,7 @@ import {
   formatCost,
   layoutCapabilityMap,
   layoutRoadmap,
+  layoutValueStreams,
   supportingApplications,
 } from './export/render';
 import {
@@ -37,6 +38,7 @@ import {
   indexElements,
   lifecycleOf,
   type Application,
+  type BusinessService,
   type Capability,
   type Element,
   type ElementKind,
@@ -47,6 +49,8 @@ import {
   type RelationKind,
   type Technology,
   type Unit,
+  type ValueStage,
+  type ValueStream,
 } from './types';
 import { findView, roadmapColumns } from './views';
 
@@ -55,7 +59,10 @@ import { findView, roadmapColumns } from './views';
  * (capacidades como recuadros redondeados, procesos como flechas anchas), aplicaciones en azul (cajas) y tecnología en
  * verde (barras), cada una con el icono de su tipo en la esquina. El mapa de capacidades las anida en cuadrícula, las
  * colorea según el criterio elegido y trae su leyenda. Las unidades son la organización: responsables de los elementos
- * (se eligen en sus propiedades) y, si se quiere, ejecutoras de un proceso (relación «asignación»).
+ * (se eligen en sus propiedades) y, si se quiere, ejecutoras de un proceso (relación «asignación»); el paisaje las dibuja
+ * todas para poder arrastrar una asignación hacia cualquiera. Los flujos de valor son recuadros con sus etapas como
+ * chevrones en cadena y, debajo, las capacidades que las habilitan; un servicio de negocio (píldora) expone procesos y
+ * capacidades a los clientes.
  */
 const node = (kind: ElementKind, glyph: string, width: number, height: number): NodeNotation => ({
   kind,
@@ -78,6 +85,9 @@ const NODE_KIND_NOTATION: NodeNotation[] = [
   node('application', '▣', 210, 82),
   node('technology', '▤', 210, 78),
   node('unit', '☻', 190, 64),
+  node('stream', '⟫', 210, 70),
+  node('stage', '❯', 200, 76),
+  node('service', '◖', 210, 70),
   PERIOD_NOTATION,
 ];
 
@@ -153,6 +163,17 @@ function nodeFields(kind: string, doc: EnterpriseDocument): FieldSpec[] {
         REF_FIELD,
         TAGS_FIELD,
       ];
+    case 'stream':
+      return [...common, owner, { key: 'stakeholder', label: 'Quien recibe el valor', type: 'text', hint: 'p. ej. Cliente de la tienda' }, TAGS_FIELD];
+    case 'stage':
+      return [
+        ...common,
+        { key: 'streamId', label: 'Flujo de valor', type: 'select', options: doc.valueStreams.map((v) => ({ value: v.id, label: v.name })) },
+        { key: 'value', label: 'Valor que aporta', type: 'text', hint: 'p. ej. pedido confirmado' },
+        TAGS_FIELD,
+      ];
+    case 'service':
+      return [...common, owner, { key: 'audience', label: 'Clientes a quienes se ofrece', type: 'text', hint: 'p. ej. Clientes particulares' }, TAGS_FIELD];
     case 'period':
       return [];
     default:
@@ -171,6 +192,9 @@ const PATCHABLE: Record<ElementKind, string[]> = {
   process: ['name', 'description', 'ownerId', 'tags'],
   application: ['name', 'description', 'technology', 'vendor', 'ownerId', 'lifecycle', 'criticality', 'strategy', 'annualCost', 'users', 'endOfLife', 'external', 'ref', 'tags'],
   technology: ['name', 'description', 'kind', 'version', 'ownerId', 'lifecycle', 'endOfLife', 'ref', 'tags'],
+  stream: ['name', 'description', 'ownerId', 'stakeholder', 'tags'],
+  stage: ['name', 'description', 'streamId', 'value', 'tags'],
+  service: ['name', 'description', 'ownerId', 'audience', 'tags'],
 };
 
 const NUMERIC = new Set(['maturity', 'annualCost', 'users']);
@@ -217,7 +241,7 @@ function orient(kind: RelationKind, source: ElementKind, target: ElementKind): {
 }
 
 const collection = (kind: ElementKind): keyof EnterpriseDocument =>
-  ({ unit: 'units', capability: 'capabilities', process: 'processes', application: 'applications', technology: 'technologies' } as const)[kind];
+  ({ unit: 'units', capability: 'capabilities', process: 'processes', application: 'applications', technology: 'technologies', stream: 'valueStreams', stage: 'valueStages', service: 'businessServices' } as const)[kind];
 
 /** Ids de una capacidad y de todas sus descendientes. */
 function capabilitySubtree(doc: EnterpriseDocument, id: string): Set<string> {
@@ -246,6 +270,37 @@ function unitSubtree(doc: EnterpriseDocument, id: string): Set<string> {
   return ids;
 }
 
+/**
+ * Crea una etapa: en el flujo seleccionado (al final) o, si hay una etapa seleccionada, justo detrás de ella; sin
+ * selección, en el primer flujo del documento, que se crea («Flujo de valor») si aún no hay ninguno.
+ */
+function addStage(doc: EnterpriseDocument, id: string, name: string, parentId: string | undefined): EditResult<EnterpriseDocument> {
+  const selected = parentId ? indexElements(doc).get(parentId) : undefined;
+  const after = selected?.kind === 'stage' ? (selected.item as ValueStage) : undefined;
+  let streams = doc.valueStreams;
+  let streamId = after?.streamId ?? (selected?.kind === 'stream' ? selected.id : streams[0]?.id);
+  if (streamId === undefined) {
+    streamId = uniqueId('Flujo de valor', indexElements(doc).keys());
+    streams = [...streams, { id: streamId, name: 'Flujo de valor' }];
+  }
+  const created: ValueStage = { id, name, streamId };
+  const stages = [...doc.valueStages];
+  const at = after ? stages.findIndex((x) => x.id === after.id) + 1 : stages.reduce((last, x, i) => (x.streamId === streamId ? i + 1 : last), stages.length);
+  stages.splice(at, 0, created);
+  return { ok: true, id, document: { ...doc, valueStreams: streams, valueStages: stages } };
+}
+
+/** Intercambia una etapa con la contigua de su flujo (`-1` hacia el inicio, `1` hacia el final). */
+function moveStage(doc: EnterpriseDocument, id: string, direction: -1 | 1): EditResult<EnterpriseDocument> {
+  const stage = doc.valueStages.find((x) => x.id === id);
+  if (!stage) return { ok: false, reason: 'Selecciona una etapa.' };
+  const siblings = doc.valueStages.filter((x) => x.streamId === stage.streamId);
+  const neighbour = siblings[siblings.findIndex((x) => x.id === id) + direction];
+  if (!neighbour) return { ok: false, reason: direction < 0 ? 'La etapa ya es la primera de su flujo.' : 'La etapa ya es la última de su flujo.' };
+  const swap = new Map([[stage.id, neighbour], [neighbour.id, stage]]);
+  return { ok: true, id, document: { ...doc, valueStages: doc.valueStages.map((x) => swap.get(x.id) ?? x) } };
+}
+
 const relationLabel = (r: Relation): string | undefined => r.description;
 
 /** Segunda línea de un elemento en las vistas de relaciones: lo que lo caracteriza (tecnología, responsable, clase). */
@@ -268,6 +323,14 @@ function sublabelOf(e: Element, doc: EnterpriseDocument): string | undefined {
     case 'unit': {
       const u = e.item as Unit;
       return u.external ? 'externa' : doc.units.find((p) => p.id === u.parentId)?.name;
+    }
+    case 'stream':
+      return (e.item as ValueStream).stakeholder;
+    case 'stage':
+      return (e.item as ValueStage).value;
+    case 'service': {
+      const b = e.item as BusinessService;
+      return b.audience ?? doc.units.find((u) => u.id === b.ownerId)?.name;
     }
     default:
       return undefined;
@@ -326,7 +389,33 @@ function elementNode(e: Element, doc: EnterpriseDocument, context: boolean, pare
     badges: badges.length > 0 ? badges : undefined,
     fill: context ? CONTEXT_COLOR : undefined,
     stroke: LIFECYCLE_STROKE[life],
-    dashed: context || life === 'retired' || app?.external === true,
+    dashed: context || life === 'retired' || app?.external === true || (e.kind === 'stage' && (stageCapabilities(doc).get(e.id) ?? []).length === 0),
+  };
+}
+
+/**
+ * Flujos de valor: cada flujo es un grupo con sus etapas (chevrones) y, fuera de él, las capacidades que las habilitan.
+ * Un flujo sin etapas se dibuja como un nodo suelto.
+ */
+function valueStreamGraph(doc: EnterpriseDocument): EditorGraph {
+  const all = indexElements(doc);
+  const view = findView(doc, 'value-stream');
+  const stages = streamStages(doc);
+  const stageStream = new Map(doc.valueStages.map((x) => [x.id, x.streamId]));
+  const shown = new Set(view.relationIds);
+  return {
+    nodes: view.elementIds.flatMap((id): EditorNode[] => {
+      const e = all.get(id);
+      if (!e) return [];
+      const node = elementNode(e, doc, false, stageStream.get(id));
+      return [e.kind === 'stream' && (stages.get(id) ?? []).length > 0 ? { ...node, sublabel: undefined, stroke: '#a07800' } : node];
+    }),
+    edges: doc.relations
+      .filter((r) => shown.has(r.id))
+      .map((r) => {
+        const { from, to } = drawnEnds(r);
+        return { id: r.id, kind: r.kind, source: from, target: to, label: relationLabel(r) };
+      }),
   };
 }
 
@@ -352,16 +441,30 @@ const ownable = (doc: EnterpriseDocument, ids: string[]): Element[] => {
   const all = indexElements(doc);
   return ids.flatMap((id) => {
     const e = all.get(id);
-    return e && e.kind !== 'unit' ? [e] : [];
+    return e && e.kind !== 'unit' && e.kind !== 'stage' ? [e] : [];
   });
 };
 
 const setOwner = (doc: EnterpriseDocument, ids: Set<string>, ownerId: string): EnterpriseDocument => {
   const apply = <T extends { id: string }>(items: T[]): T[] => items.map((x) => (ids.has(x.id) ? { ...x, ownerId } : x));
-  return { ...doc, capabilities: apply(doc.capabilities), processes: apply(doc.processes), applications: apply(doc.applications), technologies: apply(doc.technologies) };
+  return { ...doc, capabilities: apply(doc.capabilities), processes: apply(doc.processes), applications: apply(doc.applications), technologies: apply(doc.technologies), valueStreams: apply(doc.valueStreams), businessServices: apply(doc.businessServices) };
 };
 
+const stageMover = (direction: -1 | 1): Pick<EditorAction<EnterpriseDocument>, 'needs' | 'disabled' | 'run'> => ({
+  needs: 'one',
+  disabled: (doc, ids) => {
+    const stage = doc.valueStages.find((x) => x.id === ids[0]);
+    if (!stage) return 'Selecciona una etapa.';
+    const siblings = doc.valueStages.filter((x) => x.streamId === stage.streamId);
+    const i = siblings.findIndex((x) => x.id === stage.id);
+    return (direction < 0 ? i === 0 : i === siblings.length - 1) ? (direction < 0 ? 'La etapa ya es la primera de su flujo.' : 'La etapa ya es la última de su flujo.') : undefined;
+  },
+  run: (doc, ids) => moveStage(doc, ids[0], direction),
+});
+
 const ACTIONS: Array<EditorAction<EnterpriseDocument>> = [
+  { id: 'stage-earlier', label: 'Etapa ◂', hint: 'Adelanta la etapa seleccionada una posición en su flujo de valor', ...stageMover(-1) },
+  { id: 'stage-later', label: 'Etapa ▸', hint: 'Atrasa la etapa seleccionada una posición en su flujo de valor', ...stageMover(1) },
   {
     id: 'group-by-unit',
     label: 'Agrupar por unidad…',
@@ -450,12 +553,18 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
     const view = findView(doc, viewId);
     if (view.type === 'capabilities') return capabilityMap(doc, view.id);
     if (view.type === 'roadmap') return roadmap(doc);
+    if (view.type === 'value-stream') return valueStreamGraph(doc);
     const all = indexElements(doc);
     const context = new Set(view.contextIds);
     const nodes = view.elementIds.flatMap((id): EditorNode[] => {
       const e = all.get(id);
       return e ? [elementNode(e, doc, context.has(e.id))] : [];
     });
+    // El paisaje del lienzo dibuja todas las unidades (el SVG, solo las que participan): así se puede arrastrar una asignación hacia cualquiera.
+    if (view.type === 'landscape') {
+      const present = new Set(nodes.map((n) => n.id));
+      for (const u of doc.units) if (!present.has(u.id)) nodes.push(elementNode(all.get(u.id)!, doc, false));
+    }
     const shown = new Set(view.relationIds);
     return {
       nodes,
@@ -471,6 +580,7 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
   layout(doc, viewId) {
     const view = findView(doc, viewId);
     if (view.type === 'capabilities') return layoutCapabilityMap(doc);
+    if (view.type === 'value-stream') return layoutValueStreams(doc).layout;
     return view.type === 'roadmap' ? layoutRoadmap(doc).layout : undefined;
   },
 
@@ -491,10 +601,11 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
   },
 
   addNode(doc, kind, name, parentId) {
-    const drawn: readonly string[] = ['capability', 'process', 'application', 'technology', 'unit'];
+    const drawn: readonly string[] = ['capability', 'process', 'application', 'technology', 'unit', 'stream', 'stage', 'service'];
     if (!drawn.includes(kind)) return { ok: false, reason: `Tipo de elemento desconocido: ${kind}` };
-    const k = kind as Exclude<ElementKind, never>;
+    const k = kind as ElementKind;
     const id = uniqueId(name, indexElements(doc).keys());
+    if (k === 'stage') return addStage(doc, id, name, parentId);
     const key = collection(k);
     const parentList = k === 'unit' ? doc.units : k === 'capability' ? doc.capabilities : [];
     const parent = parentId ? parentList.find((c) => c.id === parentId) : undefined;
@@ -525,6 +636,7 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
         if (all.get(patch.parentId)?.kind !== 'capability') return { ok: false, reason: 'La capacidad padre debe ser otra capacidad.' };
         if (capabilitySubtree(doc, id).has(patch.parentId)) return { ok: false, reason: 'Una capacidad no puede colgar de sí misma ni de una de sus hijas.' };
       }
+      if (e.kind === 'stage' && 'streamId' in patch && all.get(String(patch.streamId))?.kind !== 'stream') return { ok: false, reason: 'El flujo de valor de una etapa debe ser un flujo de valor.' };
       if (e.kind === 'unit' && typeof patch.parentId === 'string' && patch.parentId !== '') {
         if (all.get(patch.parentId)?.kind !== 'unit') return { ok: false, reason: 'La unidad padre debe ser otra unidad.' };
         if (unitSubtree(doc, id).has(patch.parentId)) return { ok: false, reason: 'Una unidad no puede colgar de sí misma ni de una de sus subunidades.' };
@@ -548,7 +660,7 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
   remove(doc, id) {
     const e = indexElements(doc).get(id);
     if (e) {
-      const gone = e.kind === 'capability' ? capabilitySubtree(doc, id) : new Set([id]);
+      const gone = e.kind === 'capability' ? capabilitySubtree(doc, id) : e.kind === 'stream' ? new Set([id, ...doc.valueStages.filter((x) => x.streamId === id).map((x) => x.id)]) : new Set([id]);
       const strip = <T extends { id: string; ownerId?: string }>(items: T[]): T[] => items.filter((x) => !gone.has(x.id)).map((x) => (x.ownerId && gone.has(x.ownerId) ? withoutOwner(x) : x));
       const withoutOwner = <T extends { ownerId?: string }>(x: T): T => {
         const { ownerId: _gone, ...rest } = x;
@@ -563,6 +675,9 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
           processes: strip(doc.processes),
           applications: strip(doc.applications),
           technologies: strip(doc.technologies),
+          valueStreams: strip(doc.valueStreams),
+          valueStages: doc.valueStages.filter((x) => !gone.has(x.id)),
+          businessServices: strip(doc.businessServices),
           relations: doc.relations.filter((r) => !gone.has(r.sourceId) && !gone.has(r.targetId)),
         },
       };

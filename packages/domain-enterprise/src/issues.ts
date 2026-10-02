@@ -1,5 +1,5 @@
 import type { ModuleIssue } from '@iark/kernel';
-import { applicationsByCapability, capabilityChildren, dependencyGraph, ownership } from './graph';
+import { applicationsByCapability, capabilityChildren, dependencyGraph, ownership, stageCapabilities, streamStages } from './graph';
 import {
   CRITICALITY_LABELS,
   CRITICALITY_RANK,
@@ -12,8 +12,11 @@ import {
   type Element,
   type EnterpriseDocument,
   type Lifecycle,
+  type BusinessService,
   type Process,
   type Technology,
+  type ValueStage,
+  type ValueStream,
 } from './types';
 
 /** Número de aplicaciones a partir del cual una capacidad se marca como posible duplicidad. */
@@ -40,7 +43,8 @@ function endOfLifeDate(text: string): Date {
 /**
  * Reglas de gobierno del modelo empresarial (avisos que no invalidan el documento pero conviene corregir): capacidades
  * sin aplicación, aplicaciones sin responsable de negocio o sin uso, dependencias de tecnología en retirada o fuera de
- * soporte, aplicaciones en retirada que nadie sustituye, duplicidades y procesos sin capacidad.
+ * soporte, aplicaciones en retirada que nadie sustituye, duplicidades, procesos sin capacidad, etapas de un flujo de valor
+ * que ninguna capacidad habilita y servicios de negocio que no exponen nada.
  */
 export function analyzeEnterprise(doc: EnterpriseDocument, options: AnalyzeOptions = {}): ModuleIssue[] {
   const issues: ModuleIssue[] = [];
@@ -118,6 +122,21 @@ export function analyzeEnterprise(doc: EnterpriseDocument, options: AnalyzeOptio
     }
   };
 
+  const enabling = stageCapabilities(doc);
+  const stages = streamStages(doc);
+  const streamIssues = (v: ValueStream): void => {
+    if ((stages.get(v.id) ?? []).length === 0) add('info', v.id, `${label(at(v.id))} no tiene etapas.`);
+  };
+  const stageIssues = (s: ValueStage): void => {
+    if ((enabling.get(s.id) ?? []).length === 0) add('warning', s.id, `${label(at(s.id))} no está habilitada por ninguna capacidad.`);
+  };
+  const serviceIssues = (b: BusinessService): void => {
+    if (!doc.relations.some((r) => r.kind === 'exposes' && r.sourceId === b.id)) add('info', b.id, `${label(at(b.id))} no expone ningún proceso ni capacidad.`);
+  };
+
+  doc.valueStreams.forEach(streamIssues);
+  doc.valueStages.forEach(stageIssues);
+  doc.businessServices.forEach(serviceIssues);
   doc.capabilities.forEach(capabilityIssues);
   doc.processes.forEach(processIssues);
   doc.applications.forEach(applicationIssues);
