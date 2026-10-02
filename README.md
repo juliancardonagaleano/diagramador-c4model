@@ -336,6 +336,8 @@ iark convert   datos.json --module data --out linaje.svg                 # tambi
 iark convert   datos.json --module data --to mermaid --view erd          # erDiagram con columnas y claves
 iark convert   datos.json --module data --out impacto.svg --view downstream:silver-ventas
 iark import    linaje.mmd  --module data --out datos.json                # flowchart (linaje) o erDiagram → documento
+iark import    esquema.sql --module data --out datos.json                # DDL de SQL (CREATE TABLE/VIEW, claves foráneas) → tablas, relaciones y vistas con linaje
+iark import    manifest.json --module data --format dbt --out datos.json  # manifest.json de dbt → fuentes, modelos, pipelines y pruebas
 iark generate  "Lago con CRM y ERP, almacén y un panel de ventas" --module data --json datos.json
 iark data lineage silver-ventas datos.json                               # origen e impacto de un activo, con los responsables a avisar
 iark data column-impact erp-pedidos.total datos.json                    # de qué columnas sale y qué columnas, informes y modelos dependen de ella
@@ -350,6 +352,8 @@ iark data engines [motor]                                                # motor
 ```
 
 Al importar un `flowchart`, `[( )]` es una base de datos, `([ ])` un stream y el resto tablas; cada arista (`A & B --> C`) es un pipeline (continua = por lotes, punteada = streaming, gruesa = CDC, o el tipo entre corchetes al final de la etiqueta) y un `subgraph` es un contenedor cuyo tipo se toma del prefijo que pone el exportador («Data lake: …»). Del `erDiagram` se conservan tipos, claves, multiplicidad y opcionalidad (`|o`, `o{`, `|{`…).
+
+**Importar DDL de SQL y dbt** (`--format ddl|dbt|auto`; también en la pestaña «Importar» y con «Abrir archivo…» del banco de trabajo). El DDL (`.sql`, `.ddl`) lo lee un analizador propio y tolerante para PostgreSQL, MySQL/MariaDB, SQL Server, Oracle y Snowflake: cada `CREATE TABLE` (y `CREATE TABLE … AS`) es una tabla con sus columnas (tipo con parámetros, `pk`, `uk`, `fk`, nulos y descripción desde `COMMENT`), el esquema (`ventas.pedido`) pasa a ser un contenedor `database`, las claves foráneas (`FOREIGN KEY`, `REFERENCES`, `ALTER … ADD CONSTRAINT`) son relaciones con su cardinalidad (`1:1` si la clave es única, `1:N` si no; la opcionalidad va en la descripción) y cada `CREATE [MATERIALIZED] VIEW` es una vista con un pipeline `elt` desde sus `FROM` y `JOIN`, y con linaje por columna cuando es un `SELECT` simple. El `manifest.json` de dbt (`.json`, se reconoce por `metadata.dbt_schema_version`) aporta fuentes (`sources`), modelos, semillas y snapshots (tabla o vista según su materialización, colgados de un almacén por base y esquema), un pipeline `elt` por cada dependencia (`depends_on.nodes`), las pruebas `unique`, `not_null` y `relationships` como claves y relaciones, y las exposiciones como informes. **No se deduce nada de gobierno**: la clasificación, los datos personales, el propietario y la retención solo se rellenan si el `meta` de dbt los declara; un nombre de columna como `email` o `dni` solo genera un aviso informativo. Todo lo que no encaja (valores por defecto, `CHECK`, índices, funciones, permisos, `analysis`, macros, métricas, pruebas sin claves…) se resume en los avisos y no se descarta en silencio; una entrada rota termina con el código 2 y el motivo de una línea. Importar dos veces el mismo archivo da el mismo documento.
 
 **Catálogo de datos: productos, APIs y glosario** (opcional y retrocompatible: un documento 1.0 sin estos elementos no cambia ni cambian sus vistas; ejemplo en [`examples/datos-catalogo.json`](examples/datos-catalogo.json)). Tres clases nuevas de activo y un elemento nuevo, el término, para gobernar los datos como producto y no solo como tablas:
 
@@ -402,6 +406,7 @@ iark convert   empresa.json --module enterprise --out mapa.svg                  
 iark convert   empresa.json --module enterprise --out paisaje.svg --view landscape
 iark convert   empresa.json --module enterprise --out impacto.svg --view impact:hana
 iark import    paisaje.mmd  --module enterprise --out empresa.json                   # flowchart → documento
+iark import    modelo.xml   --module enterprise --format archimate --out empresa.json   # modelo ArchiMate (Exchange Format o Archi) → documento
 iark generate  "Comercio con tienda online, ERP, CRM y almacenes" --module enterprise --json empresa.json
 iark enterprise coverage  empresa.json                                               # capacidades con sus aplicaciones y las que no tienen ninguna
 iark enterprise impact    hana empresa.json [--direction dependencies|both]         # qué se ve afectado si cambia o se retira, con los responsables a avisar
@@ -411,6 +416,9 @@ iark enterprise from-integration mapa.json                                      
 ```
 
 Al importar un `flowchart`, el tipo de cada nodo sale de su clase (`:::application`, `class A capability`; también en español), del título de la capa que lo contiene («Capacidades», «Aplicaciones»…), de su forma (`([ ])` = proceso, `[( )]` = tecnología) y, por último, de que esté dentro de un `subgraph` (capacidad) o no (aplicación). Un `subgraph` que no es una capa es una capacidad que contiene a las suyas. Cada flecha se convierte en la relación que admiten sus extremos, en cualquier sentido. La segunda línea del texto de una aplicación es su tecnología y la de una tecnología, su versión. La interfaz web todavía no edita este módulo.
+
+**Importar ArchiMate** (`--format archimate`; también en la pestaña «Importar» y con «Abrir archivo…»). Acepta el *Exchange File Format* del Open Group (`.xml`, espacio de nombres `http://www.opengroup.org/xsd/archimate/3.0/`) y el formato nativo de Archi (`.archimate`, con carpetas). Los actores, roles y colaboraciones de negocio pasan a unidades; las capacidades, a capacidades; los procesos, funciones e interacciones de negocio, a procesos; los servicios de negocio, a servicios de negocio; los componentes, colaboraciones y servicios de aplicación y los objetos de datos, a aplicaciones; los nodos, dispositivos, software de sistema, servicios de tecnología y artefactos, a tecnología; y los flujos de valor (compuestos, encadenados por flujo o disparo, o aislados), a flujos de valor con sus etapas. Las uniones y los eventos desaparecen y sus relaciones pasan a ser directas. Las relaciones se convierten siempre a una que admite `RELATION_RULES` y nunca se inventa una inválida: composición y agregación a jerarquía o `composes`, asignación a `assigned-to` o responsable, realización, servicio, flujo, disparo, acceso y asociación a la relación que admiten los tipos de sus extremos (cuando no hay una propia, a `depends-on` o `flows-to` con aviso). Las propiedades (en español o en inglés) se leen como coste anual, usuarios, estrategia (también TIME), fin de soporte, ciclo de vida, criticidad, proveedor, tecnología, `ref`, responsable, madurez (1-5, «Level 3», «3 de 5», «Optimizado») e importancia. Lo que no se mapea (motivación, estrategia, implementación y migración, interfaces, capa física, ubicaciones, agrupaciones y las vistas, porque el módulo deriva las suyas) se resume por categoría en los avisos. Los ids salen del nombre, así que importar dos veces el mismo archivo da el mismo documento, y las entidades externas (`<!ENTITY`) se rechazan.
+
 
 ## Módulo de plataforma
 
@@ -439,6 +447,8 @@ iark convert   plataforma.json --module platform --out produccion.svg --view env
 iark convert   plataforma.json --module platform --out entrega.svg --view delivery
 iark convert   plataforma.json --module platform --out impacto.svg --view impact:kafka-prod
 iark import    produccion.mmd --module platform --out plataforma.json                  # flowchart → documento
+iark import    main.tf        --module platform --out plataforma.json                  # Terraform (.tf, .tf.json, estado o plan) → documento
+iark import    despliegue.yaml --module platform --format kubernetes --out plataforma.json   # manifiestos de Kubernetes → documento
 iark generate  "Tienda con Kubernetes, PostgreSQL y Kafka en desarrollo y producción" --module platform --json plataforma.json
 iark platform deployments plataforma.json                                              # dónde corre cada servicio en cada entorno y qué versiones difieren
 iark platform compare     dev prod plataforma.json                                     # compara dos entornos: lo que solo está en uno y las versiones o réplicas que difieren; dice cómo emparejó cada recurso si no fue por nombre
@@ -447,6 +457,9 @@ iark platform from-integration mapa.json                                        
 ```
 
 Al importar un `flowchart`, los `subgraph` con el prefijo que pone el exportador se reconocen como `Entorno: …`, `Red pública|privada|aislada: … (cidr)` y `Clúster: …` / `Máquina virtual: …`; un servicio dentro de un clúster queda desplegado en él (con `3 réplicas · v1.4.2` al final del texto) y los servicios con el mismo nombre en varios entornos son uno solo con varios despliegues. El tipo de cada nodo sale de su clase (`:::database`, `:::worker`, `:::external`; también en español) y, si no, de su forma (`[( )]` = base de datos, `([ ])` = cola); `class X planned|decommissioned` da el estado del recurso. Las flechas son dependencias: continua = llama, punteada = mensajes, gruesa = datos, con la etiqueta `protocolo · descripción`. Los pasos de la vista de entrega continua no se importan. La interfaz web todavía no edita este módulo.
+
+**Importar Terraform y Kubernetes** (`--format terraform|kubernetes|auto`; también en la pestaña «Importar» y con «Abrir archivo…», que reconoce por su contenido un `.tf.json` o un plan JSON). Terraform acepta `.tf` (HCL con un analizador propio y tolerante), `.tf.json`, el estado `.tfstate` v4 y `terraform show -json` (en un plan, los recursos salen como previstos o retirados), de las familias `aws`, `azurerm` y `google`. El entorno sale de `var.environment`, los locals, las etiquetas, el workspace o el nombre del archivo (con aviso cuando se deduce de este último); las VPC, VNet y subredes son redes anidadas con su CIDR, públicas si algo lo dice (IP pública al lanzar, ruta a un internet gateway, etiqueta de balanceador público, nombre «public» o «dmz») y privadas con aviso si nada lo dice; los clústeres, máquinas y demás recursos van a su clase (`iac: true`); las referencias, `depends_on`, grupos de seguridad (con puerto), listeners y DNS son dependencias. Kubernetes acepta YAML multidocumento, `kind: List` de `kubectl` y JSON: un namespace con nombre de entorno es un entorno (si no, hay uno solo, con aviso y con un clúster implícito); Deployment, StatefulSet, DaemonSet, CronJob y Job son servicios con su despliegue (réplicas, versión de la imagen, límites sumados; el HPA fija las réplicas mínimas), las cargas con imagen conocida (postgres, redis, rabbitmq, kafka, minio…) son recursos, Ingress, Gateway API y Service `LoadBalancer` son recursos en una red pública, y del Secret solo se guardan el tipo y los nombres de clave, **nunca los valores**; las variables de entorno (también desde ConfigMap), los `args`, los selectores y los volúmenes son dependencias. Los valores del estado o del plan de Terraform (contraseñas, claves) tampoco se leen. Lo que no se mapea (tipos desconocidos, recursos de soporte como IAM y rutas, `data`, módulos sin resolver, `count`/`for_each` sin evaluar, líneas de HCL que no se entienden con su número, kinds sin mapear, hosts externos…) va agrupado a los avisos. Un archivo roto termina con el código 2 y su línea. Limitaciones: el Terraform se lee como un solo texto (varios `.tf` hay que concatenarlos y los módulos locales no se resuelven) y un archivo subido en el navegador solo trae el nombre base, así que un `main.tf` da un sistema llamado `main`.
+
 
 ### Iconografía de nubes (AWS, Azure y paquetes propios)
 
@@ -539,7 +552,7 @@ iark trace … --format mermaid   # un subgrafo por módulo; --format svg para e
 iark generate "<instrucción>" [--from base.json] [--out d.drawio] [--json d.json] [--model claude-opus-5] [--effort high] [--direction DOWN]
 iark layout   [archivo.json | --stdin] [--out out.json] [--direction auto|down|right|left|up] [--distribution auto|centered|elk] [--density auto|compact|spacious] [--fast] [--force] [--view id]
 iark convert  [archivo.json | --stdin] [--out out.drawio] [--notation c4|card] [--no-waypoints] [--locale es|en] [--view id...]
-iark import   [archivo.drawio|archivo.dsl | --stdin] [--format auto|drawio|dsl] [--out out.json] [--name nombre] [--layout]
+iark import   [archivo.drawio|archivo.dsl|archivo.mmd|… | --stdin] [--format auto|drawio|dsl|mermaid|<importador del módulo>] [--out out.json] [--name nombre] [--layout]
 iark validate [archivo.json | --stdin] [--strict]
 iark schema   [--generation]
 iark prompt   "<instrucción>" [--from base.json]
@@ -548,7 +561,7 @@ iark modules  [--json]
 iark <módulo> <comando>   # comandos propios de cada módulo (p. ej. `iark integration catalog`)
 ```
 
-`generate`, `import`, `convert`, `validate`, `schema` y `prompt` aceptan `--module <id>` para trabajar con cualquier módulo de la suite (por defecto `c4`); `iark modules` lista los instalados y sus formatos de importación y exportación.
+`generate`, `import`, `convert`, `validate`, `schema` y `prompt` aceptan `--module <id>` para trabajar con cualquier módulo de la suite (por defecto `c4`); `iark modules` lista los instalados y sus formatos de importación y exportación. Además de Mermaid, cada módulo puede importar formatos propios (`--format <id>`, o `auto` para deducirlo de la extensión y del contenido): Terraform y Kubernetes en plataforma, DDL de SQL y dbt en datos y ArchiMate en empresarial (ver cada módulo). Es `--format`, no `--from`: `--from` solo existe en `generate` y `prompt`.
 
 En desarrollo: `npm run cli -- <comando>`; tras `npm run build`: `node dist/cli/index.js` o `npx iark` si el paquete está instalado.
 
@@ -683,7 +696,7 @@ Los cinco módulos nuevos comparten una interfaz genérica que se genera a parti
 
 | Superficie | Dónde | Para qué |
 |---|---|---|
-| Banco de trabajo | `modulos.html?module=security` | Editar el JSON del módulo con validación en vivo (esquema + reglas del dominio), ver las vistas y las vistas de traza, exportar (Mermaid con su vista previa dibujada, SVG, draw.io), importar Mermaid, ejecutar informes y conversiones (`from-integration`…). El borrador se guarda en el navegador (no en modo embebido). |
+| Banco de trabajo | `modulos.html?module=security` | Editar el JSON del módulo con validación en vivo (esquema + reglas del dominio), ver las vistas y las vistas de traza, exportar (Mermaid con su vista previa dibujada, SVG, draw.io), importar (Mermaid y los formatos propios de cada módulo, también con «Abrir archivo…»), ejecutar informes y conversiones (`from-integration`…). El borrador se guarda en el navegador (no en modo embebido). |
 | Widget embebible | `modulos.html?embed=1&proto=json&origin=…` | Mismo banco de trabajo dentro de un `<iframe>`, con un protocolo `postMessage` propio (`src/embed/moduleProtocol.ts`). |
 | Trazabilidad | `trazabilidad.html` | Vista transversal: enlaces `urn:iark:…` entre los documentos de varios módulos, referencias sin resolver y alcance de un elemento (ver «Trazabilidad entre módulos»). |
 | Shell de la suite | `suite.html` | Descubre los módulos de una instancia leyendo su manifiesto y monta el editor C4 o el widget del módulo elegido. Acepta una URL de manifiesto de otra instancia. |
@@ -744,7 +757,7 @@ curl -X POST 'localhost:8787/api/security/export?format=svg&view=dfd' -d @exampl
 | `GET /.well-known/iark.json` · `GET /api/modules` | Manifiesto de la instancia y capacidades de los módulos |
 | `GET /api/<módulo>/capabilities` · `/schema[?kind=generation]` | Formatos, informes, vistas de traza; JSON Schema del documento o de la salida de IA |
 | `POST /api/<módulo>/validate` · `/views` · `/export?format=&view=` | Cuerpo: el documento JSON |
-| `POST /api/<módulo>/import?importer=&name=` | Cuerpo: texto (Mermaid…) → documento y avisos |
+| `POST /api/<módulo>/import?importer=&name=` | Cuerpo: texto (Mermaid, Terraform, Kubernetes, DDL, dbt, ArchiMate según el módulo) → documento y avisos |
 | `POST /api/<módulo>/run/<comando>` | Cuerpo `{ input?, args?, options? }` → informe o conversión |
 | `POST /api/trace` | Cuerpo `{ documents: [{ module, document }], from?, direction?, depth? }` → grafo de trazabilidad |
 
