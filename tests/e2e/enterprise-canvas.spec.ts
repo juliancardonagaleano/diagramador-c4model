@@ -267,4 +267,103 @@ test.describe('lienzo empresarial: capas, mapa por criterio y relaciones nuevas'
     expect(doc.relations).toContainEqual(expect.objectContaining({ kind: 'assigned-to', sourceId: 'plataforma', targetId: 'alta-pedido' }));
     expect(errors).toEqual([]);
   });
+
+  test('un documento sin relaciones también tiene paisaje y sus unidades se alcanzan en el lienzo', async ({ page }) => {
+    const errors = await open(page);
+    const doc = {
+      version: '1.0',
+      workspace: { name: 'Sin relaciones' },
+      units: [{ id: 'direccion', name: 'Dirección' }, { id: 'equipo', name: 'Equipo', parentId: 'direccion' }],
+      applications: [{ id: 'crm', name: 'CRM', ownerId: 'equipo' }],
+    };
+    await page.getByRole('tab', { name: 'Vista SVG' }).click();
+    await page.getByLabel('Documento JSON').fill(JSON.stringify(doc, null, 2));
+    await page.getByRole('tab', { name: 'Lienzo' }).click();
+    await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
+    await canvasReady(page);
+    const views = await page.getByTestId('canvas-view').locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+    expect(views).toContain('landscape');
+    await selectView(page, 'landscape');
+    await expect(page.getByTestId('node-direccion')).toHaveAttribute('data-kind', 'unit');
+    await expect(page.getByTestId('node-equipo')).toBeVisible();
+    await expect(page.getByTestId('node-crm')).toBeVisible();
+    await shot(page, 'paisaje-sin-relaciones');
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe('lienzo empresarial: matriz capacidad × aplicación', () => {
+  /** El ejemplo más una capacidad sin aplicación (hueco), para ver el aviso. */
+  async function loadWithGap(page: Page): Promise<void> {
+    const doc = JSON.parse(readFileSync('examples/empresa-arquitectura.json', 'utf8')) as { capabilities: Array<Record<string, unknown>> };
+    doc.capabilities.push({ id: 'analitica-negocio', name: 'Analítica de negocio', parentId: 'gestion-comercial', importance: 'differentiating', maturity: 1 });
+    await page.getByRole('tab', { name: 'Vista SVG' }).click();
+    await page.getByLabel('Documento JSON').fill(JSON.stringify(doc, null, 2));
+    await page.getByRole('tab', { name: 'Lienzo' }).click();
+    await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
+  }
+
+  const relationsOf = async (page: Page): Promise<Array<{ kind: string; sourceId: string; targetId: string }>> => {
+    await page.getByRole('tab', { name: 'Vista SVG' }).click();
+    const doc = JSON.parse(await page.getByLabel('Documento JSON').inputValue()) as { relations: Array<{ kind: string; sourceId: string; targetId: string }> };
+    await page.getByRole('tab', { name: 'Lienzo' }).click();
+    await canvasReady(page);
+    return doc.relations;
+  };
+  const supports = (rels: Array<{ kind: string; sourceId: string; targetId: string }>, app: string, cap: string): boolean => rels.some((r) => r.kind === 'supports' && r.sourceId === app && r.targetId === cap);
+
+  test('la matriz dibuja las capacidades en filas, las aplicaciones en columnas, los totales y los avisos de hueco y solapamiento', async ({ page }) => {
+    const errors = await open(page);
+    await loadWithGap(page);
+    await expect(page.getByTestId('canvas-view').locator('option[value="matrix"]')).toHaveCount(1);
+    await selectView(page, 'matrix');
+    await expect(page.getByTestId('node-ventas-online')).toContainText('Ventas online');
+    await expect(page.getByTestId('node-tienda-web')).toContainText('crit.');
+    await expect(page.getByTestId('node-cell:ventas-online|tienda-web')).toContainText('●');
+    await expect(page.getByTestId('node-cell:gestion-pedidos|tienda-web')).toContainText('○');
+    await expect(page.getByTestId('node-cell:gestion-comercial|tienda-web')).toContainText('·');
+    await expect(page.getByTestId('node-total:row:analitica-negocio')).toContainText('hueco');
+    await expect(page.getByTestId('node-total:row:gestion-pedidos')).toContainText('solapamiento');
+    await expect(page.getByTestId('node-total:row:gestion-inventario')).toContainText('transición');
+    await expect(page.getByTestId('node-total:all')).toContainText('12/13');
+    await expect(page.getByTestId('node-total:all')).toContainText('cubiertas');
+    await shot(page, 'matriz');
+    expect(errors).toEqual([]);
+  });
+
+  test('«Soporta ⇄» y el doble clic crean y quitan la relación «soporta» de la celda, y el inspector la edita', async ({ page }) => {
+    const errors = await open(page);
+    await loadWithGap(page);
+    await selectView(page, 'matrix');
+    const action = page.getByTestId('action-matrix-support');
+    await expect(action).toBeDisabled();
+
+    // Una celda vacía: se marca con la acción.
+    await page.getByTestId('node-cell:analitica-negocio|crm').click();
+    await expect(action).toBeEnabled();
+    await expect(page.getByTestId('inspector').getByLabel('La aplicación soporta la capacidad')).not.toBeChecked();
+    await action.click();
+    await expect(page.getByTestId('node-cell:analitica-negocio|crm')).toContainText('●');
+    await expect(page.getByTestId('node-total:row:analitica-negocio')).not.toContainText('hueco');
+    expect(supports(await relationsOf(page), 'crm', 'analitica-negocio')).toBe(true);
+
+    // Se quita con el doble clic.
+    await page.getByTestId('node-cell:analitica-negocio|crm').dblclick();
+    await expect(page.getByTestId('node-cell:analitica-negocio|crm')).not.toContainText('●');
+    await expect(page.getByTestId('node-total:row:analitica-negocio')).toContainText('hueco');
+    expect(supports(await relationsOf(page), 'crm', 'analitica-negocio')).toBe(false);
+
+    // Y el criterio de la convivencia se escribe en las propiedades de la celda.
+    await page.getByTestId('node-cell:gestion-pedidos|erp').click();
+    const inspector = page.getByTestId('inspector');
+    await expect(inspector.getByLabel('La aplicación soporta la capacidad')).toBeChecked();
+    await inspector.getByLabel('Criterio (por qué la soporta)').fill('canal de venta asistida');
+    await inspector.getByLabel('Criterio (por qué la soporta)').blur();
+    await expect(inspector.getByLabel('Criterio (por qué la soporta)')).toHaveValue('canal de venta asistida');
+    await expect(page.getByTestId('node-total:row:gestion-pedidos')).toContainText('con criterio');
+    await inspector.getByLabel('La aplicación soporta la capacidad').uncheck();
+    await expect(page.getByTestId('node-cell:gestion-pedidos|erp')).not.toContainText('●');
+    expect(supports(await relationsOf(page), 'erp', 'gestion-pedidos')).toBe(false);
+    expect(errors).toEqual([]);
+  });
 });

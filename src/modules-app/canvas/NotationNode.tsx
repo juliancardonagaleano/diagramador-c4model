@@ -54,7 +54,7 @@ function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
   return (
     <div className="cv-node" style={{ width, height, color: ink }} data-selected={selected || undefined} data-testid={`node-${node.id}`} data-kind={node.kind} data-shape={notation.shape}>
       <ShapeSvg shape={notation.shape} width={width} height={height} fill={fill} stroke={node.stroke ?? notation.stroke} dashed={node.dashed} />
-      <Handle type="target" position={Position.Left} />
+      {!notation.bare && <Handle type="target" position={Position.Left} />}
       {provider ? (
         <ProviderIcon id={node.id} paths={provider} color={node.iconColor!} />
       ) : (
@@ -82,7 +82,7 @@ function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
         </div>
       ) : (
         <div className="cv-node-text">
-          <span className="cv-kind">{notation.label}</span>
+          {!notation.bare && <span className="cv-kind">{notation.label}</span>}
           <strong>{node.label}</strong>
           {node.sublabel && <span className="cv-sub">{node.sublabel}</span>}
         </div>
@@ -99,7 +99,7 @@ function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
           ))}
         </div>
       )}
-      <Handle type="source" position={Position.Right} />
+      {!notation.bare && <Handle type="source" position={Position.Right} />}
       {data.handles?.map((h) => (
         <Handle key={`${h.type}-${h.side}`} id={h.side} type={h.type} position={POSITIONS[h.side]} />
       ))}

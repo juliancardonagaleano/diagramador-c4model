@@ -2,6 +2,7 @@ import type { CommandSpec } from '@iark/kernel';
 import { EnterpriseImportError } from './import/fromMermaid';
 import { fromIntegrationJson } from './import/fromIntegration';
 import { applicationsByCapability, capabilityChildren, dependencyGraph, ownership, reach, type Reach, type ReachStep } from './graph';
+import { MATRIX_OVERLAP_MIN, ROW_STATUS_LABELS, buildMatrix, cellKey, type Matrix, type MatrixRow } from './matrix';
 import { formatEnterpriseIssues, validateEnterpriseDocument } from './schema';
 import {
   IMPORTANCE_LABELS,
@@ -44,6 +45,69 @@ function referenceDate(text: unknown): Date {
 function endOfLifeDate(text: string): Date {
   const [y, m, d] = text.split('-').map(Number);
   return d ? new Date(Date.UTC(y, m - 1, d, 23, 59, 59)) : new Date(Date.UTC(y, m, 0, 23, 59, 59));
+}
+
+const MATRIX_FORMATS = ['table', 'csv'] as const;
+/** Marca de cada tipo de soporte en la tabla (Markdown) y su valor en el CSV. */
+const TABLE_MARKS = { direct: '●', process: '○', inherited: '·' } as const;
+const CSV_VALUES = { direct: 'directa', process: 'proceso', inherited: 'heredada' } as const;
+const csv = (value: string | number): string => (/[",\r\n]/.test(String(value)) ? `"${String(value).replace(/"/g, '""')}"` : String(value));
+
+/** Ruta de cada capacidad en el árbol (`Gestión comercial › Ventas online`). */
+function capabilityPaths(doc: EnterpriseDocument): Map<string, string> {
+  const byId = new Map(doc.capabilities.map((c) => [c.id, c]));
+  const paths = new Map<string, string>();
+  for (const c of doc.capabilities) {
+    const names: string[] = [];
+    for (let at: Capability | undefined = c; at && names.length < 50; at = at.parentId ? byId.get(at.parentId) : undefined) names.unshift(at.name);
+    paths.set(c.id, names.join(' › '));
+  }
+  return paths;
+}
+
+/** Matriz capacidad × aplicación como tabla Markdown, con el recuento de huecos y solapamientos bajo ella. */
+function matrixTable(doc: EnterpriseDocument, matrix: Matrix): string {
+  const { rows, columns, summary } = matrix;
+  const names = new Map(doc.applications.map((a) => [a.id, a.name]));
+  const header = ['Capacidad', ...columns.map((c) => cell(c.application.name)), 'Total', 'Estado'];
+  const lines = [`| ${header.join(' | ')} |`, `|---|${columns.map(() => ':-:|').join('')}--:|---|`];
+  for (const row of rows) {
+    const marks = columns.map((c) => {
+      const found = matrix.cells.get(cellKey(row.capability.id, c.application.id));
+      return found ? TABLE_MARKS[found.support] : '';
+    });
+    lines.push(`| ${'  '.repeat(row.depth)}${cell(row.capability.name)} | ${[...marks, row.all.length, ROW_STATUS_LABELS[row.status]].join(' | ')} |`);
+  }
+  lines.push(`| Total | ${[...columns.map((c) => c.capabilities), `${summary.covered}/${summary.leaves}`, ''].join(' | ')} |`);
+  const list = (items: MatrixRow[], detail: (row: MatrixRow) => string): string => (items.length === 0 ? 'ninguno' : items.map((row) => `${row.capability.name}${detail(row)}`).join('; '));
+  const appsOf = (row: MatrixRow): string => ` (${row.inForce.map((id) => names.get(id)).join(', ')})`;
+  const idle = columns.filter((c) => c.capabilities === 0).map((c) => c.application.name);
+  return [
+    ...lines,
+    '',
+    `Leyenda: ${TABLE_MARKS.direct} soporte directo · ${TABLE_MARKS.process} por un proceso que realiza la capacidad · ${TABLE_MARKS.inherited} heredado de una capacidad hija (solo en agrupaciones; no cuenta en el total de la columna).`,
+    `Cobertura: ${summary.covered} de ${summary.leaves} capacidad(es) sin hijas tienen al menos una aplicación.`,
+    `Huecos (capacidad sin aplicación): ${list(rows.filter((r) => r.status === 'gap'), () => '')}`,
+    `Solapamientos sin criterio (${MATRIX_OVERLAP_MIN} o más aplicaciones vigentes): ${list(rows.filter((r) => r.status === 'overlap'), appsOf)}`,
+    `Convivencias con criterio (transición o descripción en la relación): ${list(rows.filter((r) => r.status === 'transition' || r.status === 'criterion'), (r) => `${appsOf(r)} · ${ROW_STATUS_LABELS[r.status]}`)}`,
+    `Aplicaciones que no soportan ninguna capacidad: ${idle.length === 0 ? 'ninguna' : idle.join('; ')}`,
+  ].join('\n');
+}
+
+/** Matriz capacidad × aplicación como CSV: una fila por capacidad (con su ruta y nivel), una columna por aplicación y, al final, el total y el estado. */
+function matrixCsv(doc: EnterpriseDocument, matrix: Matrix): string {
+  const { rows, columns } = matrix;
+  const paths = capabilityPaths(doc);
+  const out = [['Id', 'Capacidad', 'Ruta', 'Nivel', ...columns.map((c) => c.application.name), 'Total', 'Estado'].map(csv).join(',')];
+  for (const row of rows) {
+    const values = columns.map((c) => {
+      const found = matrix.cells.get(cellKey(row.capability.id, c.application.id));
+      return found ? CSV_VALUES[found.support] : '';
+    });
+    out.push([row.capability.id, row.capability.name, paths.get(row.capability.id) ?? row.capability.name, row.depth, ...values, row.all.length, ROW_STATUS_LABELS[row.status]].map(csv).join(','));
+  }
+  out.push(['', 'Total', '', '', ...columns.map((c) => c.capabilities), '', ''].map(csv).join(','));
+  return out.join('\n');
 }
 
 export const enterpriseCommands: CommandSpec[] = [
@@ -161,6 +225,21 @@ export const enterpriseCommands: CommandSpec[] = [
         );
       }
       return out.join('\n');
+    },
+  },
+  {
+    name: 'matrix',
+    description:
+      'Matriz capacidad × aplicación (tabla Markdown o CSV): qué aplicación soporta cada capacidad, directamente (●) o por un proceso que la realiza (○), con totales por fila y columna, los huecos y los solapamientos',
+    input: { description: 'documento empresarial en JSON' },
+    options: [{ flags: '--format <formato>', description: 'table (tabla Markdown con el recuento de avisos) | csv (una fila por capacidad y una columna por aplicación)', default: 'table' }],
+    run: ({ options, input }) => {
+      const doc = readEnterprise(input);
+      const format = String(options.format ?? 'table');
+      if (!(MATRIX_FORMATS as readonly string[]).includes(format)) throw new EnterpriseImportError(`Formato inválido «${format}». Use: ${MATRIX_FORMATS.join(', ')}.`);
+      if (doc.capabilities.length === 0) return 'El documento no define capacidades.';
+      const matrix = buildMatrix(doc);
+      return format === 'csv' ? matrixCsv(doc, matrix) : matrixTable(doc, matrix);
     },
   },
   {

@@ -748,7 +748,7 @@ describe('iark: módulo empresarial', () => {
 
     const drawio = join(dir, 'empresa.drawio');
     expect(run(['convert', ent, '--module', 'enterprise', '--out', drawio]).status).toBe(0);
-    expect([].concat(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram)).toHaveLength(11);
+    expect([].concat(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram)).toHaveLength(12);
 
     const missing = run(['convert', ent, '--module', 'enterprise', '--to', 'mermaid', '--view', 'nada']);
     expect(missing.status).not.toBe(0);
@@ -858,6 +858,23 @@ describe('iark: módulo empresarial', () => {
     const lifecycle = run(['enterprise', 'lifecycle', '--stdin', '--today', '2026-06-15'], readFileSync(ent, 'utf8'));
     expect(lifecycle.status).toBe(0);
     expect(lifecycle.stdout).toContain('| WMS heredado | Aplicación | en retirada | — | Gestión de inventario | Gestión de inventario |');
+  });
+
+  it('enterprise matrix imprime la matriz capacidad × aplicación en tabla o CSV y rechaza formatos desconocidos', () => {
+    const table = run(['enterprise', 'matrix', ent]);
+    expect(table.status).toBe(0);
+    expect(table.stdout).toContain('| Capacidad | Tienda online |');
+    expect(table.stdout).toContain('Cobertura: 12 de 12 capacidad(es) sin hijas tienen al menos una aplicación.');
+    expect(table.stdout).toContain('Solapamientos sin criterio');
+
+    const csv = run(['enterprise', 'matrix', '--format', 'csv', '--stdin'], readFileSync(ent, 'utf8'));
+    expect(csv.status).toBe(0);
+    expect(csv.stdout.split('\n')[0]).toMatch(/^Id,Capacidad,Ruta,Nivel,Tienda online,/);
+    expect(csv.stdout).toContain('gestion-pedidos');
+
+    const bad = run(['enterprise', 'matrix', ent, '--format', 'xml']);
+    expect(bad.status).toBe(2);
+    expect(bad.stderr).toMatch(/Formato inválido «xml»/);
   });
 
   it('enterprise from-integration crea el inventario de aplicaciones con referencias URN', () => {

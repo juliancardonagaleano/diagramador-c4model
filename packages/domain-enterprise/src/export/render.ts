@@ -1,5 +1,6 @@
 import { layoutGraph, renderGraphSvg, type Box, type EdgeRoute, type GraphLayout, type GraphLayoutOptions, type ShapeKind, type SvgEdgeStyle, type SvgLegend, type SvgNodeStyle } from '@iark/kernel';
 import { applicationsByCapability, capabilityChildren, stageCapabilities, streamStages } from '../graph';
+import { ROW_STATUS_LABELS, buildMatrix, cellKey, type Matrix, type MatrixRow } from '../matrix';
 import {
   CRITICALITY_LABELS,
   IMPORTANCE_LABELS,
@@ -170,6 +171,8 @@ export interface RenderedView {
   contextIds: Set<string>;
   /** Rótulo de cada grupo del layout cuando no es un elemento del documento (las columnas de la hoja de ruta). */
   groupLabels?: Map<string, string>;
+  /** Solo en la matriz capacidad × aplicación: sus celdas y totales no son elementos del documento. */
+  matrix?: MatrixScene;
 }
 
 export const edgeLabel = (r: Relation): string | undefined => r.description;
@@ -251,7 +254,7 @@ export interface Paint {
 }
 
 const IMPORTANCE_FILL = { differentiating: '#b197fc', core: '#d0bfff', supporting: '#f1f3f5' } as const;
-const CRITICALITY_FILL: Record<Criticality, string> = { low: '#b2f2bb', medium: '#fff3bf', high: '#ffd8a8', critical: '#ffa8a8' };
+export const CRITICALITY_FILL: Record<Criticality, string> = { low: '#b2f2bb', medium: '#fff3bf', high: '#ffd8a8', critical: '#ffa8a8' };
 const LIFECYCLE_PAINT = {
   active: { fill: '#b2f2bb', label: 'activas' },
   planned: { fill: '#a5d8ff', label: 'solo previstas' },
@@ -330,6 +333,232 @@ export function layoutCapabilityMap(doc: EnterpriseDocument): GraphLayout {
   };
   for (const k of packed.kids) place(k.cell, k.dx, k.dy);
   return { nodes, groups, edges: [], width: packed.w, height: packed.h };
+}
+
+// --- Matriz capacidad × aplicación: cuadrícula de celdas, sin autolayout ----------------------------------------------------
+
+const MATRIX_ROW_H = 44;
+const MATRIX_HEAD_H = 104;
+const MATRIX_GAP = 4;
+const MATRIX_INDENT = 16;
+const MATRIX_TOTAL_W = 104;
+const MATRIX_KEY_H = 28;
+/** Separación entre las cabeceras y el cuerpo, y entre el cuerpo y los totales. */
+const MATRIX_SECTION = 10;
+
+/** Aviso de un hueco (capacidad sin aplicación): rojo y discontinuo. */
+export const MATRIX_GAP_STYLE = { fill: '#ffe3e3', pale: '#fff5f5', stroke: '#c92a2a' } as const;
+/** Aviso de un solapamiento sin criterio: violeta, para no confundirlo con la escala de criticidad (verde, amarillo, naranja, rojo). */
+export const MATRIX_OVERLAP_STYLE = { fill: '#f3d9fa', stroke: '#9c36b5' } as const;
+const MATRIX_NEUTRAL = { fill: '#f1f3f5', stroke: '#868e96' } as const;
+const MATRIX_EMPTY = { fill: '#ffffff', stroke: '#e9ecef' } as const;
+
+/** Marca de cada tipo de soporte en la celda: directa `●`, por un proceso `○` y heredada de una capacidad hija `·`. */
+export const MATRIX_MARKS = { direct: '●', process: '○', inherited: '·' } as const;
+
+/** Mezcla un color con el blanco (`ratio` = parte de blanco, de 0 a 1): la versión pálida de un color de la escala. */
+function tint(hex: string, ratio: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (v: number): string => Math.round(v + (255 - v) * ratio).toString(16).padStart(2, '0');
+  return `#${mix((n >> 16) & 255)}${mix((n >> 8) & 255)}${mix(n & 255)}`;
+}
+
+/** Parte un texto en líneas de `max` caracteres como mucho (por palabras), con puntos suspensivos si no cabe en `lines` líneas. */
+export function wrapText(text: string, max: number, lines: number): string[] {
+  const out: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (line && `${line} ${word}`.length > max) {
+      out.push(line);
+      line = word;
+    } else line = line ? `${line} ${word}` : word;
+  }
+  if (line) out.push(line);
+  if (out.length <= lines) return out;
+  const kept = out.slice(0, lines);
+  kept[lines - 1] = `${kept[lines - 1].slice(0, Math.max(1, max - 1))}…`;
+  return kept;
+}
+
+/** Cómo se dibuja un nodo de la matriz: lo comparten el lienzo, el SVG y draw.io. */
+export interface MatrixNodeStyle {
+  /** Cabeceras (una capacidad y una aplicación reales del documento), celdas y totales (también los de la clave de colores). */
+  kind: 'capability' | 'application' | 'cell' | 'total';
+  label: string;
+  sublabel?: string;
+  /** Insignias sobre el nodo en el lienzo (el ciclo de vida de una aplicación que no está activa). */
+  badges?: string[];
+  /** Texto para el SVG y draw.io: el nombre ajustado al ancho de la caja y sus datos. */
+  lines: string[];
+  fill: string;
+  stroke: string;
+  dashed?: boolean;
+  shape: ShapeKind;
+}
+
+export interface MatrixScene {
+  layout: GraphLayout;
+  nodes: Map<string, MatrixNodeStyle>;
+  matrix: Matrix;
+}
+
+/** Id de la celda de una capacidad y una aplicación (la unión de las dos, separadas por `|`). */
+export const matrixCellId = (capabilityId: string, applicationId: string): string => `cell:${capabilityId}|${applicationId}`;
+
+/** Capacidad y aplicación de una celda, o `undefined` si el id no es de una celda (los ids pueden llevar `|`: se prueban todos los cortes). */
+export function parseMatrixCell(doc: EnterpriseDocument, id: string): { capabilityId: string; applicationId: string } | undefined {
+  if (!id.startsWith('cell:')) return undefined;
+  const body = id.slice('cell:'.length);
+  const capabilities = new Set(doc.capabilities.map((c) => c.id));
+  const applications = new Set(doc.applications.map((a) => a.id));
+  for (let at = body.indexOf('|'); at >= 0; at = body.indexOf('|', at + 1)) {
+    const [capabilityId, applicationId] = [body.slice(0, at), body.slice(at + 1)];
+    if (capabilities.has(capabilityId) && applications.has(applicationId)) return { capabilityId, applicationId };
+  }
+  return undefined;
+}
+
+const warningOf = (row: MatrixRow): { fill: string; stroke: string } | undefined => (row.status === 'gap' ? MATRIX_GAP_STYLE : row.status === 'overlap' ? MATRIX_OVERLAP_STYLE : undefined);
+
+function rowHeaderStyle(row: MatrixRow): MatrixNodeStyle {
+  return {
+    kind: 'capability',
+    label: row.capability.name,
+    lines: [row.capability.name],
+    fill: row.group ? KIND_COLORS.stage : KIND_COLORS.capability,
+    stroke: warningOf(row)?.stroke ?? KIND_STROKES.capability,
+    dashed: row.status === 'gap',
+    shape: ELEMENT_SHAPES.capability,
+  };
+}
+
+function columnHeaderStyle(app: Application, idle: boolean, width: number): MatrixNodeStyle {
+  const sublabel = app.criticality ? `crit. ${CRITICALITY_LABELS[app.criticality]}` : undefined;
+  const life = lifecycleText(app);
+  return {
+    kind: 'application',
+    label: app.name,
+    ...(sublabel ? { sublabel } : {}),
+    ...(life ? { badges: [life] } : {}),
+    lines: [...wrapText(app.name, Math.floor((width - 16) / 6.4), 3), ...(sublabel ? [sublabel] : []), ...(life ? [life] : [])],
+    fill: KIND_COLORS.application,
+    stroke: idle ? MATRIX_GAP_STYLE.stroke : (LIFECYCLE_STROKE[lifecycleOf(app)] ?? KIND_STROKES.application),
+    dashed: idle || app.external === true || lifecycleOf(app) === 'retired',
+    shape: ELEMENT_SHAPES.application,
+  };
+}
+
+/** Color de una aplicación en la matriz: el de su criticidad (o el gris de «sin indicar»). */
+const criticalityFill = (app: Application): string => (app.criticality ? CRITICALITY_FILL[app.criticality] : MATURITY_UNKNOWN);
+
+/**
+ * Matriz capacidad × aplicación (ver `buildMatrix`): las capacidades en filas, en el orden del árbol y con sangría; las
+ * aplicaciones en columnas; en cada celda, una marca si la aplicación soporta la capacidad, del color de su criticidad. A la
+ * derecha, el total y el aviso de cada fila (hueco o solapamiento), debajo el total de cada columna y, al pie, la clave de los
+ * colores. Una cuadrícula propia, sin autolayout.
+ */
+export function matrixScene(doc: EnterpriseDocument): MatrixScene {
+  const matrix = buildMatrix(doc);
+  const { rows, columns, summary } = matrix;
+  const longestName = Math.max(0, ...rows.map((r) => r.capability.name.length * 7.4 + r.depth * MATRIX_INDENT));
+  const rowW = Math.min(380, Math.max(210, Math.ceil(longestName + 60)));
+  const longestWord = Math.max(0, ...columns.flatMap((c) => c.application.name.split(/\s+/).map((w) => w.length)));
+  const colW = Math.min(150, Math.max(104, Math.ceil(longestWord * 7.4 + 34)));
+  const colX = (i: number): number => rowW + MATRIX_SECTION + i * (colW + MATRIX_GAP);
+  const totalX = colX(columns.length) + MATRIX_SECTION - MATRIX_GAP;
+  const rowY = (r: number): number => MATRIX_HEAD_H + MATRIX_SECTION + r * (MATRIX_ROW_H + MATRIX_GAP);
+  const totalsY = rowY(rows.length) + MATRIX_SECTION - MATRIX_GAP;
+
+  const nodes: Box[] = [];
+  const styles = new Map<string, MatrixNodeStyle>();
+  const put = (id: string, box: Omit<Box, 'id'>, style: MatrixNodeStyle): void => {
+    nodes.push({ id, ...box });
+    styles.set(id, style);
+  };
+  const total = (label: string, sublabel: string | undefined, look: { fill: string; stroke: string }, dashed = false): MatrixNodeStyle => ({
+    kind: 'total',
+    label,
+    ...(sublabel ? { sublabel } : {}),
+    lines: [label, ...(sublabel ? [sublabel] : [])],
+    fill: look.fill,
+    stroke: look.stroke,
+    dashed,
+    shape: 'rect',
+  });
+
+  columns.forEach((c, i) => put(c.application.id, { x: colX(i), y: 0, width: colW, height: MATRIX_HEAD_H }, columnHeaderStyle(c.application, c.capabilities === 0, colW)));
+  put('total:applications', { x: totalX, y: 0, width: MATRIX_TOTAL_W, height: MATRIX_HEAD_H }, total('Total', 'aplicaciones', MATRIX_NEUTRAL));
+
+  rows.forEach((row, r) => {
+    const y = rowY(r);
+    const indent = row.depth * MATRIX_INDENT;
+    put(row.capability.id, { x: indent, y, width: rowW - indent, height: MATRIX_ROW_H }, rowHeaderStyle(row));
+    columns.forEach((c, i) => {
+      const cell = matrix.cells.get(cellKey(row.capability.id, c.application.id));
+      const gap = row.status === 'gap';
+      let style: MatrixNodeStyle;
+      if (!cell) {
+        style = { kind: 'cell', label: '', lines: [''], fill: gap ? MATRIX_GAP_STYLE.pale : MATRIX_EMPTY.fill, stroke: gap ? '#ffc9c9' : MATRIX_EMPTY.stroke, shape: 'rect' };
+      } else {
+        const color = criticalityFill(c.application);
+        const mark = MATRIX_MARKS[cell.support];
+        style = {
+          kind: 'cell',
+          label: mark,
+          lines: [mark],
+          fill: cell.support === 'inherited' ? tint(color, 0.55) : color,
+          stroke: cell.support === 'inherited' ? '#ced4da' : row.status === 'overlap' ? MATRIX_OVERLAP_STYLE.stroke : MATRIX_NEUTRAL.stroke,
+          dashed: cell.support === 'process',
+          shape: 'rect',
+        };
+      }
+      put(matrixCellId(row.capability.id, c.application.id), { x: colX(i), y, width: colW, height: MATRIX_ROW_H }, style);
+    });
+    put(`total:row:${row.capability.id}`, { x: totalX, y, width: MATRIX_TOTAL_W, height: MATRIX_ROW_H }, total(String(row.all.length), ROW_STATUS_LABELS[row.status] || undefined, warningOf(row) ?? MATRIX_NEUTRAL, row.status === 'gap'));
+  });
+
+  put('total:capabilities', { x: 0, y: totalsY, width: rowW, height: MATRIX_ROW_H }, total('Total', 'capacidades por aplicación', MATRIX_NEUTRAL));
+  columns.forEach((c, i) => {
+    const idle = c.capabilities === 0;
+    put(`total:column:${c.application.id}`, { x: colX(i), y: totalsY, width: colW, height: MATRIX_ROW_H }, total(String(c.capabilities), idle ? 'sin capacidad' : undefined, idle ? MATRIX_GAP_STYLE : MATRIX_NEUTRAL, idle));
+  });
+  put('total:all', { x: totalX, y: totalsY, width: MATRIX_TOTAL_W, height: MATRIX_ROW_H }, total(`${summary.covered}/${summary.leaves}`, 'cubiertas', MATRIX_NEUTRAL));
+
+  // Clave de los colores al pie: nodos como los demás, para que el lienzo y el SVG la dibujen igual y no tape la matriz.
+  const key: Array<{ title: string; chips: Array<{ label: string; look: { fill: string; stroke: string }; dashed?: boolean }> }> = [
+    {
+      title: 'Criticidad de la aplicación',
+      chips: [...(['low', 'medium', 'high', 'critical'] as const).map((k) => ({ label: CRITICALITY_LABELS[k], look: { fill: CRITICALITY_FILL[k], stroke: MATRIX_NEUTRAL.stroke } })), { label: 'sin indicar', look: { fill: MATURITY_UNKNOWN, stroke: MATRIX_NEUTRAL.stroke } }],
+    },
+    { title: 'Avisos', chips: [{ label: 'hueco', look: MATRIX_GAP_STYLE, dashed: true }, { label: 'solapamiento', look: MATRIX_OVERLAP_STYLE }, { label: 'transición', look: MATRIX_NEUTRAL }, { label: 'con criterio', look: MATRIX_NEUTRAL }] },
+    { title: 'Marca de la celda', chips: [{ label: `${MATRIX_MARKS.direct} directa`, look: MATRIX_EMPTY }, { label: `${MATRIX_MARKS.process} por proceso`, look: MATRIX_EMPTY, dashed: true }, { label: `${MATRIX_MARKS.inherited} heredada`, look: MATRIX_EMPTY }] },
+  ];
+  const keyY = totalsY + MATRIX_ROW_H + 2 * MATRIX_SECTION;
+  key.forEach((line, r) => {
+    const y = keyY + r * (MATRIX_KEY_H + MATRIX_GAP);
+    put(`total:key:${r}`, { x: 0, y, width: rowW, height: MATRIX_KEY_H }, total(line.title, undefined, MATRIX_EMPTY));
+    line.chips.forEach((chip, i) => put(`total:key:${r}:${i}`, { x: colX(i), y, width: colW, height: MATRIX_KEY_H }, total(chip.label, undefined, chip.look, chip.dashed)));
+  });
+
+  const width = Math.max(0, ...nodes.map((n) => n.x + n.width));
+  return { layout: { nodes, groups: [], edges: [], width, height: keyY + key.length * (MATRIX_KEY_H + MATRIX_GAP) - MATRIX_GAP }, nodes: styles, matrix };
+}
+
+/** Coloca la matriz capacidad × aplicación (ver `matrixScene`). */
+export const layoutMatrix = (doc: EnterpriseDocument): GraphLayout => matrixScene(doc).layout;
+
+/** Estilo de un nodo de la matriz en el SVG (y las propiedades de draw.io salen del mismo). */
+export function matrixSvgStyle(style: MatrixNodeStyle): SvgNodeStyle {
+  return {
+    fill: style.fill,
+    stroke: style.stroke,
+    textColor: INK,
+    lines: style.lines,
+    shape: style.shape,
+    dashed: style.dashed,
+    maxLines: 5,
+    ...(style.kind === 'capability' || style.kind === 'application' ? { icon: ELEMENT_ICONS[style.kind] } : {}),
+  };
 }
 
 // --- Hoja de ruta: una columna por periodo ---------------------------------------------------------------------------------
@@ -628,13 +857,17 @@ function nodeSize(e: Element, doc: EnterpriseDocument): { width: number; height:
   return { width: widthFor(title, rest, 190), height: NODE_HEIGHT };
 }
 
-/** Coloca una vista. El mapa de capacidades es una cuadrícula anidada, la hoja de ruta, columnas y los flujos de valor, cadenas de etapas; las demás, un grafo capa a capa. */
+/** Coloca una vista. El mapa de capacidades es una cuadrícula anidada, la matriz una cuadrícula de celdas, la hoja de ruta, columnas y los flujos de valor, cadenas de etapas; las demás, un grafo capa a capa. */
 export async function layoutView(doc: EnterpriseDocument, viewId?: string, options: GraphLayoutOptions = {}): Promise<RenderedView> {
   const view = findView(doc, viewId);
   const all = indexElements(doc);
   const elements = new Map(view.elementIds.map((id) => [id, all.get(id)!]));
   if (view.type === 'capabilities') {
     return { view, layout: layoutCapabilityMap(doc), elements, edges: new Map(), contextIds: new Set() };
+  }
+  if (view.type === 'matrix') {
+    const scene = matrixScene(doc);
+    return { view, layout: scene.layout, elements, edges: new Map(), contextIds: new Set(), matrix: scene };
   }
   if (view.type === 'roadmap') {
     const { layout, titles } = layoutRoadmap(doc);
@@ -689,7 +922,10 @@ export function capabilityCellStyle(c: Capability, apps: Application[], mode: Ca
 }
 
 export async function toSvg(doc: EnterpriseDocument, viewId?: string): Promise<string> {
-  const { view, layout, elements, edges, contextIds, groupLabels } = await layoutView(doc, viewId);
+  const { view, layout, elements, edges, contextIds, groupLabels, matrix } = await layoutView(doc, viewId);
+  if (matrix) {
+    return renderGraphSvg(layout, { title: view.title, node: (id) => matrixSvgStyle(matrix.nodes.get(id)!), edge: () => ({ stroke: EDGE_COLOR }) });
+  }
   if (view.type === 'capabilities') {
     const capabilities = new Map(doc.capabilities.map((c) => [c.id, c]));
     const apps = supportingApplications(doc);

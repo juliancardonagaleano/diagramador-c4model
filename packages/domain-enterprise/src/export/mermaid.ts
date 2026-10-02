@@ -1,7 +1,8 @@
 import { capabilityChildren, streamStages } from '../graph';
+import { cellKey } from '../matrix';
 import { drawnEnds, indexElements, type Application, type BusinessService, type Capability, type Element, type ElementKind, type EnterpriseDocument, type Technology, type ValueStage } from '../types';
 import { findView, roadmapColumns } from '../views';
-import { INK, KIND_COLORS, KIND_STROKES } from './render';
+import { INK, KIND_COLORS, KIND_STROKES, MATRIX_MARKS, matrixCellId, matrixScene } from './render';
 
 const RESERVED = new Set(['end', 'graph', 'subgraph', 'flowchart', 'class', 'style', 'click', 'default']);
 
@@ -42,12 +43,64 @@ function classDefs(kinds: Set<ElementKind>): string[] {
 }
 
 /**
- * Exporta una vista a Mermaid como `flowchart`. El mapa de capacidades anida cada capacidad con hijas en un `subgraph`; el
+ * La matriz capacidad × aplicación como diagrama de bloques de Mermaid (`block-beta`): una cuadrícula con las aplicaciones en
+ * columnas, las capacidades en filas (las hijas con `›` por nivel), una marca en cada celda de soporte (del color de la criticidad
+ * de la aplicación) y, al final de cada fila, el total y el aviso (hueco, solapamiento). Los estilos salen de la misma escena que
+ * el SVG: se agrupan en clases por color y trazo. No es un `flowchart`: el importador de Mermaid del módulo no lo lee.
+ */
+function matrixToMermaid(doc: EnterpriseDocument): string {
+  const { matrix, nodes: styles } = matrixScene(doc);
+  const { rows, columns } = matrix;
+  const classes = new Map<string, { name: string; ids: string[] }>();
+  const paint = (alias: string, sceneId: string): void => {
+    const style = styles.get(sceneId)!;
+    const css = `fill:${style.fill},stroke:${style.stroke},color:${INK}${style.dashed ? ',stroke-dasharray:5 5' : ''}`;
+    const entry = classes.get(css) ?? { name: `m${classes.size + 1}`, ids: [] };
+    entry.ids.push(alias);
+    classes.set(css, entry);
+  };
+  const out = ['block-beta', `    columns ${columns.length + 2}`];
+  const head = ['space:1'];
+  columns.forEach((c, j) => {
+    head.push(`a${j}["${esc(c.application.name)}"]`);
+    paint(`a${j}`, c.application.id);
+  });
+  head.push('total["Total"]');
+  out.push(`    ${head.join(' ')}`);
+  rows.forEach((row, i) => {
+    const line = [`r${i}["${esc(`${row.depth > 0 ? `${'›'.repeat(row.depth)} ` : ''}${row.capability.name}`)}"]`];
+    paint(`r${i}`, row.capability.id);
+    columns.forEach((c, j) => {
+      const id = matrixCellId(row.capability.id, c.application.id);
+      const cell = matrix.cells.get(cellKey(row.capability.id, c.application.id));
+      line.push(`c${i}_${j}["${cell ? MATRIX_MARKS[cell.support] : ' '}"]`);
+      paint(`c${i}_${j}`, id);
+    });
+    const status = styles.get(`total:row:${row.capability.id}`)!;
+    line.push(`t${i}["${esc(status.lines.join(' · '))}"]`);
+    paint(`t${i}`, `total:row:${row.capability.id}`);
+    out.push(`    ${line.join(' ')}`);
+  });
+  const foot = ['totals["Total"]'];
+  columns.forEach((c, j) => {
+    foot.push(`f${j}["${esc(styles.get(`total:column:${c.application.id}`)!.lines.join(' · '))}"]`);
+    paint(`f${j}`, `total:column:${c.application.id}`);
+  });
+  foot.push(`all["${esc(styles.get('total:all')!.lines[0])}"]`);
+  out.push(`    ${foot.join(' ')}`);
+  out.push(`    %% ${MATRIX_MARKS.direct} soporte directo · ${MATRIX_MARKS.process} por un proceso que realiza la capacidad · ${MATRIX_MARKS.inherited} heredado de una capacidad hija`);
+  for (const [css, { name, ids }] of classes) out.push(`    classDef ${name} ${css}`, `    class ${ids.join(',')} ${name}`);
+  return `${out.join('\n')}\n`;
+}
+
+/**
+ * Exporta una vista a Mermaid como `flowchart` (la matriz capacidad × aplicación, como diagrama de bloques). El mapa de capacidades anida cada capacidad con hijas en un `subgraph`; el
  * resto de vistas dibujan cada relación de quien se apoya a aquello en lo que se apoya (capacidad → aplicación →
  * tecnología), con línea discontinua para «depende de». El tipo de cada nodo va en su clase.
  */
 export function toMermaid(doc: EnterpriseDocument, options: { viewId?: string } = {}): string {
   const view = findView(doc, options.viewId);
+  if (view.type === 'matrix') return matrixToMermaid(doc);
   const elements = indexElements(doc);
   // Las unidades y sus asignaciones no tienen forma en Mermaid (el importador no las lee): se omiten.
   const elementIds = view.elementIds.filter((id) => elements.get(id)?.kind !== 'unit');

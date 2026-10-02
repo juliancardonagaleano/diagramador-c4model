@@ -29,6 +29,8 @@ export interface NodeNotation {
   addable?: boolean;
   /** Se dibuja siempre como zona (aunque no tenga hijos): una celda vacía de una matriz donde se pueden soltar elementos. */
   container?: boolean;
+  /** Se dibuja sin la clase del tipo sobre el título ni puntos de conexión (una celda o un total de una matriz): solo el texto, centrado. */
+  bare?: boolean;
   /** Icono del tipo en la esquina del nodo: trazados de una caja de 16 × 16 (como `EdgeMark.icon`). */
   icon?: string[];
 }
@@ -261,6 +263,11 @@ export interface EditorSpec<TDoc> {
    * lienzo aplica el autolayout común por capas.
    */
   layout?(document: TDoc, viewId?: string): GraphLayout | undefined | Promise<GraphLayout | undefined>;
+  /**
+   * Doble clic sobre el nodo `id`: operación propia del módulo (p. ej. marcar o desmarcar una celda de una matriz). `undefined`
+   * si no significa nada: entonces el doble clic sigue el enlace del elemento, si lo tiene.
+   */
+  activate?(document: TDoc, id: string, viewId?: string): EditResult<TDoc> | undefined;
   /**
    * Soltar el nodo `id` sobre `targetId` (el elemento más pequeño que contiene su centro; nunca él mismo ni un descendiente):
    * p. ej. arrastrar una amenaza a otra celda de la matriz de calor cambia su probabilidad e impacto. `undefined` si soltarlo

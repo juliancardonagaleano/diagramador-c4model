@@ -471,7 +471,11 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
             onNodeClick={(e, n) => {
               if (!e.ctrlKey && !e.metaKey && !e.shiftKey) setSelection((current) => (current.size > 1 && current.has(n.id) ? new Set([n.id]) : current));
             }}
-            onNodeDoubleClick={(_, n) => follow(n.id)}
+            onNodeDoubleClick={(_, n) => {
+              const edit = !readOnly && document !== undefined ? spec.activate?.(document, n.id, viewId) : undefined;
+              if (edit) commit(edit);
+              else follow(n.id);
+            }}
             onPaneClick={() => setSelection(NO_SELECTION)}
             onConnect={onConnect}
             onNodeDragStop={(event, node) => onDragStop(event, node)}
