@@ -103,15 +103,19 @@
         print('export json', { bytes: json.length });
       };
       document.getElementById('btn-layout').onclick = () => embed.autoLayout({ direction: 'RIGHT' });
+      // `merge` valida el fragmento como un documento completo: cada relación y cada padre tienen que estar dentro del fragmento.
+      // Los elementos con un id que ya existe se reemplazan (aquí por sí mismos) y los nuevos se añaden, así que se envía el modelo de partida más la cola.
       document.getElementById('btn-merge').onclick = () =>
         embed.merge({
-          version: '1.0',
-          workspace: { name: 'Tienda en línea' },
+          ...initial,
           model: {
-            elements: [{ id: 'cola', type: 'container', name: 'Cola de pedidos', technology: 'RabbitMQ', parentId: 'tienda', shape: 'queue', description: 'Desacopla el procesamiento.' }],
-            relationships: [{ id: 'r5', sourceId: 'api', targetId: 'cola', description: 'Publica pedidos', technology: 'AMQP' }],
+            elements: [
+              ...initial.model.elements,
+              { id: 'cola', type: 'container', name: 'Cola de pedidos', technology: 'RabbitMQ', parentId: 'tienda', shape: 'queue', description: 'Desacopla el procesamiento.' },
+            ],
+            relationships: [...initial.model.relationships, { id: 'r5', sourceId: 'api', targetId: 'cola', description: 'Publica pedidos', technology: 'AMQP' }],
           },
-          views: [{ id: 'cont', type: 'container', scopeId: 'tienda', elements: [{ id: 'cliente' }, { id: 'web' }, { id: 'api' }, { id: 'db' }, { id: 'pagos' }, { id: 'cola' }] }],
+          views: initial.views.map((v) => (v.id === 'cont' ? { ...v, elements: [...v.elements, { id: 'cola' }] } : v)),
         });
       document.getElementById('btn-save').onclick = () => embed.save(false);
       document.getElementById('btn-reload').onclick = () => embed.load(initial, { autosave: true, title: 'Tienda en línea' });

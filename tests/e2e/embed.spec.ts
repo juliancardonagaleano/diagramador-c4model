@@ -30,14 +30,19 @@ test('protocolo embebido: handshake, export, setView, autosave, guardar y salir,
   await expect.poll(async () => (await page.locator('#log').textContent()) ?? '').toMatch(/viewChange.*"level":"C2"/);
   await c4Ready(frame!, 'cont');
 
-  // Con `autosave` activo, una edición hecha en el editor llega al anfitrión como evento `autosave` (el editor agrupa los cambios y lo
-  // emite 500 ms después del último): se espera al evento con el documento ya editado (7 elementos, uno más que el de partida), no al tiempo.
-  // (El botón «Fusionar elemento» del anfitrión de ejemplo no sirve para esto: su documento referencia un padre que no incluye y el editor lo
-  // rechaza con un evento `error`; los `autosave` que antes se veían tras pulsarlo eran los de la recolocación de la vista.)
-  await frame!.getByRole('button', { name: 'Añadir persona' }).click();
+  // Con `autosave` activo, un cambio llega al anfitrión como evento `autosave` (el editor agrupa los cambios y lo emite 500 ms después del
+  // último): se espera al evento con el documento ya cambiado, no al tiempo. «Fusionar elemento» envía el modelo de partida más una cola
+  // (6 → 7 elementos); una edición hecha en el editor añade otro (→ 8).
+  await page.click('#btn-merge');
   await expect
     .poll(async () => (await page.locator('#log').textContent()) ?? '', { timeout: 15000 })
     .toMatch(/autosave\s+\{"elementos":7\}/);
+  expect((await page.locator('#log').textContent()) ?? '', 'el fragmento de «Fusionar elemento» es válido: el editor no responde con un evento error').not.toMatch(/\berror\b/);
+
+  await frame!.getByRole('button', { name: 'Añadir persona' }).click();
+  await expect
+    .poll(async () => (await page.locator('#log').textContent()) ?? '', { timeout: 15000 })
+    .toMatch(/autosave\s+\{"elementos":8\}/);
 
   await frame!.getByRole('button', { name: 'Guardar y salir' }).click();
   await page.waitForFunction(() => document.getElementById('state')?.textContent === 'salió');
