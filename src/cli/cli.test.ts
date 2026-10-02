@@ -879,7 +879,7 @@ describe('iark: módulo de plataforma', () => {
 
     const drawio = join(dir, 'plataforma.drawio');
     expect(run(['convert', plat, '--module', 'platform', '--out', drawio]).status).toBe(0);
-    expect([].concat(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram)).toHaveLength(5);
+    expect([].concat(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram)).toHaveLength(6);
 
     const missing = run(['convert', plat, '--module', 'platform', '--to', 'mermaid', '--view', 'nada']);
     expect(missing.status).not.toBe(0);

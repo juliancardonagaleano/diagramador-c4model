@@ -336,7 +336,7 @@ describe('reglas de gobierno', () => {
 
 describe('vistas', () => {
   it('lista la topología, una vista por entorno con contenido y la entrega continua', () => {
-    expect(listViews(doc).map((v) => v.id)).toEqual(['topology', 'env:dev', 'env:prod', 'delivery', 'costs']);
+    expect(listViews(doc).map((v) => v.id)).toEqual(['topology', 'env:dev', 'env:prod', 'delivery', 'compare:dev:prod', 'costs']);
     const empty = parse({ environments: [{ id: 'e', name: 'E' }], services: [{ id: 's', name: 'S' }] });
     expect(listViews(empty)).toEqual([]);
     expect(() => findView(empty)).toThrow('El documento no tiene vistas que exportar');
@@ -370,7 +370,7 @@ describe('vistas', () => {
   });
 
   it('explica las vistas disponibles cuando no existe la pedida', () => {
-    expect(() => findView(doc, 'nada')).toThrow(/No existe la vista «nada»\. Vistas disponibles: topology, env:dev, env:prod, delivery, costs, impact:<elemento>/);
+    expect(() => findView(doc, 'nada')).toThrow(/No existe la vista «nada»\. Vistas disponibles: topology, env:dev, env:prod, delivery, compare:dev:prod, costs, impact:<elemento>/);
     expect(() => findView(doc, 'impact:entrega-servicios')).toThrow(/No existe el servicio ni el recurso/);
   });
 });
@@ -741,7 +741,7 @@ describe('módulo', () => {
     expect(platformModule.validate(doc)).toEqual([]);
     expect((platformModule.jsonSchema() as { type: string }).type).toBe('object');
     expect(platformModule.importers[0].detect!('flowchart LR\n a --> b')).toBe(true);
-    expect(platformModule.cliCommands!.map((c) => c.name)).toEqual(['deployments', 'impact', 'from-integration']);
+    expect(platformModule.cliCommands!.map((c) => c.name)).toEqual(['deployments', 'compare', 'impact', 'from-integration']);
   });
 });
 

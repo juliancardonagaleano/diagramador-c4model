@@ -23,6 +23,7 @@ import {
   type Service,
   type ServiceKind,
 } from '../types';
+import { compareEnvironments, versionText, type DiffKind, type Presence } from '../compare';
 import { costsByEnvironment, formatCost } from '../costs';
 import { findView, type PlatformView } from '../views';
 
@@ -40,6 +41,10 @@ export const RESOURCE_COLORS: Record<ResourceKind, string> = {
   dns: '#495057',
   'secret-store': '#862e9c',
   registry: '#495057',
+  region: '#0b7285',
+  namespace: '#5c7cfa',
+  certificate: '#9c36b5',
+  monitoring: '#2f9e44',
   other: '#495057',
 };
 /** Figuras de servicios y recursos (diagrama de despliegue): las mismas en el lienzo y en el SVG. */
@@ -56,6 +61,10 @@ export const RESOURCE_SHAPES: Record<ResourceKind, ShapeKind> = {
   dns: 'circle',
   'secret-store': 'hexagon',
   registry: 'card',
+  region: 'rounded',
+  namespace: 'rect',
+  certificate: 'card',
+  monitoring: 'circle',
   other: 'rect',
 };
 /** Zonas de red según su exposición: pública, borde rojo continuo; privada, azul discontinuo; aislada, gris punteado. */
@@ -157,7 +166,23 @@ export interface SceneNode extends SvgNodeStyle {
   status?: ResourceStatus;
   /** Id del servicio o recurso que representa (una instancia de servicio no tiene el suyo). */
   elementId?: string;
+  /** En la comparación de entornos: en qué se distingue del otro lado (`same` si en nada). */
+  diff?: DiffMark;
 }
+
+/** Marca de diferencia de un nodo de la comparación: una clase de diferencia, varias a la vez (`mixed`) o ninguna (`same`). */
+export type DiffMark = DiffKind | 'mixed' | 'same';
+
+export const DIFF_COLORS: Record<Exclude<DiffMark, 'same'>, string> = { 'only-a': '#c2410c', 'only-b': '#1971c2', version: '#7048e8', replicas: '#b45309', mixed: '#a61e4d' };
+export const DIFF_LABELS: Record<DiffMark, (a: string, b: string) => string> = {
+  'only-a': (a) => `Solo en ${a}`,
+  'only-b': (_a, b) => `Solo en ${b}`,
+  version: () => 'Versión distinta',
+  replicas: () => 'Réplicas distintas',
+  mixed: () => 'Versión + réplicas',
+  same: () => 'Igual en ambos',
+};
+const markOf = (kinds: DiffKind[]): DiffMark => (kinds.length === 0 ? 'same' : kinds.length > 1 ? 'mixed' : kinds[0]);
 
 /** Lo que se dibuja de una vista, antes de colocarlo. */
 export interface Scene {
@@ -309,11 +334,49 @@ function deliveryScene(doc: PlatformDocument, view: PlatformView): Scene {
   return scene;
 }
 
+/**
+ * Comparación de dos entornos: un grupo por entorno (A a la izquierda, B a la derecha) con sus servicios (instancias) y recursos, y
+ * una línea entre cada par que se corresponde. Lo que difiere se marca con color e insignia: solo en A, solo en B, versión distinta
+ * o réplicas distintas.
+ */
+function compareScene(doc: PlatformDocument, view: PlatformView): Scene {
+  const scene: Scene = { nodes: new Map(), groups: new Map(), edges: new Map() };
+  const comparison = compareEnvironments(doc, view.compareIds![0], view.compareIds![1]);
+  const names = [comparison.a.name, comparison.b.name] as const;
+  const groupOf = (side: 0 | 1): string => `c:${side === 0 ? comparison.a.id : comparison.b.id}`;
+  scene.groups.set(groupOf(0), { label: `A · ${names[0]}`, elementId: comparison.a.id });
+  scene.groups.set(groupOf(1), { label: `B · ${names[1]}`, elementId: comparison.b.id });
+  const paint = (style: SceneNode, mark: DiffMark): SceneNode =>
+    mark === 'same' ? { ...style, diff: mark, badge: DIFF_LABELS.same(...names) } : { ...style, diff: mark, fill: DIFF_COLORS[mark], stroke: '#0f172a', badge: DIFF_LABELS[mark](...names), dashed: mark === 'only-a' || mark === 'only-b' };
+  const detail = (p: Presence): string => join(`${p.replicas} ${p.replicas === 1 ? 'réplica' : 'réplicas'}`, p.versions.length > 0 && versionText(p.versions));
+  const edge = (id: string, source: string, target: string, mark: DiffMark, label?: string): void =>
+    void scene.edges.set(id, { kind: 'flow', source, target, label, stroke: mark === 'same' ? '#94a3b8' : DIFF_COLORS[mark], dashed: mark === 'same', width: mark === 'same' ? 1.5 : 2.5 });
+  for (const d of comparison.services) {
+    const mark = markOf(d.kinds);
+    const ids = ([d.a, d.b] as const).map((p) => (p ? `i:${p.deploymentIds[0]}` : undefined));
+    ([d.a, d.b] as const).forEach((p, side) => {
+      if (p) scene.nodes.set(ids[side]!, { ...paint({ ...serviceNode(d.service, [detail(p)]) }, mark), groupId: groupOf(side as 0 | 1) });
+    });
+    if (ids[0] && ids[1]) {
+      const changes = [d.kinds.includes('version') && `${versionText(d.a!.versions)} → ${versionText(d.b!.versions)}`, d.kinds.includes('replicas') && `${d.a!.replicas} → ${d.b!.replicas} réplicas`].filter(Boolean).join(' · ');
+      edge(`k:${d.service.id}`, ids[0], ids[1], mark, changes || undefined);
+    }
+  }
+  comparison.resources.forEach((r, i) => {
+    const mark = markOf(r.kinds);
+    ([r.a, r.b] as const).forEach((res, side) => {
+      if (res) scene.nodes.set(res.id, { ...paint(resourceNode(res), mark), groupId: groupOf(side as 0 | 1) });
+    });
+    if (r.a && r.b) edge(`k:r${i}`, r.a.id, r.b.id, mark, r.kinds.includes('version') ? `v${r.a.version ?? '?'} → v${r.b.version ?? '?'}` : undefined);
+  });
+  return scene;
+}
+
 const sizeOf = (style: SvgNodeStyle): { width: number; height: number } => ({ width: widthFor(style.lines, style.shape === 'pill' || style.shape === 'pipe' ? 170 : 180), height: NODE_HEIGHT });
 
 /** Lo que hay que dibujar en una vista (nodos, grupos y flechas), sin coordenadas. */
 export function buildScene(doc: PlatformDocument, view: PlatformView): Scene {
-  return view.type === 'environment' ? environmentScene(doc, view) : view.type === 'delivery' ? deliveryScene(doc, view) : view.type === 'costs' ? costScene(doc, view) : flatScene(doc, view);
+  return view.type === 'environment' ? environmentScene(doc, view) : view.type === 'delivery' ? deliveryScene(doc, view) : view.type === 'costs' ? costScene(doc, view) : view.type === 'compare' ? compareScene(doc, view) : flatScene(doc, view);
 }
 
 /** Coloca una vista con el autolayout genérico del kernel. */

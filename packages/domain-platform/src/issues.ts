@@ -127,6 +127,22 @@ export function analyzePlatform(doc: PlatformDocument): ModuleIssue[] {
     }
   }
 
+  // Producción con menos réplicas que el entorno anterior en el camino (preproducción): suele ser un descuido del escalado.
+  for (const prod of doc.environments.filter((e) => e.kind === 'prod')) {
+    const before = doc.environments.filter((e) => e.kind === 'staging' || e.kind === 'test').sort((x, y) => (x.kind === 'staging' ? 0 : 1) - (y.kind === 'staging' ? 0 : 1))[0];
+    if (!before) continue;
+    for (const s of doc.services) {
+      const count = (environmentId: string): number | undefined => {
+        const mine = doc.deployments.filter((d) => d.serviceId === s.id && d.environmentId === environmentId);
+        return mine.length === 0 ? undefined : mine.reduce((sum, d) => sum + (d.replicas ?? 1), 0);
+      };
+      const [there, here] = [count(before.id), count(prod.id)];
+      if (there !== undefined && here !== undefined && here < there) {
+        add('info', s.id, `${label(at(s.id))} corre en «${prod.name}» con menos réplicas (${here}) que en «${before.name}» (${there}).`);
+      }
+    }
+  }
+
   const inbound = new Set(doc.dependencies.map((d) => d.targetId));
   for (const r of doc.resources) {
     const e = at(r.id);

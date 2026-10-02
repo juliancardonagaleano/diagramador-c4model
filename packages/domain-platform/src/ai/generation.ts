@@ -145,7 +145,7 @@ exposure: "public" (accesible desde Internet), "private" (por defecto) o "isolat
 
 Recursos ("resources"), siempre de un entorno (y, si procede, de una red de ese mismo entorno):
 - "cluster" (Kubernetes, ECS…) y "vm" (máquina virtual) son los ÚNICOS anfitriones donde se despliegan servicios.
-- "database", "cache", "queue" (broker o cola), "storage", "load-balancer", "gateway", "dns", "secret-store", "registry", "other".
+- "database", "cache", "queue" (broker o cola), "storage", "load-balancer", "gateway", "dns", "secret-store", "registry", "region" (región o zona de disponibilidad), "namespace" (espacio de nombres), "certificate" (certificado o dominio), "monitoring" (monitorización o SLO), "other".
 - status: "planned" (prevista), "provisioned" (por defecto) o "decommissioned". iac = true si se gestiona con Terraform/Pulumi.
 - Las bases de datos, cachés, colas y almacenes de secretos van en redes privadas o aisladas, nunca públicas.
 - Un recurso por entorno: la misma base de datos en dev y prod son dos recursos con ids distintos.

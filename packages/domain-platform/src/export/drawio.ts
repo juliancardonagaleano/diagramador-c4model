@@ -1,6 +1,6 @@
 import { drawioShapeStyle, type SvgNodeStyle } from '@iark/kernel';
 import type { PlatformDocument } from '../types';
-import { listViews } from '../views';
+import { findView, listViews } from '../views';
 import { layoutView } from './render';
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
@@ -9,10 +9,13 @@ function nodeStyle(s: SvgNodeStyle): string {
   return `${drawioShapeStyle(s.shape)}whiteSpace=wrap;html=1;fillColor=${s.fill};fontColor=#ffffff;strokeColor=${s.stroke.slice(0, 7)};${s.dashed ? 'dashed=1;' : ''}`;
 }
 
-/** Exporta todas las vistas (topología, un entorno cada una y entrega continua) a un `.drawio`, una página por vista, ya colocadas. */
-export async function toDrawio(doc: PlatformDocument): Promise<string> {
+/**
+ * Exporta todas las vistas (topología, un entorno cada una y entrega continua) a un `.drawio`, una página por vista, ya
+ * colocadas. Con `viewId`, solo esa (p. ej. la comparación `compare:<A>:<B>`, que no está entre las vistas por defecto).
+ */
+export async function toDrawio(doc: PlatformDocument, viewId?: string): Promise<string> {
   const pages: string[] = [];
-  for (const v of listViews(doc)) {
+  for (const v of viewId?.startsWith('compare:') ? [findView(doc, viewId)] : listViews(doc)) {
     const { view, layout, nodes, groups, edges, groupStyles } = await layoutView(doc, v.id);
     const cells: string[] = ['<mxCell id="0"/>', '<mxCell id="1" parent="0"/>'];
     for (const g of layout.groups) {

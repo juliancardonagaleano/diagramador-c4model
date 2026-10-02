@@ -39,6 +39,27 @@ describe('acciones sobre la selección', () => {
     expect(promote.run(noHost, ['i:pedidos-dev'], 'prod')).toMatchObject({ ok: false, reason: expect.stringMatching(/no tiene clúster ni máquina/) });
   });
 
+  it('«Promover a otro entorno» re-apunta las dependencias de recursos al equivalente del entorno destino', () => {
+    const promote = action('promote-environment');
+    const bare = { ...doc, deployments: doc.deployments.filter((d) => d.id !== 'reportes-prod'), dependencies: doc.dependencies.filter((d) => d.id !== 'reportes-db-p') };
+    const result = promote.run(bare, ['i:reportes-dev'], 'prod');
+    if (!result.ok) throw new Error(result.reason);
+    const added = result.document.dependencies.filter((d) => !bare.dependencies.some((x) => x.id === d.id));
+    expect(added).toHaveLength(1);
+    expect(added[0]).toMatchObject({ sourceId: 'reportes', targetId: 'pedidos-db-prod', kind: bare.dependencies.find((d) => d.id === 'reportes-db-d')!.kind });
+    expect(result.document.dependencies.some((d) => d.id === 'reportes-db-d')).toBe(true);
+    expect(valid(result.document)).toBe(true);
+    // Promover de nuevo (o con la dependencia ya declarada) no duplica nada.
+    const again = promote.run(result.document, ['i:reportes-dev'], 'prod');
+    if (!again.ok) throw new Error(again.reason);
+    expect(again.document.dependencies).toHaveLength(result.document.dependencies.length);
+    // Sin recurso equivalente en el destino no se inventa ninguna dependencia.
+    const noDb = { ...bare, resources: bare.resources.filter((r) => r.id !== 'pedidos-db-prod'), dependencies: bare.dependencies.filter((d) => d.targetId !== 'pedidos-db-prod') };
+    const none = promote.run(noDb, ['i:reportes-dev'], 'prod');
+    if (!none.ok) throw new Error(none.reason);
+    expect(none.document.dependencies).toHaveLength(noDb.dependencies.length);
+  });
+
   it('«Duplicar entorno» copia redes, recursos, instancias y las dependencias de los recursos, y añade la etapa a los pipelines', () => {
     const duplicate = action('duplicate-environment');
     expect(duplicate.disabled!(doc, ['tienda-web'])).toMatch(/Selecciona/);

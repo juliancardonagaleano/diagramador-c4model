@@ -1,6 +1,6 @@
 import type { PlatformDocument, ResourceStatus } from '../types';
 import { findView } from '../views';
-import { EXTERNAL_COLOR, RESOURCE_COLORS, SERVICE_COLORS, buildScene, type RenderedEdge, type SceneNode } from './render';
+import { DIFF_COLORS, EXTERNAL_COLOR, RESOURCE_COLORS, SERVICE_COLORS, buildScene, type RenderedEdge, type SceneNode } from './render';
 
 const RESERVED = new Set(['end', 'graph', 'subgraph', 'flowchart', 'class', 'style', 'click', 'default']);
 
@@ -28,7 +28,8 @@ const STATUS_DEFS: Record<Exclude<ResourceStatus, 'provisioned'>, string> = { pl
 function flowNode(n: SceneNode, alias: string): string {
   const [title, ...rest] = n.lines;
   // Del estado (previsto, dado de baja) se ocupa la clase; no va en el texto.
-  const text = `"${esc([title, ...(n.status ? rest.filter((l) => l !== 'previsto' && l !== 'dado de baja') : rest)].join('<br/>'))}"`;
+  // En una comparación, la insignia de la diferencia va en el texto (Mermaid no tiene otra forma de mostrarla).
+  const text = `"${esc([title, ...(n.status ? rest.filter((l) => l !== 'previsto' && l !== 'dado de baja') : rest), ...(n.diff && n.badge ? [n.badge] : [])].join('<br/>'))}"`;
   const shape = n.shape === 'cylinder' ? `[(${text})]` : n.cls === 'queue' ? `([${text}])` : `[${text}]`;
   return `${alias}${shape}:::${n.cls}`;
 }
@@ -80,6 +81,11 @@ export function toMermaid(doc: PlatformDocument, options: { viewId?: string } = 
   for (const status of ['planned', 'decommissioned'] as const) {
     const ids = [...scene.nodes].filter(([, n]) => n.status === status).map(([id]) => alias(id));
     if (ids.length > 0) out.push(`    classDef ${status} ${STATUS_DEFS[status]}`, `    class ${ids.join(',')} ${status}`);
+  }
+  // Comparación de entornos: las diferencias se colorean con una clase por clase de diferencia.
+  for (const [mark, color] of Object.entries(DIFF_COLORS)) {
+    const ids = [...scene.nodes].filter(([, n]) => n.diff === mark).map(([id]) => alias(id));
+    if (ids.length > 0) out.push(`    classDef diff_${mark.replace('-', '_')} fill:${color},stroke:#0f172a,color:#ffffff`, `    class ${ids.join(',')} diff_${mark.replace('-', '_')}`);
   }
   return `${out.join('\n')}\n`;
 }
