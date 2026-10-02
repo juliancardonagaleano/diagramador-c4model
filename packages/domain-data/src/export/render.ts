@@ -72,6 +72,16 @@ function entitySize(a: DataAsset): { width: number; height: number } {
   return { width: Math.min(340, Math.max(180, Math.ceil(widest * 6.6 + 28))), height: Math.max(56, 40 + (lines.length - 1) * 15) };
 }
 
+/** Columnas afectadas de un activo en una vista de impacto de columna: la de partida (●) primero y las demás (▸), con el PII a la vista. */
+export function impactColumnLines(view: DataView, a: DataAsset): string[] {
+  const names = view.column?.byAsset[a.id] ?? [];
+  const start = view.column?.start;
+  return names.map((name) => {
+    const column = (a.columns ?? []).find((c) => c.name === name);
+    return `${start && start.assetId === a.id && start.column === name ? '●' : '▸'} ${name}${column?.type ? `: ${column.type}` : ''}${column?.pii ? ' (PII)' : ''}`;
+  });
+}
+
 /** Línea de gobierno de un activo: datos personales y clasificación. */
 export function governanceLine(a: DataAsset): string {
   return [hasPii(a) ? 'PII' : '', a.classification ? CLASSIFICATION_LABELS[a.classification] : ''].filter(Boolean).join(' · ');
@@ -130,6 +140,10 @@ export async function layoutView(doc: DataDocument, viewId?: string, options: Gr
 
   const assetSize = (a: DataAsset): { width: number; height: number } => {
     if (erd) return entitySize(a);
+    if (view.column?.byAsset[a.id]) {
+      const lines = impactColumnLines(view, a);
+      return { width: widthFor(a.name, lines, 190), height: 56 + lines.length * 16 };
+    }
     const size = SIZES[a.kind];
     return { ...size, width: widthFor(a.name, [a.technology ?? '', governanceLine(a)], size.width) };
   };
@@ -184,6 +198,9 @@ export async function toSvg(doc: DataDocument, viewId?: string): Promise<string>
       if (p) return { fill: PIPELINE_COLOR, stroke: '#0f172a55', lines: [p.name, pipelineLine(p), p.tool ?? ''].filter(Boolean), shape: PIPELINE_SHAPE };
       const a = assets.get(id)!;
       const context = contextIds.has(id);
+      if (view.column?.byAsset[id]) {
+        return { fill: '#ffffff', stroke: KIND_COLORS[a.kind], textColor: '#0f172a', align: 'left', maxLines: MAX_COLUMNS + 2, badge: KIND_LABELS[a.kind], lines: [a.name, ...impactColumnLines(view, a)], dashed: context };
+      }
       if (erd) {
         return { fill: '#ffffff', stroke: KIND_COLORS[a.kind], textColor: '#0f172a', align: 'left', maxLines: MAX_COLUMNS + 2, badge: KIND_LABELS[a.kind], lines: entityLines(a) };
       }

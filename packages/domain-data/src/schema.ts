@@ -52,6 +52,17 @@ export const assetSchema = z.object({
   contractId: idSchema.optional(),
 });
 
+export const columnRefSchema = z.object({
+  assetId: idSchema,
+  column: z.string().min(1, 'El nombre de la columna no puede estar vacío'),
+});
+
+export const mappingSchema = z.object({
+  from: columnRefSchema,
+  to: columnRefSchema,
+  transform: z.string().optional(),
+});
+
 export const pipelineSchema = z.object({
   id: idSchema,
   name: z.string().min(1, 'El nombre no puede estar vacío'),
@@ -63,6 +74,7 @@ export const pipelineSchema = z.object({
   description: z.string().optional(),
   owner: z.string().optional(),
   anonymizes: z.boolean().optional(),
+  mappings: z.array(mappingSchema).optional(),
 });
 
 export const relationSchema = z.object({
@@ -146,6 +158,10 @@ export const dataDocumentSchema = z
       p.outputs.forEach((id, j) => {
         if (!assets.has(id)) issue(['pipelines', i, 'outputs', j], `El pipeline "${p.id}" escribe un activo inexistente: "${id}"`);
         else if (p.inputs.includes(id)) issue(['pipelines', i, 'outputs', j], `El pipeline "${p.id}" no puede leer y escribir el mismo activo: "${id}"`);
+      });
+      (p.mappings ?? []).forEach((m, j) => {
+        if (!p.inputs.includes(m.from.assetId)) issue(['pipelines', i, 'mappings', j, 'from', 'assetId'], `El mapeo del pipeline "${p.id}" parte de "${m.from.assetId}", que no es una de sus entradas`);
+        if (!p.outputs.includes(m.to.assetId)) issue(['pipelines', i, 'mappings', j, 'to', 'assetId'], `El mapeo del pipeline "${p.id}" llega a "${m.to.assetId}", que no es una de sus salidas`);
       });
     });
 

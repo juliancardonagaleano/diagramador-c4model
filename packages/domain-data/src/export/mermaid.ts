@@ -1,5 +1,6 @@
 import { KIND_LABELS, type Cardinality, type DataAsset, type DataDocument, type Pipeline } from '../types';
 import { findView } from '../views';
+import { impactColumnLines } from './render';
 
 const RESERVED = new Set(['end', 'graph', 'subgraph', 'flowchart', 'class', 'style', 'click', 'default']);
 
@@ -18,8 +19,8 @@ function aliasMap(assets: DataAsset[]): Map<string, string> {
 
 const esc = (s: string): string => s.replace(/"/g, "'").replace(/\r?\n/g, ' ');
 
-function flowNode(a: DataAsset, alias: string): string {
-  const text = `"${esc([a.name, a.technology].filter(Boolean).join('<br/>'))}"`;
+function flowNode(a: DataAsset, alias: string, columns: string[] = []): string {
+  const text = `"${esc([a.name, a.technology, ...columns].filter(Boolean).join('<br/>'))}"`;
   if (a.kind === 'database' || a.kind === 'warehouse' || a.kind === 'lake') return `${alias}[(${text})]`;
   if (a.kind === 'stream') return `${alias}([${text}])`;
   return `${alias}[${text}]`;
@@ -84,7 +85,7 @@ export function toMermaid(doc: DataDocument, options: { viewId?: string } = {}):
       out.push(`${pad}subgraph ${aliases.get(a.id)}["${esc(`${KIND_LABELS[a.kind]}: ${a.name}`)}"]`);
       kids.forEach((k) => emit(k, depth + 1));
       out.push(`${pad}end`);
-    } else out.push(`${pad}${flowNode(a, aliases.get(a.id)!)}`);
+    } else out.push(`${pad}${flowNode(a, aliases.get(a.id)!, view.column?.byAsset[a.id] ? impactColumnLines(view, a) : [])}`);
   };
   (byParent.get(undefined) ?? []).forEach((a) => emit(a, 0));
   for (const p of doc.pipelines.filter((x) => view.pipelineIds.includes(x.id))) {

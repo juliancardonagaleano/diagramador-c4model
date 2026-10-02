@@ -1,6 +1,6 @@
 import { inheritance } from './inherit';
-import { traceLineage, type LineageDirection } from './lineage';
-import type { DataDocument } from './types';
+import { columnImpact, formatColumnRef, mappedColumns, parseColumnRef, traceLineage, type LineageDirection } from './lineage';
+import type { ColumnRef, DataDocument } from './types';
 
 export interface DataView {
   /** `lineage`, `erd`, `domain:<id>` o, bajo demanda, `lineage:<activo>`, `upstream:<activo>` y `downstream:<activo>`. */
@@ -13,6 +13,8 @@ export interface DataView {
   contextIds: string[];
   pipelineIds: string[];
   relationIds: string[];
+  /** Solo en las vistas de impacto de columna (`column:<activo>.<columna>`): columna de partida y columnas afectadas de cada activo, de origen a destino. */
+  column?: { start: ColumnRef; byAsset: Record<string, string[]> };
 }
 
 interface Spec {
@@ -105,6 +107,31 @@ export function traceView(doc: DataDocument, assetId: string, direction: Lineage
   });
 }
 
+/** Vista de impacto de una columna: de qué columnas sale (aguas arriba) y qué columnas, activos e informes dependen de ella (aguas abajo). */
+export function columnView(doc: DataDocument, start: ColumnRef): DataView {
+  const asset = doc.assets.find((a) => a.id === start.assetId);
+  if (!asset) throw new Error(`No existe el activo «${start.assetId}».`);
+  const impact = columnImpact(doc, start);
+  const mapped = impact.upstream.length + impact.downstream.length > 0;
+  if (!mapped && !(asset.columns ?? []).some((c) => c.name === start.column)) throw new Error(`El activo «${asset.name}» no tiene la columna «${start.column}».`);
+  const byAsset: Record<string, string[]> = { [start.assetId]: [start.column] };
+  for (const s of [...impact.upstream, ...impact.downstream]) if (!(byAsset[s.assetId] ?? []).includes(s.column)) byAsset[s.assetId] = [...(byAsset[s.assetId] ?? []), s.column];
+  const view = build(doc, {
+    id: `column:${formatColumnRef(start)}`,
+    type: 'trace',
+    title: `Impacto de la columna «${asset.name}.${start.column}»`,
+    focus: new Set(impact.assetIds),
+    pipelineIds: [...new Set([...impact.upstream, ...impact.downstream].map((s) => s.pipelineId))],
+  });
+  return { ...view, column: { start, byAsset } };
+}
+
+/** Vistas de impacto de columna que ofrece el documento: una por columna de origen de algún mapeo (vacío si no hay mapeos). */
+export function columnViews(doc: DataDocument): Array<{ id: string; title: string }> {
+  const names = new Map(doc.assets.map((a) => [a.id, a.name]));
+  return mappedColumns(doc).map((c) => ({ id: `column:${formatColumnRef(c)}`, title: `Impacto de la columna ${names.get(c.assetId) ?? c.assetId}.${c.column}` }));
+}
+
 /** Mapas de calor: el linaje coloreado por clasificación o por datos personales. Solo existen en el lienzo; las exportaciones los dibujan como el linaje. */
 export const HEAT_VIEWS = [
   { id: 'calor:clasificacion', title: 'Mapa de calor: clasificación' },
@@ -128,11 +155,16 @@ export function findView(doc: DataDocument, viewId?: string): DataView {
   }
   const exact = views.find((v) => v.id === viewId);
   if (exact) return exact;
+  if (viewId.startsWith('column:')) {
+    const ref = parseColumnRef(viewId.slice('column:'.length), doc.assets.map((a) => a.id));
+    if (!ref) throw new Error(`La vista «${viewId}» no indica un activo y una columna existentes (column:<activo>.<columna>).`);
+    return columnView(doc, ref);
+  }
   const [prefix, ...rest] = viewId.split(':');
   const id = rest.join(':');
   if (prefix in TRACE_PREFIX && doc.assets.some((a) => a.id === id)) return traceView(doc, id, TRACE_PREFIX[prefix]);
   if (doc.assets.some((a) => a.id === viewId)) return traceView(doc, viewId);
   const domain = views.find((v) => v.id === `domain:${viewId}`);
   if (domain) return domain;
-  throw new Error(`No existe la vista «${viewId}». Vistas disponibles: ${[...views.map((v) => v.id), 'lineage:<activo>', 'upstream:<activo>', 'downstream:<activo>'].join(', ')}.`);
+  throw new Error(`No existe la vista «${viewId}». Vistas disponibles: ${[...views.map((v) => v.id), 'lineage:<activo>', 'upstream:<activo>', 'downstream:<activo>', 'column:<activo>.<columna>'].join(', ')}.`);
 }

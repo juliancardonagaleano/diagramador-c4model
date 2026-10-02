@@ -39,6 +39,14 @@ const generatedAsset = z.object({
   columns: nullable(z.array(generatedColumn)),
 });
 
+const generatedColumnRef = z.object({ assetId: z.string(), column: z.string() });
+
+const generatedMapping = z.object({
+  from: generatedColumnRef,
+  to: generatedColumnRef,
+  transform: nullable(z.string()),
+});
+
 const generatedPipeline = z.object({
   id: z.string(),
   name: z.string(),
@@ -50,6 +58,7 @@ const generatedPipeline = z.object({
   description: nullable(z.string()),
   owner: nullable(z.string()),
   anonymizes: nullable(z.boolean()),
+  mappings: nullable(z.array(generatedMapping)),
 });
 
 const generatedRelation = z.object({
@@ -114,6 +123,11 @@ Pipelines (linaje): cada pipeline lee uno o más activos (inputs) y escribe uno 
   API) o "manual". tool: la herramienta (Airflow, dbt, Debezium…). schedule: la frecuencia si se conoce.
 - Una capa que deriva de otra (bronce → plata → oro) son pipelines encadenados. Un informe o modelo debe tener un
   pipeline que lo escriba. Si un pipeline anonimiza o enmascara datos personales, anonymizes = true.
+- Linaje de columnas (opcional, solo si la descripción dice de qué columna sale cada una): "mappings" lista, por pipeline,
+  {from: {assetId, column}, to: {assetId, column}, transform}. from.assetId debe ser una de las entradas del pipeline y
+  to.assetId una de sus salidas; las columnas deben existir en "columns" de esos activos (un informe o modelo sin columnas
+  admite cualquier nombre de indicador). transform describe el cálculo ("copia", "suma por mes", "sha256"); null si no se sabe.
+  Si no hay detalle de columnas, deja mappings en null.
 
 Modelo entidad-relación: si la descripción detalla entidades, dales columns (name, type, keys "pk"/"fk"/"uk") y une las
 tablas con "relations": cardinality "1:N" significa que una fila del origen se relaciona con varias del destino. Las
@@ -155,6 +169,7 @@ export function toGenerated(doc: DataDocument): GeneratedData {
       description: n(p.description),
       owner: n(p.owner),
       anonymizes: n(p.anonymizes),
+      mappings: p.mappings ? p.mappings.map((m) => ({ from: { ...m.from }, to: { ...m.to }, transform: n(m.transform) })) : null,
     })),
     relations: doc.relations.map((r) => ({ id: r.id, sourceId: r.sourceId, targetId: r.targetId, cardinality: r.cardinality, description: n(r.description) })),
   };

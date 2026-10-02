@@ -100,4 +100,30 @@ test.describe('datos: lienzo con gobierno, ERD y contratos', () => {
     await expect(page.getByTestId('attachment-diagnostics')).toContainText('Tipo lógico desconocido');
     await shot(page, 'contrato-de-datos');
   });
+
+  test('el linaje de columnas se edita en el pipeline y la vista de impacto de columna llega hasta el informe', async ({ page }) => {
+    const errors = await open(page);
+    await page.getByTestId('node-pipeline:publica-panel').click();
+    const mappings = page.getByTestId('inspector').getByLabel('Linaje de columnas (una por línea)');
+    await expect(mappings).toHaveValue(/dwh-fact-ventas\.importe -> panel-ventas\.Ventas totales : suma por mes/);
+    await mappings.fill('dwh-fact-ventas.importe -> panel-ventas.Ventas totales : suma por mes\ndwh-fact-ventas.fecha -> panel-ventas.Mes\ndwh-fact-ventas.venta_key -> panel-ventas.Pedidos : cuenta');
+    await mappings.blur();
+    expect(await docText(page)).toContain('"column": "Pedidos"');
+    await page.getByTestId('node-pipeline:publica-panel').click();
+    await mappings.fill('esto no es un mapeo');
+    await mappings.blur();
+    await expect(page.locator('.wb-toast')).toContainText('Línea de linaje no válida');
+    await expect(page.locator('.wb-toast')).toHaveCount(0, { timeout: 8000 });
+    await page.keyboard.press('Escape');
+
+    await page.getByTestId('canvas-view').selectOption('column:erp-pedidos.total');
+    await expect(page.getByTestId('node-erp-pedidos')).toContainText('● total: numeric');
+    await expect(page.getByTestId('node-silver-ventas')).toContainText('▸ importe: numeric');
+    await expect(page.getByTestId('node-panel-ventas')).toContainText('▸ Ventas totales');
+    await expect(page.getByTestId('node-modelo-fuga')).toContainText('▸ gasto_total');
+    await expect(page.getByTestId('node-crm-clientes')).toHaveCount(0);
+    await page.waitForTimeout(600);
+    await shot(page, 'linaje-columna');
+    expect(errors).toEqual([]);
+  });
 });
