@@ -1,6 +1,21 @@
-import { uniqueId, type EdgeNotation, type EditorGraph, type EditorNode, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
-import { applicationsByCapability, capabilityChildren } from './graph';
-import { CONTEXT_COLOR, ELEMENT_SHAPES, IMPORTANCE_STROKE, KIND_COLORS, LIFECYCLE_STROKE, MATURITY_COLORS, MATURITY_UNKNOWN, layoutCapabilityMap } from './export/render';
+import { uniqueId, type EdgeNotation, type EditorAction, type EditorGraph, type EditorNode, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
+import { capabilityChildren } from './graph';
+import {
+  CONTEXT_COLOR,
+  EDGE_STYLES,
+  ELEMENT_ICONS,
+  ELEMENT_SHAPES,
+  IMPORTANCE_STROKE,
+  KIND_COLORS,
+  KIND_STROKES,
+  LIFECYCLE_STROKE,
+  capabilityLegend,
+  capabilityPaint,
+  formatCost,
+  layoutCapabilityMap,
+  layoutRoadmap,
+  supportingApplications,
+} from './export/render';
 import {
   CRITICALITIES,
   CRITICALITY_LABELS,
@@ -14,6 +29,8 @@ import {
   RELATION_KINDS,
   RELATION_LABELS,
   RELATION_RULES,
+  STRATEGIES,
+  STRATEGY_LABELS,
   TECHNOLOGY_KINDS,
   TECHNOLOGY_KIND_LABELS,
   drawnEnds,
@@ -21,7 +38,6 @@ import {
   lifecycleOf,
   type Application,
   type Capability,
-  type DrawnKind,
   type Element,
   type ElementKind,
   type EnterpriseDocument,
@@ -30,45 +46,60 @@ import {
   type Relation,
   type RelationKind,
   type Technology,
+  type Unit,
 } from './types';
-import { findView } from './views';
+import { findView, roadmapColumns } from './views';
 
 /**
- * Editor interactivo de arquitectura empresarial. Sigue la notación de capas de ArchiMate: capacidades como recuadros
- * redondeados (el mapa las anida en cuadrícula, con el color de la madurez y el borde de la importancia), procesos como
- * flechas anchas, aplicaciones como cajas y tecnología como barras. Las unidades son responsables: no se dibujan, se
- * eligen en las propiedades de cada elemento.
+ * Editor interactivo de arquitectura empresarial. Sigue la notación de capas de ArchiMate: negocio en amarillo
+ * (capacidades como recuadros redondeados, procesos como flechas anchas), aplicaciones en azul (cajas) y tecnología en
+ * verde (barras), cada una con el icono de su tipo en la esquina. El mapa de capacidades las anida en cuadrícula, las
+ * colorea según el criterio elegido y trae su leyenda. Las unidades son la organización: responsables de los elementos
+ * (se eligen en sus propiedades) y, si se quiere, ejecutoras de un proceso (relación «asignación»).
  */
-const node = (kind: DrawnKind, glyph: string, width: number, height: number): NodeNotation => ({
+const node = (kind: ElementKind, glyph: string, width: number, height: number): NodeNotation => ({
   kind,
   label: KIND_LABELS[kind],
   glyph,
   shape: ELEMENT_SHAPES[kind],
   fill: KIND_COLORS[kind],
+  stroke: KIND_STROKES[kind],
   width,
   height,
+  icon: ELEMENT_ICONS[kind],
 });
+
+/** Las columnas de la hoja de ruta no se añaden desde la paleta: salen de las fechas y el ciclo de vida. */
+const PERIOD_NOTATION: NodeNotation = { kind: 'period', label: 'Periodo', glyph: '◷', shape: 'rect', fill: '#64748b', width: 232, height: 100, addable: false };
 
 const NODE_KIND_NOTATION: NodeNotation[] = [
   node('capability', '◆', 210, 78),
   node('process', '➔', 210, 70),
   node('application', '▣', 210, 82),
   node('technology', '▤', 210, 78),
+  node('unit', '☻', 190, 64),
+  PERIOD_NOTATION,
 ];
 
-const EDGE_COLOR = '#475569';
-const EDGE_KIND_NOTATION: EdgeNotation[] = [
-  { kind: 'supports', label: RELATION_LABELS.supports, stroke: EDGE_COLOR, line: 'solid', width: 1.5 },
-  { kind: 'realizes', label: RELATION_LABELS.realizes, stroke: KIND_COLORS.process, line: 'solid', width: 1.5 },
-  { kind: 'runs-on', label: RELATION_LABELS['runs-on'], stroke: KIND_COLORS.technology, line: 'solid', width: 1.5 },
-  { kind: 'depends-on', label: RELATION_LABELS['depends-on'], stroke: EDGE_COLOR, line: 'dashed', width: 1.5 },
-];
+const EDGE_KIND_NOTATION: EdgeNotation[] = RELATION_KINDS.map((kind) => {
+  const style = EDGE_STYLES[kind];
+  return {
+    kind,
+    label: RELATION_LABELS[kind],
+    stroke: style.stroke,
+    line: style.dashed ? 'dashed' : 'solid',
+    width: style.width ?? 1.5,
+    ...(style.tail ? { tail: style.tail } : {}),
+    ...(style.head === 'none' ? { arrowEnd: false } : style.head === 'open' ? { head: 'open' as const } : {}),
+  };
+});
 
 const options = <T extends string>(values: readonly T[], labels: Record<T, string>): Array<{ value: string; label: string }> => values.map((value) => ({ value, label: labels[value] }));
 const MATURITY_OPTIONS = Array.from({ length: MATURITY_MAX - MATURITY_MIN + 1 }, (_, i) => String(MATURITY_MIN + i)).map((value) => ({ value, label: `${value}/5` }));
 
 const REF_FIELD: FieldSpec = { key: 'ref', label: 'Referencia (URN)', type: 'text', hint: 'urn:iark:<módulo>:<id>' };
 const TAGS_FIELD: FieldSpec = { key: 'tags', label: 'Etiquetas', type: 'list' };
+const END_OF_LIFE = /^\d{4}-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?$/;
 
 function nodeFields(kind: string, doc: EnterpriseDocument): FieldSpec[] {
   const owner: FieldSpec = { key: 'ownerId', label: 'Unidad responsable', type: 'select', options: doc.units.map((u) => ({ value: u.id, label: u.name })), allowEmpty: true };
@@ -78,6 +109,12 @@ function nodeFields(kind: string, doc: EnterpriseDocument): FieldSpec[] {
     { key: 'description', label: 'Descripción', type: 'longtext' },
   ];
   switch (kind) {
+    case 'unit':
+      return [
+        ...common,
+        { key: 'parentId', label: 'Unidad padre', type: 'select', options: doc.units.map((u) => ({ value: u.id, label: u.name })), allowEmpty: true },
+        { key: 'external', label: 'Externa (tercero)', type: 'boolean' },
+      ];
     case 'capability':
       return [
         ...common,
@@ -97,6 +134,10 @@ function nodeFields(kind: string, doc: EnterpriseDocument): FieldSpec[] {
         owner,
         lifecycle,
         { key: 'criticality', label: 'Criticidad', type: 'select', options: options(CRITICALITIES, CRITICALITY_LABELS), allowEmpty: true },
+        { key: 'strategy', label: 'Estrategia de modernización', type: 'select', options: options(STRATEGIES, STRATEGY_LABELS), allowEmpty: true, hint: 'conservar, migrar, reemplazar o retirar' },
+        { key: 'annualCost', label: 'Coste anual', type: 'number', min: 0, step: 1000, hint: 'licencias, soporte y operación' },
+        { key: 'users', label: 'Usuarios', type: 'number', min: 0, step: 1 },
+        { key: 'endOfLife', label: 'Fin de soporte o retirada', type: 'text', hint: '2027-06 o 2027-06-30' },
         { key: 'external', label: 'Externa (SaaS o de terceros)', type: 'boolean' },
         REF_FIELD,
         TAGS_FIELD,
@@ -112,6 +153,8 @@ function nodeFields(kind: string, doc: EnterpriseDocument): FieldSpec[] {
         REF_FIELD,
         TAGS_FIELD,
       ];
+    case 'period':
+      return [];
     default:
       return common;
   }
@@ -123,12 +166,14 @@ const EDGE_FIELDS: FieldSpec[] = [
 ];
 
 const PATCHABLE: Record<ElementKind, string[]> = {
-  unit: ['name', 'description', 'external'],
+  unit: ['name', 'description', 'parentId', 'external'],
   capability: ['name', 'description', 'parentId', 'ownerId', 'importance', 'maturity', 'tags'],
   process: ['name', 'description', 'ownerId', 'tags'],
-  application: ['name', 'description', 'technology', 'vendor', 'ownerId', 'lifecycle', 'criticality', 'external', 'ref', 'tags'],
+  application: ['name', 'description', 'technology', 'vendor', 'ownerId', 'lifecycle', 'criticality', 'strategy', 'annualCost', 'users', 'endOfLife', 'external', 'ref', 'tags'],
   technology: ['name', 'description', 'kind', 'version', 'ownerId', 'lifecycle', 'endOfLife', 'ref', 'tags'],
 };
+
+const NUMERIC = new Set(['maturity', 'annualCost', 'users']);
 
 const clean = (value: unknown): unknown => {
   if (value === '' || value === null || value === false || (Array.isArray(value) && value.length === 0)) return undefined;
@@ -140,11 +185,26 @@ function patchObject<T extends object>(target: T, patch: Record<string, unknown>
   for (const key of allowed) {
     if (!(key in patch)) continue;
     let value = clean(patch[key]);
-    if (key === 'maturity' && value !== undefined) value = Number(value);
+    if (NUMERIC.has(key) && value !== undefined) value = Number(value);
     if (value === undefined) delete next[key];
     else next[key] = value;
   }
   return next as T;
+}
+
+/** Motivo por el que el valor de un campo numérico o de fecha no vale, o `undefined`. */
+function invalidValue(patch: Record<string, unknown>): string | undefined {
+  for (const key of ['maturity', 'annualCost', 'users']) {
+    const raw = clean(patch[key]);
+    if (raw === undefined) continue;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return `${key === 'annualCost' ? 'El coste anual' : key === 'users' ? 'Los usuarios' : 'La madurez'} tiene que ser un número.`;
+    if (key !== 'maturity' && n < 0) return `${key === 'annualCost' ? 'El coste anual' : 'Los usuarios'} no puede ser negativo.`;
+    if (key === 'users' && !Number.isInteger(n)) return 'Los usuarios son un número entero.';
+  }
+  const end = clean(patch.endOfLife);
+  if (typeof end === 'string' && !END_OF_LIFE.test(end)) return 'El fin de soporte debe tener la forma AAAA-MM o AAAA-MM-DD.';
+  return undefined;
 }
 
 /** Orientación real (origen → destino del modelo) de una relación `kind` entre dos elementos, aceptando ambos sentidos del arrastre. */
@@ -171,6 +231,21 @@ function capabilitySubtree(doc: EnterpriseDocument, id: string): Set<string> {
   return ids;
 }
 
+/** Ids de una unidad y de todas las que cuelgan de ella. */
+function unitSubtree(doc: EnterpriseDocument, id: string): Set<string> {
+  const ids = new Set([id]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const u of doc.units) {
+      if (u.parentId && ids.has(u.parentId) && !ids.has(u.id)) {
+        ids.add(u.id);
+        grew = true;
+      }
+    }
+  }
+  return ids;
+}
+
 const relationLabel = (r: Relation): string | undefined => r.description;
 
 /** Segunda línea de un elemento en las vistas de relaciones: lo que lo caracteriza (tecnología, responsable, clase). */
@@ -190,27 +265,37 @@ function sublabelOf(e: Element, doc: EnterpriseDocument): string | undefined {
       const t = e.item as Technology;
       return [TECHNOLOGY_KIND_LABELS[t.kind ?? 'platform'], t.version].filter(Boolean).join(' ');
     }
+    case 'unit': {
+      const u = e.item as Unit;
+      return u.external ? 'externa' : doc.units.find((p) => p.id === u.parentId)?.name;
+    }
     default:
       return undefined;
   }
 }
 
-function capabilityMap(doc: EnterpriseDocument): EditorGraph {
+function capabilityMap(doc: EnterpriseDocument, viewId: string | undefined): EditorGraph {
+  const view = findView(doc, viewId ?? 'capabilities');
+  const mode = view.colorBy ?? 'maturity';
   const children = capabilityChildren(doc);
-  const apps = applicationsByCapability(doc);
+  const apps = supportingApplications(doc);
   return {
+    legend: capabilityLegend(mode),
     nodes: doc.capabilities.map((c): EditorNode => {
       const group = children.has(c.id);
-      const count = apps.get(c.id)?.size ?? 0;
+      const supporting = apps.get(c.id) ?? [];
+      const count = supporting.length;
+      const paint = capabilityPaint(c, mode, supporting);
       return {
         id: c.id,
         kind: 'capability',
         label: c.name,
         parentId: c.parentId,
         sublabel: group ? undefined : [c.importance ? IMPORTANCE_LABELS[c.importance] : undefined, count === 0 ? 'sin aplicación' : `${count} ${count === 1 ? 'aplicación' : 'aplicaciones'}`].filter(Boolean).join(' · '),
-        badges: c.maturity ? [`madurez ${c.maturity}/5`] : undefined,
-        fill: group ? undefined : c.maturity ? MATURITY_COLORS[c.maturity - 1] : MATURITY_UNKNOWN,
-        stroke: group ? undefined : c.importance ? IMPORTANCE_STROKE[c.importance] : '#868e96',
+        badges: !group && paint.value ? [paint.value] : undefined,
+        fill: group ? undefined : paint.fill,
+        // El título de una capacidad con hijas se dibuja con el color de su borde: un amarillo oscuro que se lea sobre el lienzo.
+        stroke: group ? '#a07800' : c.importance ? IMPORTANCE_STROKE[c.importance] : '#868e96',
         dashed: !group && count === 0,
       };
     }),
@@ -218,38 +303,158 @@ function capabilityMap(doc: EnterpriseDocument): EditorGraph {
   };
 }
 
+/** Nodo de un elemento en las vistas de relaciones y en la hoja de ruta. */
+function elementNode(e: Element, doc: EnterpriseDocument, context: boolean, parentId?: string): EditorNode {
+  const life = lifecycleOf(e.item as { lifecycle?: Lifecycle });
+  const app = e.kind === 'application' ? (e.item as Application) : undefined;
+  // El coste y los usuarios van junto a la pila (las insignias no caben todas sobre el nodo); la fecha de una aplicación es el título de su columna.
+  const facts = app ? [app.annualCost !== undefined ? `${formatCost(app.annualCost)}/año` : undefined, app.users !== undefined ? `${app.users} usuarios` : undefined].filter((x): x is string => !!x) : [];
+  const endOfLife = e.kind === 'technology' ? (e.item as Technology).endOfLife : undefined;
+  const badges = [
+    app?.criticality ? `criticidad ${CRITICALITY_LABELS[app.criticality]}` : undefined,
+    life !== 'active' ? LIFECYCLE_LABELS[life] : undefined,
+    app?.strategy ? `estrategia ${STRATEGY_LABELS[app.strategy]}` : undefined,
+    endOfLife ? `soporte hasta ${endOfLife}` : undefined,
+  ].filter((b): b is string => !!b);
+  return {
+    id: e.id,
+    kind: e.kind,
+    label: e.name,
+    sublabel: [sublabelOf(e, doc), ...facts].filter(Boolean).join(' · ') || undefined,
+    parentId,
+    ref: (e.item as { ref?: string }).ref,
+    badges: badges.length > 0 ? badges : undefined,
+    fill: context ? CONTEXT_COLOR : undefined,
+    stroke: LIFECYCLE_STROKE[life],
+    dashed: context || life === 'retired' || app?.external === true,
+  };
+}
+
+/** Hoja de ruta: una columna (grupo) por periodo con las aplicaciones y la tecnología que salen o cambian. */
+function roadmap(doc: EnterpriseDocument): EditorGraph {
+  const all = indexElements(doc);
+  const columns = roadmapColumns(doc);
+  return {
+    nodes: columns.flatMap((c) => [
+      { id: c.id, kind: 'period', label: c.title },
+      ...c.elementIds.map((id) => elementNode(all.get(id)!, doc, false, c.id)),
+    ]),
+    edges: [],
+  };
+}
+
+// --- Acciones ---------------------------------------------------------------------------------------------------------
+
+const trimmed = (value: string | undefined): string => (value ?? '').trim();
+
+/** Elementos con responsable (no unidades ni columnas) entre los ids dados. */
+const ownable = (doc: EnterpriseDocument, ids: string[]): Element[] => {
+  const all = indexElements(doc);
+  return ids.flatMap((id) => {
+    const e = all.get(id);
+    return e && e.kind !== 'unit' ? [e] : [];
+  });
+};
+
+const setOwner = (doc: EnterpriseDocument, ids: Set<string>, ownerId: string): EnterpriseDocument => {
+  const apply = <T extends { id: string }>(items: T[]): T[] => items.map((x) => (ids.has(x.id) ? { ...x, ownerId } : x));
+  return { ...doc, capabilities: apply(doc.capabilities), processes: apply(doc.processes), applications: apply(doc.applications), technologies: apply(doc.technologies) };
+};
+
+const ACTIONS: Array<EditorAction<EnterpriseDocument>> = [
+  {
+    id: 'group-by-unit',
+    label: 'Agrupar por unidad…',
+    hint: 'Pone a una unidad (la crea si no existe) como responsable de los elementos seleccionados: pasan a su vista «Unidad»',
+    needs: 'many',
+    prompt: {
+      label: 'Unidad responsable',
+      placeholder: 'Logística',
+      initial: (doc, ids) => {
+        const counts = new Map<string, number>();
+        for (const e of ownable(doc, ids)) {
+          const owner = (e.item as { ownerId?: string }).ownerId;
+          const name = doc.units.find((u) => u.id === owner)?.name;
+          if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+        }
+        return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+      },
+      suggestions: (doc) => doc.units.map((u) => u.name),
+    },
+    disabled: (doc, ids) => (ownable(doc, ids).length === 0 ? 'Selecciona capacidades, procesos, aplicaciones o tecnología.' : undefined),
+    run(doc, ids, input) {
+      const name = trimmed(input);
+      if (!name) return { ok: false, reason: 'Indica la unidad responsable.' };
+      const targets = ownable(doc, ids);
+      if (targets.length === 0) return { ok: false, reason: 'Selecciona capacidades, procesos, aplicaciones o tecnología.' };
+      const existing = doc.units.find((u) => u.id === name || u.name.toLowerCase() === name.toLowerCase());
+      const unit: Unit = existing ?? { id: uniqueId(name, indexElements(doc).keys()), name };
+      const next = { ...doc, units: existing ? doc.units : [...doc.units, unit] };
+      return { ok: true, id: unit.id, document: setOwner(next, new Set(targets.map((e) => e.id)), unit.id) };
+    },
+  },
+  {
+    id: 'replace-application',
+    label: 'Reemplazar aplicación…',
+    hint: 'Crea la aplicación que sustituye a la seleccionada: hereda lo que soporta, pasa a «prevista» y la antigua queda «en retirada»',
+    needs: 'one',
+    prompt: { label: 'Nombre de la aplicación nueva', placeholder: 'WMS nuevo' },
+    disabled: (doc, ids) => {
+      const app = doc.applications.find((a) => a.id === ids[0]);
+      if (!app) return 'Selecciona una aplicación.';
+      return lifecycleOf(app) === 'retired' ? 'La aplicación ya está retirada.' : undefined;
+    },
+    run(doc, ids, input) {
+      const old = doc.applications.find((a) => a.id === ids[0]);
+      if (!old) return { ok: false, reason: 'Selecciona una aplicación.' };
+      const name = trimmed(input);
+      if (!name) return { ok: false, reason: 'Indica el nombre de la aplicación nueva.' };
+      const all = indexElements(doc);
+      const id = uniqueId(name, all.keys());
+      const created: Application = {
+        id,
+        name,
+        lifecycle: 'planned',
+        ...(old.ownerId ? { ownerId: old.ownerId } : {}),
+        ...(old.criticality ? { criticality: old.criticality } : {}),
+        ...(old.users !== undefined ? { users: old.users } : {}),
+      };
+      const taken = new Set(doc.relations.map((r) => r.id));
+      const inherited: Relation[] = doc.relations
+        .filter((r) => r.kind === 'supports' && r.sourceId === old.id)
+        .map((r) => {
+          const rid = uniqueId(`${id}--supports--${r.targetId}`, taken);
+          taken.add(rid);
+          return { id: rid, kind: 'supports', sourceId: id, targetId: r.targetId };
+        });
+      return {
+        ok: true,
+        id,
+        document: {
+          ...doc,
+          applications: [...doc.applications.map((a) => (a.id === old.id ? { ...a, ...(lifecycleOf(a) === 'active' ? { lifecycle: 'sunset' as const } : {}), strategy: 'replace' as const } : a)), created],
+          relations: [...doc.relations, ...inherited],
+        },
+      };
+    },
+  },
+];
+
 export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
   nodeKinds: NODE_KIND_NOTATION,
   edgeKinds: EDGE_KIND_NOTATION,
   defaultEdgeKind: 'supports',
+  actions: ACTIONS,
 
   project(doc, viewId) {
     const view = findView(doc, viewId);
-    if (view.type === 'capabilities') return capabilityMap(doc);
+    if (view.type === 'capabilities') return capabilityMap(doc, view.id);
+    if (view.type === 'roadmap') return roadmap(doc);
     const all = indexElements(doc);
     const context = new Set(view.contextIds);
     const nodes = view.elementIds.flatMap((id): EditorNode[] => {
       const e = all.get(id);
-      if (!e || e.kind === 'unit') return [];
-      const life = lifecycleOf(e.item as { lifecycle?: Lifecycle });
-      const badges = [
-        e.kind === 'application' && (e.item as Application).criticality ? `criticidad ${CRITICALITY_LABELS[(e.item as Application).criticality!]}` : undefined,
-        life !== 'active' ? LIFECYCLE_LABELS[life] : undefined,
-        e.kind === 'technology' && (e.item as Technology).endOfLife ? `soporte hasta ${(e.item as Technology).endOfLife}` : undefined,
-      ].filter((b): b is string => !!b);
-      return [
-        {
-          id: e.id,
-          kind: e.kind,
-          label: e.name,
-          sublabel: sublabelOf(e, doc),
-          ref: (e.item as { ref?: string }).ref,
-          badges: badges.length > 0 ? badges : undefined,
-          fill: context.has(e.id) ? CONTEXT_COLOR : undefined,
-          stroke: LIFECYCLE_STROKE[life],
-          dashed: context.has(e.id) || life === 'retired' || (e.kind === 'application' && (e.item as Application).external === true),
-        },
-      ];
+      return e ? [elementNode(e, doc, context.has(e.id))] : [];
     });
     const shown = new Set(view.relationIds);
     return {
@@ -264,7 +469,9 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
   },
 
   layout(doc, viewId) {
-    return findView(doc, viewId).type === 'capabilities' ? layoutCapabilityMap(doc) : undefined;
+    const view = findView(doc, viewId);
+    if (view.type === 'capabilities') return layoutCapabilityMap(doc);
+    return view.type === 'roadmap' ? layoutRoadmap(doc).layout : undefined;
   },
 
   fields: (target, doc) => (target.type === 'node' ? nodeFields(target.kind, doc) : EDGE_FIELDS),
@@ -278,16 +485,19 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
     }
     const r = doc.relations.find((x) => x.id === id);
     if (r) return { type: 'edge', kind: r.kind, values: { ...r } };
+    const column = id.startsWith('roadmap:') ? roadmapColumns(doc).find((c) => c.id === id) : undefined;
+    if (column) return { type: 'node', kind: 'period', values: { name: column.title } };
     return undefined;
   },
 
   addNode(doc, kind, name, parentId) {
-    const drawn: readonly string[] = ['capability', 'process', 'application', 'technology'];
+    const drawn: readonly string[] = ['capability', 'process', 'application', 'technology', 'unit'];
     if (!drawn.includes(kind)) return { ok: false, reason: `Tipo de elemento desconocido: ${kind}` };
-    const k = kind as DrawnKind;
+    const k = kind as Exclude<ElementKind, never>;
     const id = uniqueId(name, indexElements(doc).keys());
     const key = collection(k);
-    const parent = k === 'capability' && parentId ? doc.capabilities.find((c) => c.id === parentId) : undefined;
+    const parentList = k === 'unit' ? doc.units : k === 'capability' ? doc.capabilities : [];
+    const parent = parentId ? parentList.find((c) => c.id === parentId) : undefined;
     const created = { id, name, ...(parent ? { parentId: parent.id } : {}) };
     return { ok: true, id, document: { ...doc, [key]: [...(doc[key] as unknown[]), created] } };
   },
@@ -308,10 +518,16 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
     const e = all.get(id);
     if (e) {
       if (typeof patch.name === 'string' && patch.name.trim() === '') return { ok: false, reason: 'El nombre no puede estar vacío.' };
+      const invalid = invalidValue(patch);
+      if (invalid) return { ok: false, reason: invalid };
       if (typeof patch.ownerId === 'string' && patch.ownerId !== '' && all.get(patch.ownerId)?.kind !== 'unit') return { ok: false, reason: 'El responsable debe ser una unidad.' };
       if (e.kind === 'capability' && typeof patch.parentId === 'string' && patch.parentId !== '') {
         if (all.get(patch.parentId)?.kind !== 'capability') return { ok: false, reason: 'La capacidad padre debe ser otra capacidad.' };
         if (capabilitySubtree(doc, id).has(patch.parentId)) return { ok: false, reason: 'Una capacidad no puede colgar de sí misma ni de una de sus hijas.' };
+      }
+      if (e.kind === 'unit' && typeof patch.parentId === 'string' && patch.parentId !== '') {
+        if (all.get(patch.parentId)?.kind !== 'unit') return { ok: false, reason: 'La unidad padre debe ser otra unidad.' };
+        if (unitSubtree(doc, id).has(patch.parentId)) return { ok: false, reason: 'Una unidad no puede colgar de sí misma ni de una de sus subunidades.' };
       }
       const key = collection(e.kind);
       return { ok: true, id, document: { ...doc, [key]: (doc[key] as Array<{ id: string }>).map((x) => (x.id === id ? patchObject(x, patch, PATCHABLE[e.kind]) : x)) } };
@@ -333,12 +549,16 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
     const e = indexElements(doc).get(id);
     if (e) {
       const gone = e.kind === 'capability' ? capabilitySubtree(doc, id) : new Set([id]);
-      const strip = <T extends { id: string; ownerId?: string }>(items: T[]): T[] => items.filter((x) => !gone.has(x.id));
+      const strip = <T extends { id: string; ownerId?: string }>(items: T[]): T[] => items.filter((x) => !gone.has(x.id)).map((x) => (x.ownerId && gone.has(x.ownerId) ? withoutOwner(x) : x));
+      const withoutOwner = <T extends { ownerId?: string }>(x: T): T => {
+        const { ownerId: _gone, ...rest } = x;
+        return rest as T;
+      };
       return {
         ok: true,
         document: {
           ...doc,
-          units: doc.units.filter((u) => !gone.has(u.id)),
+          units: doc.units.filter((u) => !gone.has(u.id)).map((u) => (u.parentId && gone.has(u.parentId) ? (({ parentId: _p, ...rest }) => rest)(u) : u)),
           capabilities: strip(doc.capabilities),
           processes: strip(doc.processes),
           applications: strip(doc.applications),
@@ -358,7 +578,6 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
     const s = all.get(sourceId);
     const t = all.get(targetId);
     if (!s || !t) return 'El origen o el destino no existe.';
-    if (s.kind === 'unit' || t.kind === 'unit') return 'Las unidades no se relacionan: son responsables de los elementos.';
     if (!orient(kind as RelationKind, s.kind, t.kind)) {
       const admitted = RELATION_RULES[kind as RelationKind].map(([a, b]) => `${KIND_LABELS[a].toLowerCase()} → ${KIND_LABELS[b].toLowerCase()}`).join(', ');
       return `«${RELATION_LABELS[kind as RelationKind]}» une ${admitted}; no ${KIND_LABELS[s.kind].toLowerCase()} con ${KIND_LABELS[t.kind].toLowerCase()}.`;

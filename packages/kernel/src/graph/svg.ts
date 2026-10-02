@@ -18,6 +18,8 @@ export interface SvgNodeStyle {
   align?: 'center' | 'left';
   /** Máximo de líneas de texto que se dibujan (por defecto 3). */
   maxLines?: number;
+  /** Icono del tipo en la esquina superior izquierda: trazados de una caja de 16 × 16, con el color del texto. */
+  icon?: string[];
 }
 
 /** Insignia pequeña sobre una línea: un número de paso (`text`) o el icono de un patrón (`icon`: trazados de una caja de 16 × 16). */
@@ -50,8 +52,18 @@ export interface SvgEdgeStyle {
   label?: string;
   /** Insignias que se dibujan a la izquierda de la etiqueta, o centradas en la línea si no hay etiqueta. */
   marks?: EdgeMark[];
+  /** Adorno en el origen: rombo (composición) o punto (asignación). */
+  tail?: 'diamond' | 'dot';
+  /** Punta de flecha: `open` es una «V» sin relleno; `none`, sin punta (por defecto, triángulo relleno). */
+  head?: 'open' | 'none';
   /** Remates de pata de gallo en el origen y el destino; si hay alguno, la línea no lleva punta de flecha. */
   ends?: { source?: EdgeEnd; target?: EdgeEnd };
+}
+
+/** Leyenda de colores que se dibuja bajo el título. */
+export interface SvgLegend {
+  title: string;
+  items: Array<{ label: string; color: string }>;
 }
 
 export interface SvgOptions {
@@ -60,6 +72,7 @@ export interface SvgOptions {
   edge(id: string): SvgEdgeStyle;
   /** Etiqueta del grupo y, opcionalmente, su relleno, su borde y el trazo del borde (por defecto gris claro y discontinuo). */
   group?(id: string): { label: string; fill?: string; stroke?: string; border?: 'solid' | 'dashed' | 'dotted' };
+  legend?: SvgLegend;
 }
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -91,6 +104,15 @@ function renderMark(mark: EdgeMark, cx: number, cy: number): string {
   return `<g>${title}<circle cx="${cx}" cy="${cy}" r="${MARK / 2}" fill="${color}"/><text x="${cx}" y="${cy + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">${esc(mark.text ?? '')}</text></g>`;
 }
 
+/** Adorno en el origen de una línea, orientado según su primer tramo: rombo relleno (composición) o punto (asignación). */
+function renderTail(kind: 'diamond' | 'dot', points: Array<{ x: number; y: number }>, color: string): string {
+  const [a, b] = points;
+  if (!a || !b) return '';
+  const angle = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+  const body = kind === 'dot' ? `<circle cx="4" cy="0" r="4" fill="${color}"/>` : `<path d="M0 0 L6 -4 L12 0 L6 4 z" fill="${color}"/>`;
+  return `<g transform="translate(${a.x} ${a.y}) rotate(${angle})">${body}</g>`;
+}
+
 /** Recorta una línea de texto para que quepa en `width` px (aprox. 6.4 px por carácter a 12 px). */
 function fit(text: string, width: number): string {
   const max = Math.max(4, Math.floor((width - 16) / 6.4));
@@ -101,13 +123,29 @@ function fit(text: string, width: number): string {
 export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string {
   const pad = 24;
   const w = Math.ceil(layout.width + pad * 2);
-  const h = Math.ceil(layout.height + pad * 2 + (options.title ? 28 : 0));
-  const top = pad + (options.title ? 28 : 0);
+  const h = Math.ceil(layout.height + pad * 2 + (options.title ? 28 : 0) + (options.legend && options.legend.items.length > 0 ? 24 : 0));
+  const legend = options.legend && options.legend.items.length > 0 ? options.legend : undefined;
+  const legendHeight = legend ? 24 : 0;
+  const top = pad + (options.title ? 28 : 0) + legendHeight;
   const out: string[] = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" font-family="Inter, Arial, sans-serif" font-size="12">`);
-  out.push(`<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker></defs>`);
+  out.push(
+    `<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker>` +
+      `<marker id="arrow-open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#475569" stroke-width="1.6"/></marker></defs>`,
+  );
   out.push(`<rect width="${w}" height="${h}" fill="#ffffff"/>`);
   if (options.title) out.push(`<text x="${pad}" y="${pad + 8}" font-size="16" font-weight="700" fill="#1f2937">${esc(options.title)}</text>`);
+  if (legend) {
+    let x = pad;
+    const y = pad + (options.title ? 28 : 0) - 6;
+    out.push(`<text x="${x}" y="${y + 11}" font-size="11" font-weight="700" fill="#475569">${esc(legend.title)}</text>`);
+    x += legend.title.length * 6.4 + 14;
+    for (const item of legend.items) {
+      out.push(`<rect x="${x}" y="${y}" width="14" height="14" rx="3" fill="${item.color}" stroke="#0f172a" stroke-opacity="0.35"/>`);
+      out.push(`<text x="${x + 20}" y="${y + 11}" font-size="11" fill="#334155">${esc(item.label)}</text>`);
+      x += 20 + item.label.length * 6 + 14;
+    }
+  }
   out.push(`<g transform="translate(${pad} ${top})">`);
 
   for (const g of layout.groups) {
@@ -121,7 +159,8 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
     const style = options.edge(e.id);
     const d = e.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x} ${p.y}`).join(' ');
     const ends = style.ends && (style.ends.source || style.ends.target) ? style.ends : undefined;
-    out.push(`<path d="${d}" fill="none" stroke="${style.stroke}" stroke-width="${style.width ?? 1.5}"${style.dashed ? ' stroke-dasharray="6 4"' : ''}${ends ? '' : ' marker-end="url(#arrow)"'}/>`);
+    out.push(`<path d="${d}" fill="none" stroke="${style.stroke}" stroke-width="${style.width ?? 1.5}"${style.dashed ? ' stroke-dasharray="6 4"' : ''}${ends || style.head === 'none' ? '' : ` marker-end="url(#${style.head === 'open' ? 'arrow-open' : 'arrow'})"`}/>`);
+    if (style.tail) out.push(renderTail(style.tail, e.points, style.stroke));
     if (ends && e.points.length >= 2) {
       const pts = e.points;
       const last = pts.length - 1;
@@ -156,6 +195,10 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
       else out.push(`<path d="${part.d}" fill="none" stroke="${s.stroke}" stroke-width="1.5"${part.opacity !== undefined ? ` stroke-opacity="${part.opacity}"` : ''}/>`);
     }
     out.push('</g>');
+    if (s.icon && s.icon.length > 0) {
+      const paths = s.icon.map((d) => `<path d="${d}" fill="none" stroke="${s.textColor ?? '#ffffff'}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+      out.push(`<g transform="translate(${n.x + 7} ${n.y + 5})" opacity="0.85">${paths}</g>`);
+    }
     const shift = textOffset(shape, n.height);
     const ink = s.textColor ?? '#ffffff';
     const lines = s.lines.slice(0, s.maxLines ?? 3);

@@ -10,7 +10,7 @@ import { fromMermaid } from './import/fromMermaid';
 import { analyzeEnterprise } from './issues';
 import { enterpriseDocumentSchema, enterpriseJsonSchema } from './schema';
 import { ENTERPRISE_DOCUMENT_VERSION, type EnterpriseDocument } from './types';
-import { listViews } from './views';
+import { viewRefs } from './views';
 
 const mermaidImporter: Importer<EnterpriseDocument> = {
   id: 'mermaid',
@@ -69,7 +69,7 @@ export const enterpriseModule: DomainModule<EnterpriseDocument> = {
     ...doc.applications.map((a) => ({ id: a.id, name: a.name, kind: 'application' })),
     ...doc.technologies.map((t) => ({ id: t.id, name: t.name, kind: 'technology' })),
   ],
-  views: (doc): ViewRef[] => listViews(doc).map((v) => ({ id: v.id, title: v.title })),
+  views: (doc): ViewRef[] => viewRefs(doc),
   traceViews: [
     { prefix: 'impact', label: 'Impacto', applies: (e) => e.kind !== 'unit' },
     { prefix: 'depends', label: 'Dependencias', applies: (e) => e.kind !== 'unit' },

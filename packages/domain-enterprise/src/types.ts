@@ -25,6 +25,10 @@ export const CRITICALITY_RANK: Record<Criticality, number> = { low: 0, medium: 1
 export const IMPORTANCES = ['differentiating', 'core', 'supporting'] as const;
 export type Importance = (typeof IMPORTANCES)[number];
 
+/** Qué hacer con una aplicación: conservarla, migrarla a otra plataforma, reemplazarla por otra o retirarla (las «4 R» de la modernización). */
+export const STRATEGIES = ['keep', 'migrate', 'replace', 'retire'] as const;
+export type Strategy = (typeof STRATEGIES)[number];
+
 export const TECHNOLOGY_KINDS = ['platform', 'infrastructure', 'database', 'runtime', 'middleware', 'service'] as const;
 export type TechnologyKind = (typeof TECHNOLOGY_KINDS)[number];
 
@@ -33,8 +37,12 @@ export type TechnologyKind = (typeof TECHNOLOGY_KINDS)[number];
  * - `realizes`: un proceso realiza una capacidad.
  * - `runs-on`: una aplicación se ejecuta sobre una tecnología.
  * - `depends-on`: una aplicación depende de otra, o una tecnología de otra.
+ * - `composes`: composición; el todo (origen) se compone de la parte (destino): una aplicación de módulos, un proceso de subprocesos.
+ * - `flows-to`: flujo de información o de trabajo de una aplicación a otra o de un proceso a otro.
+ * - `assigned-to`: asignación; una unidad (origen) ejecuta un proceso (destino).
+ * - `triggers`: disparo; un proceso (origen) pone en marcha a otro (destino).
  */
-export const RELATION_KINDS = ['supports', 'realizes', 'runs-on', 'depends-on'] as const;
+export const RELATION_KINDS = ['supports', 'realizes', 'runs-on', 'depends-on', 'composes', 'flows-to', 'assigned-to', 'triggers'] as const;
 export type RelationKind = (typeof RELATION_KINDS)[number];
 
 /** Pares (origen, destino) que admite cada tipo de relación. */
@@ -43,6 +51,10 @@ export const RELATION_RULES: Record<RelationKind, Array<[ElementKind, ElementKin
   realizes: [['process', 'capability']],
   'runs-on': [['application', 'technology']],
   'depends-on': [['application', 'application'], ['technology', 'technology']],
+  composes: [['application', 'application'], ['process', 'process'], ['technology', 'technology']],
+  'flows-to': [['application', 'application'], ['process', 'process']],
+  'assigned-to': [['unit', 'process']],
+  triggers: [['process', 'process']],
 };
 
 export const MATURITY_MIN = 1;
@@ -93,6 +105,14 @@ export interface Application {
   criticality?: Criticality;
   /** Producto o servicio de un tercero (SaaS). */
   external?: boolean;
+  /** Coste anual (licencias, soporte y operación), en la moneda del espacio de trabajo. */
+  annualCost?: number;
+  /** Personas que la usan. */
+  users?: number;
+  /** Qué se piensa hacer con ella (modernización). */
+  strategy?: Strategy;
+  /** Fin de soporte o retirada prevista (`2027-06` o `2027-06-30`); alimenta la hoja de ruta del ciclo de vida. */
+  endOfLife?: string;
   /** Referencia a un elemento de otro módulo (`urn:iark:c4:tienda`). */
   ref?: string;
   tags?: string[];
@@ -180,11 +200,22 @@ export const TECHNOLOGY_KIND_LABELS: Record<TechnologyKind, string> = {
   service: 'Servicio',
 };
 
+export const STRATEGY_LABELS: Record<Strategy, string> = {
+  keep: 'conservar',
+  migrate: 'migrar',
+  replace: 'reemplazar',
+  retire: 'retirar',
+};
+
 export const RELATION_LABELS: Record<RelationKind, string> = {
   supports: 'soporta',
   realizes: 'realiza',
   'runs-on': 'se ejecuta en',
   'depends-on': 'depende de',
+  composes: 'se compone de',
+  'flows-to': 'fluye hacia',
+  'assigned-to': 'ejecuta',
+  triggers: 'dispara a',
 };
 
 export const lifecycleOf = (x: { lifecycle?: Lifecycle }): Lifecycle => x.lifecycle ?? 'active';
@@ -205,7 +236,8 @@ export function indexElements(doc: EnterpriseDocument): Map<string, Element> {
 
 /** Tipo de relación que une dos tipos de elemento, si lo hay (en cualquiera de los dos sentidos). */
 export function relationBetween(a: ElementKind, b: ElementKind): { kind: RelationKind; reversed: boolean } | undefined {
-  for (const kind of RELATION_KINDS) {
+  // Solo los tipos estructurales: una flecha entre dos elementos del mismo tipo sigue significando «depende de» al importar.
+  for (const kind of RELATION_KINDS.slice(0, 4)) {
     for (const [from, to] of RELATION_RULES[kind]) {
       if (from === a && to === b) return { kind, reversed: false };
       if (from === b && to === a) return { kind, reversed: true };
@@ -221,4 +253,12 @@ export function relationBetween(a: ElementKind, b: ElementKind): { kind: Relatio
  */
 export function drawnEnds(r: Relation): { from: string; to: string } {
   return r.kind === 'supports' || r.kind === 'realizes' ? { from: r.targetId, to: r.sourceId } : { from: r.sourceId, to: r.targetId };
+}
+
+/**
+ * Extremos de una relación como dependencia (de quien depende a aquello de lo que depende), para el análisis de impacto.
+ * Como `drawnEnds`, salvo el flujo y el disparo: quien recibe depende de quien envía o dispara.
+ */
+export function dependencyEnds(r: Relation): { from: string; to: string } {
+  return r.kind === 'flows-to' || r.kind === 'triggers' ? { from: r.targetId, to: r.sourceId } : drawnEnds(r);
 }

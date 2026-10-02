@@ -52,6 +52,15 @@ function EdgeEndGlyph({ end, at, position, id, side }: { end: EdgeEnd; at: { x: 
 }
 
 /** Relación del lienzo: línea con ángulos rectos, estilo de la notación y, sobre ella, las insignias gráficas y la etiqueta. */
+/** Adorno en el origen de la línea (rombo de la composición, punto de la asignación): sale por la derecha del nodo de origen. */
+function Tail({ kind, x, y, color }: { kind: 'diamond' | 'dot'; x: number; y: number; color: string }) {
+  return kind === 'dot' ? (
+    <circle cx={x + 4} cy={y} r={4} fill={color} data-testid="edge-tail" data-tail="dot" />
+  ) : (
+    <path d={`M${x} ${y} L${x + 6} ${y - 4} L${x + 12} ${y} L${x + 6} ${y + 4} z`} fill={color} data-testid="edge-tail" data-tail="diamond" />
+  );
+}
+
 function NotationEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerStart, markerEnd, style, selected, data }: EdgeProps<NotationEdgeType>) {
   const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
   const marks = data?.edge.marks ?? [];
@@ -62,6 +71,7 @@ function NotationEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePositi
     <>
       {selected && <path d={path} className="cv-edge-halo" fill="none" strokeWidth={(typeof style?.strokeWidth === 'number' ? style.strokeWidth : 1.5) + 6} />}
       <BaseEdge id={id} path={path} markerStart={markerStart} markerEnd={markerEnd} style={style} />
+      {data?.notation.tail && <Tail kind={data.notation.tail} x={sourceX} y={sourceY} color={String(style?.stroke ?? '#475569')} />}
       {data?.edge.ends?.source && <EdgeEndGlyph end={data.edge.ends.source} at={{ x: sourceX, y: sourceY }} position={sourcePosition} id={id} side="source" />}
       {data?.edge.ends?.target && <EdgeEndGlyph end={data.edge.ends.target} at={{ x: targetX, y: targetY }} position={targetPosition} id={id} side="target" />}
       {(marks.length > 0 || text) && (

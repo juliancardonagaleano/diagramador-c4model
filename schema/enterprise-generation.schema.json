@@ -231,6 +231,40 @@
               "boolean",
               "null"
             ]
+          },
+          "annualCost": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "users": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "strategy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "keep",
+                  "migrate",
+                  "replace",
+                  "retire"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "endOfLife": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -242,7 +276,11 @@
           "ownerId",
           "lifecycle",
           "criticality",
-          "external"
+          "external",
+          "annualCost",
+          "users",
+          "strategy",
+          "endOfLife"
         ],
         "additionalProperties": false
       }
@@ -344,7 +382,11 @@
               "supports",
               "realizes",
               "runs-on",
-              "depends-on"
+              "depends-on",
+              "composes",
+              "flows-to",
+              "assigned-to",
+              "triggers"
             ]
           },
           "sourceId": {

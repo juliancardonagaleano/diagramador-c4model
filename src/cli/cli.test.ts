@@ -734,7 +734,7 @@ describe('iark: módulo empresarial', () => {
 
     const drawio = join(dir, 'empresa.drawio');
     expect(run(['convert', ent, '--module', 'enterprise', '--out', drawio]).status).toBe(0);
-    expect([].concat(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram)).toHaveLength(10);
+    expect([].concat(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram)).toHaveLength(11);
 
     const missing = run(['convert', ent, '--module', 'enterprise', '--to', 'mermaid', '--view', 'nada']);
     expect(missing.status).not.toBe(0);

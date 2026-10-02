@@ -1,7 +1,7 @@
 import type { AiSpec } from '@iark/kernel';
 import { z } from 'zod';
 import { formatEnterpriseIssues, validateEnterpriseDocument } from '../schema';
-import { CRITICALITIES, ENTERPRISE_DOCUMENT_VERSION, IMPORTANCES, LIFECYCLES, RELATION_KINDS, TECHNOLOGY_KINDS, type EnterpriseDocument } from '../types';
+import { CRITICALITIES, ENTERPRISE_DOCUMENT_VERSION, IMPORTANCES, LIFECYCLES, RELATION_KINDS, STRATEGIES, TECHNOLOGY_KINDS, type EnterpriseDocument } from '../types';
 
 // Lo que produce el modelo: todos los campos presentes (null si no aplican), como exige la salida estructurada.
 const nullable = <T extends z.ZodType>(t: T) => t.nullable();
@@ -41,6 +41,10 @@ const generatedApplication = z.object({
   lifecycle: nullable(z.enum(LIFECYCLES)),
   criticality: nullable(z.enum(CRITICALITIES)),
   external: nullable(z.boolean()),
+  annualCost: nullable(z.number()),
+  users: nullable(z.number()),
+  strategy: nullable(z.enum(STRATEGIES)),
+  endOfLife: nullable(z.string()),
 });
 
 const generatedTechnology = z.object({
@@ -108,6 +112,8 @@ Elementos (todos con id único en kebab-case ASCII, compartido entre tipos):
 - "applications": aplicaciones y sistemas. technology = producto o pila ("SAP S/4HANA", "Java + PostgreSQL"), vendor si es de
   un tercero, external = true para SaaS/terceros. lifecycle: "planned", "active" (por defecto), "sunset" (en retirada) o
   "retired". criticality: "low", "medium", "high" o "critical". ownerId = unidad responsable de negocio.
+  Datos de gestión, solo si la descripción los da: annualCost (coste anual, número), users (número de usuarios, entero),
+  strategy ("keep" conservar, "migrate" migrar, "replace" reemplazar o "retire" retirar) y endOfLife ("AAAA-MM" o "AAAA-MM-DD").
 - "technologies": plataformas y tecnología sobre la que corren las aplicaciones (Kubernetes, AWS, PostgreSQL 16).
   kind: "platform", "infrastructure", "database", "runtime", "middleware" o "service". version si se conoce.
   lifecycle igual que en aplicaciones; endOfLife ("AAAA-MM" o "AAAA-MM-DD") solo si la descripción da la fecha de fin de soporte.
@@ -117,6 +123,10 @@ Relaciones ("relations"), con estas reglas de origen → destino (sourceId → t
 - "realizes": proceso → capacidad. El proceso realiza la capacidad.
 - "runs-on": aplicación → tecnología en la que se ejecuta.
 - "depends-on": aplicación → otra aplicación de la que depende, o tecnología → otra tecnología. Un elemento nunca se relaciona consigo mismo.
+- "composes": el todo → su parte (aplicación → módulo, proceso → subproceso, tecnología → componente), del mismo tipo.
+- "flows-to": flujo de información o de trabajo de una aplicación a otra, o de un proceso a otro.
+- "assigned-to": unidad → proceso que ejecuta (sourceId es la unidad).
+- "triggers": proceso → proceso al que pone en marcha.
 Toda capacidad hoja debería estar soportada por al menos una aplicación (directamente o por un proceso que la realiza), y
 toda aplicación debería soportar algo y tener responsable.
 
@@ -141,6 +151,10 @@ export function toGenerated(doc: EnterpriseDocument): GeneratedEnterprise {
       lifecycle: n(a.lifecycle),
       criticality: n(a.criticality),
       external: n(a.external),
+      annualCost: n(a.annualCost),
+      users: n(a.users),
+      strategy: n(a.strategy),
+      endOfLife: n(a.endOfLife),
     })),
     technologies: doc.technologies.map((t) => ({
       id: t.id,

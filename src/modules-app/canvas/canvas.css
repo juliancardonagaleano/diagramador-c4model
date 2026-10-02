@@ -42,7 +42,7 @@
 .cv-node[data-shape='card'] .cv-card-text strong { padding-bottom: 0; border-bottom: 0; line-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cv-node[data-shape='card'] .cv-card-text .cv-lines { margin-top: 5px; }
 .cv-kind { font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.8; }
-.cv-sub { font-size: 11px; opacity: 0.85; }
+.cv-sub { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; opacity: 0.85; }
 .cv-node[data-selected] { filter: drop-shadow(0 0 0 2px var(--wb-primary)) drop-shadow(0 0 4px var(--wb-primary)); }
 .cv-badges { position: absolute; top: -8px; right: 6px; display: flex; gap: 4px; }
 .cv-badges span { padding: 0 6px; border-radius: 8px; background: #0f172a; color: #fff; font-size: 9px; white-space: nowrap; }
@@ -87,3 +87,11 @@
 .cv-mark-icon { box-sizing: border-box; border: 1px solid; border-radius: 5px; background: #fff; }
 .cv-mark-icon svg { display: block; }
 .react-flow__nodesselection-rect { pointer-events: none; }
+
+/* Icono del tipo en la esquina del nodo y leyenda de colores de la vista. */
+.cv-type-icon { position: absolute; top: 5px; left: 7px; opacity: 0.85; pointer-events: none; }
+.cv-legend { margin: 8px; padding: 6px 10px; border: 1px solid var(--wb-border); border-radius: 8px; background: var(--wb-surface, #fff); color: var(--wb-text-2); font-size: 11px; }
+.cv-legend strong { display: block; margin-bottom: 4px; font-size: 11px; }
+.cv-legend ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; }
+.cv-legend li { display: flex; align-items: center; gap: 6px; }
+.cv-legend-swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgb(15 23 42 / 0.35); }
