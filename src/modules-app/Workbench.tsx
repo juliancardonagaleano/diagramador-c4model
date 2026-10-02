@@ -128,12 +128,8 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
 
   const openFile = async (file: File) => {
     try {
-      const text = await readFile(file);
-      if (/\.json$/i.test(file.name)) controller.useDocumentText(text);
-      else {
-        const result = await controller.importFrom(text, undefined, { file: file.name });
-        notify(`Importado desde ${result.importer}${result.warnings.length ? ` con ${result.warnings.length} avisos (ver Importar)` : ''}`);
-      }
+      const result = await controller.openText(await readFile(file), file.name);
+      if (result) notify(`Importado desde ${result.importer}${result.warnings.length ? ` con ${result.warnings.length} avisos` : ''}`);
     } catch (error) {
       notify((error as Error).message);
     }
@@ -145,6 +141,8 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
   }, []);
 
   const { module, analysis } = state;
+  // El diálogo de «Abrir archivo…» ofrece el JSON del módulo y las extensiones de todos sus importadores (.sql, .tf, .yaml, .archimate…).
+  const openAccept = [...new Set(['.json', '.mmd', '.mermaid', '.md', ...(module?.importers.flatMap((i) => i.extensions.map((e) => `.${e.split('.').pop()}`)) ?? [])]), 'text/plain', 'application/json'].join(',');
   const counts = analysis.status === 'ok' ? countBySeverity(analysis.issues) : { error: 0, warning: 0, info: 0 };
   const problemCount = analysis.status === 'ok' ? analysis.issues.length : analysis.status === 'schema' ? analysis.issues.length : analysis.status === 'syntax' ? 1 : 0;
   const panelProps = { controller, state, reveal, notify };
@@ -193,7 +191,7 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
             <button type="button" disabled={!state.moduleId} onClick={() => void controller.loadExample()}>
               Cargar ejemplo
             </button>
-            <FilePicker label="Abrir archivo…" accept=".json,.mmd,.mermaid,.md,text/plain,application/json" disabled={!state.moduleId} onFile={(file) => void openFile(file)} />
+            <FilePicker label="Abrir archivo…" accept={openAccept} disabled={!state.moduleId} onFile={(file) => void openFile(file)} />
             {embed && (
               <>
                 <button type="button" onClick={() => onSave?.(false)}>
