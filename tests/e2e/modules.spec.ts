@@ -183,7 +183,8 @@ test.describe('widget embebible de módulos', () => {
   test('handshake con capacidades, carga, vistas, exportación, informes y validación desde el anfitrión', async ({ page }) => {
     const hostErrors: string[] = [];
     page.on('pageerror', (e) => hostErrors.push(e.message));
-    await page.goto('/examples/modules-host.html', { waitUntil: 'networkidle' });
+    // Con iframes, `networkidle` a veces no se notifica aunque todo esté cargado y el `goto` agota el tiempo de la prueba: se espera por condiciones observables.
+    await page.goto('/examples/modules-host.html', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.getElementById('state')?.textContent === 'cargado', null, { timeout: 30000 });
 
     const frame = page.frames().find((f) => f.url().includes('embed=1'));
@@ -237,7 +238,8 @@ test.describe('widget embebible de módulos', () => {
   });
 
   test('ignora los mensajes de un origen no autorizado y contesta con error al JSON roto', async ({ page }) => {
-    await page.goto('/examples/modules-host.html', { waitUntil: 'networkidle' });
+    // Con iframes, `networkidle` a veces no se notifica aunque todo esté cargado y el `goto` agota el tiempo de la prueba: se espera por condiciones observables.
+    await page.goto('/examples/modules-host.html', { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.getElementById('state')?.textContent === 'cargado', null, { timeout: 30000 });
 
     await page.evaluate(() => {
