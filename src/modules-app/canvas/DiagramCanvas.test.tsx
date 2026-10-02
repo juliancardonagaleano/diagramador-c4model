@@ -313,6 +313,40 @@ describe('panel de propiedades', () => {
   });
 });
 
+describe('lienzo asentado', () => {
+  const canvas = (): HTMLElement => screen.getByTestId('module-canvas');
+
+  it('está pendiente mientras ELK coloca el dibujo y pasa a «ready» cuando termina de colocarlo y encuadrarlo', async () => {
+    mount();
+    expect(canvas()).toHaveAttribute('data-layout', 'pending');
+    await waitFor(() => expect(canvas()).toHaveAttribute('data-layout', 'ready'), { timeout: 5000 });
+  });
+
+  it('un cambio de estructura lo devuelve a pendiente al instante, sin esperar a ELK, y vuelve a «ready» al recolocar', async () => {
+    mount();
+    await waitFor(() => expect(canvas()).toHaveAttribute('data-layout', 'ready'), { timeout: 5000 });
+    fireEvent.click(screen.getByTestId('add-queue'));
+    expect(canvas()).toHaveAttribute('data-layout', 'pending');
+    await waitFor(() => expect(canvas()).toHaveAttribute('data-layout', 'ready'), { timeout: 5000 });
+  });
+
+  it('editar un texto que no cambia la estructura no lo saca de «ready»', async () => {
+    mount();
+    await waitFor(() => expect(canvas()).toHaveAttribute('data-layout', 'ready'), { timeout: 5000 });
+    await pickNode('worker');
+    await userEvent.click(screen.getByTestId('action-inspect'));
+    expect(canvas()).toHaveAttribute('data-layout', 'ready');
+  });
+
+  it('Autolayout lo devuelve a pendiente hasta que termina de recolocar', async () => {
+    mount();
+    await waitFor(() => expect(canvas()).toHaveAttribute('data-layout', 'ready'), { timeout: 5000 });
+    fireEvent.click(screen.getByTestId('autolayout'));
+    expect(canvas()).toHaveAttribute('data-layout', 'pending');
+    await waitFor(() => expect(canvas()).toHaveAttribute('data-layout', 'ready'), { timeout: 5000 });
+  });
+});
+
 describe('documento inválido', () => {
   it('avisa en lugar de dibujar', () => {
     mount({ doc: undefined });
