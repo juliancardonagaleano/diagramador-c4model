@@ -1,5 +1,6 @@
 import { layoutGraph, renderGraphSvg, type GraphEdgeInput, type GraphGroupInput, type GraphLayout, type GraphLayoutOptions, type GraphNodeInput, type ShapeKind, type SvgNodeStyle } from '@iark/kernel';
 import { isCrownJewel, zoneChain } from '../graph';
+import { COVERAGE_LABELS, threatCoverage } from '../modeling';
 import {
   ASSET_LABELS,
   AUTHENTICATION_LABELS,
@@ -267,7 +268,7 @@ const CELL_PAD = 12;
 const CELL_MIN_H = 96;
 const HEAT_NODE = { width: CELL_W - 2 * CELL_PAD, height: NODE_HEIGHT };
 /** De más a menos probable (la fila de arriba es la de mayor probabilidad). */
-const HEAT_ROWS = [...LIKELIHOODS].reverse();
+export const HEAT_ROWS = [...LIKELIHOODS].reverse();
 
 /** Dónde cae una amenaza: su probabilidad e impacto (inherentes) o los residuales tras los controles implementados. */
 export function heatPlacement(doc: SecurityDocument, t: Threat, mode: 'inherent' | 'residual'): { likelihood: (typeof LIKELIHOODS)[number]; impact: (typeof IMPACTS)[number] } {
@@ -279,13 +280,22 @@ export function heatPlacement(doc: SecurityDocument, t: Threat, mode: 'inherent'
 }
 
 /** Amenazas de cada celda de la matriz (todas las celdas existen, aunque estén vacías). */
-function heatContents(doc: SecurityDocument, view: SecurityView): Map<string, Threat[]> {
+export function heatContents(doc: SecurityDocument, view: SecurityView): Map<string, Threat[]> {
   const cells = new Map<string, Threat[]>(HEAT_ROWS.flatMap((l) => IMPACTS.map((i) => [heatCellId(l, i), [] as Threat[]] as const)));
   for (const t of doc.threats.filter((x) => view.threatIds.includes(x.id))) {
     const { likelihood, impact } = heatPlacement(doc, t, view.mode ?? 'inherent');
     cells.get(heatCellId(likelihood, impact))!.push(t);
   }
   return cells;
+}
+
+/** Marca de una amenaza cuyo riesgo residual baja con sus controles implementados: «residual ↓ …»; en la matriz residual dice de dónde viene. */
+export function heatNote(doc: SecurityDocument, t: Threat, mode: 'inherent' | 'residual'): string | undefined {
+  const residual = residualOf(doc, t);
+  if (!residual.reduced) return undefined;
+  const inherent = riskOf(t);
+  const controls = `${residual.implemented} ${residual.implemented === 1 ? 'control' : 'controles'}`;
+  return mode === 'residual' ? `residual ↓ desde ${RATING_LABELS[inherent.rating]} (${inherent.score}) · ${controls}` : `residual ↓ ${RATING_LABELS[residual.rating]} (${residual.score}) con ${controls}`;
 }
 
 function heatScene(doc: SecurityDocument, view: SecurityView): Scene {
@@ -303,15 +313,9 @@ function heatScene(doc: SecurityDocument, view: SecurityView): Scene {
       elementId: cellId,
     });
     for (const t of threats) {
-      const inherent = riskOf(t);
       const residual = residualOf(doc, t);
-      const shown = mode === 'residual' ? residual : inherent;
-      const controls = `${residual.implemented} ${residual.implemented === 1 ? 'control' : 'controles'}`;
-      const note = !residual.reduced
-        ? undefined
-        : mode === 'residual'
-          ? `residual ↓ desde ${RATING_LABELS[inherent.rating]} (${inherent.score}) · ${controls}`
-          : `residual ↓ ${RATING_LABELS[residual.rating]} (${residual.score}) con ${controls}`;
+      const shown = mode === 'residual' ? residual : riskOf(t);
+      const note = heatNote(doc, t, mode);
       scene.nodes.set(t.id, {
         fill: RISK_COLORS[shown.rating],
         stroke: DEFAULT_STROKE,
@@ -367,8 +371,7 @@ function standardsScene(doc: SecurityDocument, view: SecurityView): Scene {
   }
   const catalog = view.standard ? ` en ${STANDARD_LABELS[view.standard]}` : '';
   for (const t of doc.threats.filter((x) => view.threatIds.includes(x.id))) {
-    const linked = (t.controlIds ?? []).filter((id) => scene.nodes.has(id));
-    const implemented = linked.some((id) => controlStatusOf(doc.controls.find((c) => c.id === id)!) === 'implemented');
+    const { level, controls: linked } = threatCoverage(doc, view.controlIds, t);
     const risk = riskOf(t);
     scene.nodes.set(t.id, {
       fill: RISK_COLORS[risk.rating],
@@ -376,12 +379,12 @@ function standardsScene(doc: SecurityDocument, view: SecurityView): Scene {
       badge: `Amenaza · ${STRIDE_LABELS[t.category]}`,
       lines: [t.title, `riesgo ${RATING_LABELS[risk.rating]} (${risk.score}) · ${STATUS_LABELS[statusOf(t)]}`],
       shape: THREAT_SHAPE,
-      dashed: !implemented,
+      dashed: level !== 'covered',
       cls: 'threat',
       elementId: t.id,
-      note: linked.length === 0 ? `sin cobertura${catalog}` : implemented ? `cubierta${catalog}` : `cobertura prevista${catalog}`,
+      note: `${COVERAGE_LABELS[level]}${catalog}`,
     });
-    for (const id of linked) scene.edges.set(`m:${id}:${t.id}`, { kind: 'mitigates', source: id, target: t.id, label: 'mitiga', details: [], stroke: CONTROL_COLOR, dashed: false, width: 1.5, arrow: 'solid' });
+    for (const c of linked) scene.edges.set(`m:${c.id}:${t.id}`, { kind: 'mitigates', source: c.id, target: t.id, label: 'mitiga', details: [], stroke: CONTROL_COLOR, dashed: false, width: 1.5, arrow: 'solid' });
   }
   return scene;
 }

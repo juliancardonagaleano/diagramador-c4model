@@ -81,6 +81,8 @@ test.describe('lienzo de plataforma: infraestructura, metadatos y acciones', () 
     await expect(page.locator('[data-testid="node-i:pedidos-prod"]')).toContainText('Versión + réplicas');
     await expect(page.locator('[data-testid="node-i:pedidos-dev"]')).toContainText('3.1.0');
     await expect(page.locator('[data-testid="node-lb-prod"]')).toContainText('Solo en Producción');
+    // Los recursos de nombre distinto por entorno («Kafka (dev)» y «Kafka (prod)») dicen en su línea cómo se emparejaron.
+    await expect(page.getByText('emparejado por nombre normalizado')).toHaveCount(3);
     await page.screenshot({ path: 'test-results/platform-compare.png' });
     expect(errors).toEqual([]);
   });

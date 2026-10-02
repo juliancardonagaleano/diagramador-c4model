@@ -165,6 +165,21 @@ test.describe('lienzo empresarial: capas, mapa por criterio y relaciones nuevas'
     const cobros = (await page.getByTestId('node-cobros').boundingBox())!;
     expect(cobros.y).toBeGreaterThan(boxes[0].y + boxes[0].height);
     await expect(page.locator('.react-flow__edge[data-id="cobros--enables--pedir"]')).toBeVisible();
+    // Cada arista baja de su etapa a su capacidad por el canal que las separa (asa de abajo a asa de arriba): no recorre el borde
+    // de la zona ni da rodeos, y las capacidades quedan en el orden de sus etapas.
+    await expect(page.getByTestId('node-pedir').locator('.react-flow__handle-bottom')).toHaveCount(1);
+    await expect(page.getByTestId('node-cobros').locator('.react-flow__handle-top')).toHaveCount(1);
+    const enabling: Array<[string, string]> = [['descubrir', 'ventas-online'], ['descubrir', 'precios-promociones'], ['pedir', 'gestion-pedidos'], ['pedir', 'cobros'], ['preparar', 'gestion-inventario'], ['entregar', 'distribucion'], ['posventa', 'atencion-cliente']];
+    const capabilityXs: number[] = [];
+    for (const [stage, capability] of enabling) {
+      const from = (await page.getByTestId(`node-${stage}`).boundingBox())!;
+      const to = (await page.getByTestId(`node-${capability}`).boundingBox())!;
+      const route = (await page.locator(`.react-flow__edge[data-id="${capability}--enables--${stage}"] path.react-flow__edge-path`).boundingBox())!;
+      expect(route.y, `${stage} → ${capability}`).toBeGreaterThanOrEqual(from.y + from.height - 8);
+      expect(route.y + route.height, `${stage} → ${capability}`).toBeLessThanOrEqual(to.y + 8);
+      capabilityXs.push(to.x);
+    }
+    expect(capabilityXs).toEqual([...capabilityXs].sort((a, b) => a - b));
     await shot(page, 'flujo-de-valor');
 
     // Editar una etapa y añadir otra detrás de ella.

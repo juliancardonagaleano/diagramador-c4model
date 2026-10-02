@@ -1,9 +1,12 @@
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 import { memo } from 'react';
+import type { PortSide } from '@iark/kernel';
 import type { FlowNodeData } from './flow';
 import { ShapeSvg, textColorFor } from './shapes';
 
 export type NotationNodeType = Node<FlowNodeData, 'notation'>;
+
+const POSITIONS: Record<PortSide, Position> = { top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left };
 
 /** Nodo del lienzo: la figura y el color los dicta la notación del módulo; los nodos con hijos se dibujan como zona. */
 function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
@@ -74,6 +77,9 @@ function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
         </div>
       )}
       <Handle type="source" position={Position.Right} />
+      {data.handles?.map((h) => (
+        <Handle key={`${h.type}-${h.side}`} id={h.side} type={h.type} position={POSITIONS[h.side]} />
+      ))}
     </div>
   );
 }

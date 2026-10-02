@@ -25,6 +25,39 @@ describe('buildFlow con aristas propias', () => {
   });
 });
 
+describe('aristas ancladas por la colocación de la vista', () => {
+  const boxes = { nodes: [{ id: 'api', x: 40, y: 20, width: 160, height: 64 }, { id: 'cola', x: 240, y: 140, width: 160, height: 56 }], groups: [], width: 500, height: 300 };
+  const route = { id: 'api-cola', points: [{ x: 120, y: 84 }, { x: 120, y: 112 }, { x: 320, y: 112 }, { x: 320, y: 140 }], sides: { source: 'bottom', target: 'top' } } as const;
+
+  it('sin lados fijados (el autolayout) las aristas usan las asas de siempre', () => {
+    const { nodes, edges } = buildFlow(spec, graph, { ...boxes, edges: [{ id: 'api-cola', points: route.points.slice() }] });
+    expect(edges.every((e) => !('sourceHandle' in e) && !('targetHandle' in e) && e.data.bend === undefined)).toBe(true);
+    expect(nodes.every((n) => n.data.handles === undefined)).toBe(true);
+  });
+
+  it('con lados fijados la arista sale por el asa de abajo y llega por la de arriba, con el giro que traza la vista, y los nodos llevan esas asas', () => {
+    const { nodes, edges } = buildFlow(spec, graph, { ...boxes, edges: [route] });
+    const edge = edges.find((e) => e.id === 'api-cola')!;
+    expect(edge).toMatchObject({ sourceHandle: 'bottom', targetHandle: 'top' });
+    expect(edge.data.bend).toBe(112);
+    expect(nodes.find((n) => n.id === 'api')?.data.handles).toEqual([{ type: 'source', side: 'bottom' }]);
+    expect(nodes.find((n) => n.id === 'cola')?.data.handles).toEqual([{ type: 'target', side: 'top' }]);
+    expect(nodes.find((n) => n.id === 'worker')?.data.handles).toBeUndefined();
+    // La otra arista no se toca.
+    expect(edges.find((e) => e.id === 'cola-worker')).not.toHaveProperty('sourceHandle');
+  });
+
+  it('las asas laterales de siempre no se duplican y una arista recta no lleva giro', () => {
+    const straight = { id: 'api-cola', points: [{ x: 120, y: 84 }, { x: 120, y: 140 }], sides: { source: 'right', target: 'top' } } as const;
+    const { nodes, edges } = buildFlow(spec, graph, { ...boxes, edges: [straight] });
+    const edge = edges.find((e) => e.id === 'api-cola')!;
+    expect(edge).not.toHaveProperty('sourceHandle');
+    expect(edge).toMatchObject({ targetHandle: 'top' });
+    expect(edge.data.bend).toBeUndefined();
+    expect(nodes.find((n) => n.id === 'api')?.data.handles).toBeUndefined();
+  });
+});
+
 describe('texto de las etiquetas', () => {
   it('une la etiqueta y las insignias de texto entre comillas angulares', () => {
     expect(edgeLabelText({ id: 'e', kind: 'k', source: 'a', target: 'b', label: 'pedidos', badges: ['AMQP', 'saga'] })).toBe('pedidos «AMQP» «saga»');

@@ -62,7 +62,12 @@ function Tail({ kind, x, y, color }: { kind: 'diamond' | 'dot'; x: number; y: nu
 }
 
 function NotationEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerStart, markerEnd, style, selected, data }: EdgeProps<NotationEdgeType>) {
-  const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
+  // La colocación de la vista puede fijar dónde gira la arista (la pista que evita que se corte con las demás); si el usuario
+  // ha movido los nodos y ese giro ya no queda entre los dos extremos, se traza como siempre.
+  const vertical = sourcePosition === Position.Top || sourcePosition === Position.Bottom;
+  const bend = data?.bend;
+  const pinned = bend !== undefined && (vertical ? (bend - sourceY) * (bend - targetY) < 0 : (bend - sourceX) * (bend - targetX) < 0);
+  const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, ...(pinned ? { offset: 8, ...(vertical ? { centerY: bend } : { centerX: bend }) } : {}) });
   const marks = data?.edge.marks ?? [];
   const text = data ? edgeLabelText(data.edge) : '';
   const onPick = data?.onPick;

@@ -25,7 +25,7 @@ export default defineConfig([
     target: 'node20',
     platform: 'node',
     banner: { js: '#!/usr/bin/env node' },
-    external: ['elkjs', 'zod', '@anthropic-ai/sdk', '@anthropic-ai/foundry-sdk', 'commander', 'nanoid', 'fast-xml-parser'],
+    external: ['elkjs', 'zod', '@anthropic-ai/sdk', '@anthropic-ai/foundry-sdk', 'commander', 'nanoid', 'fast-xml-parser', 'yaml'],
   },
   {
     entry: { 'embed/iark-module-element': 'src/embed/iark-module-element.ts' },

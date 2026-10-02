@@ -355,7 +355,7 @@ Documento JSON (ejemplo completo en [`examples/empresa-arquitectura.json`](examp
 | `businessServices` | **servicios de negocio** (opcionales): lo que se ofrece a clientes (`audience`, `ownerId`); exponen procesos y capacidades (`exposes`) |
 | `relations` | `supports` (aplicación → capacidad o proceso), `realizes` (proceso → capacidad), `runs-on` (aplicación → tecnología) `depends-on` (aplicación → aplicación, o tecnología → tecnología), `composes` (el todo → su parte, del mismo tipo), `flows-to` (aplicación → aplicación o proceso → proceso), `assigned-to` (unidad → proceso) y `triggers` (proceso → proceso); `enables` (capacidad → etapa que habilita) y `exposes` (servicio de negocio → proceso o capacidad); los seis últimos son opcionales y el documento sigue en la versión 1.0 |
 
-No se guardan coordenadas: las vistas se derivan del modelo. `capabilities` es el **mapa de capacidades** (cuadrícula anidada; el color indica la madurez por defecto o, con `capabilities:importance`, `capabilities:criticality` y `capabilities:lifecycle`, la importancia, la criticidad o el ciclo de vida de las aplicaciones que la soportan, con su leyenda; el borde indica la importancia y una línea discontinua marca las que no tienen aplicación), `value-stream` los **flujos de valor** (cada flujo es un recuadro con sus etapas como chevrones en cadena, de izquierda a derecha, y debajo las capacidades que las habilitan; una etapa sin capacidad se dibuja discontinua), `roadmap` la **hoja de ruta del ciclo de vida** (columnas por año de fin de soporte, retiradas y previstas), `landscape` el **paisaje** capacidad → proceso → aplicación → tecnología, con los colores de capa de ArchiMate (negocio amarillo, aplicación azul, tecnología verde) y el icono del tipo en la esquina de cada elemento y `unit:<id>` una por unidad con lo que tiene a su cargo (lo demás, en discontinuo). El impacto de un elemento se pide por su id: `impact:<id>` (lo que se apoya en él), `depends:<id>` (de qué depende) y `focus:<id>` (ambos). Las flechas van de quien se apoya a aquello en lo que se apoya.
+No se guardan coordenadas: las vistas se derivan del modelo. `capabilities` es el **mapa de capacidades** (cuadrícula anidada; el color indica la madurez por defecto o, con `capabilities:importance`, `capabilities:criticality` y `capabilities:lifecycle`, la importancia, la criticidad o el ciclo de vida de las aplicaciones que la soportan, con su leyenda; el borde indica la importancia y una línea discontinua marca las que no tienen aplicación), `value-stream` los **flujos de valor** (cada flujo es un recuadro con sus etapas como chevrones en cadena, de izquierda a derecha, y debajo las capacidades que las habilitan, ordenadas según sus etapas y unidas a ellas con aristas de un solo codo que no se cortan; una etapa sin capacidad se dibuja discontinua), `roadmap` la **hoja de ruta del ciclo de vida** (columnas por año de fin de soporte, retiradas y previstas), `landscape` el **paisaje** capacidad → proceso → aplicación → tecnología, con los colores de capa de ArchiMate (negocio amarillo, aplicación azul, tecnología verde) y el icono del tipo en la esquina de cada elemento y `unit:<id>` una por unidad con lo que tiene a su cargo (lo demás, en discontinuo). El impacto de un elemento se pide por su id: `impact:<id>` (lo que se apoya en él), `depends:<id>` (de qué depende) y `focus:<id>` (ambos). Las flechas van de quien se apoya a aquello en lo que se apoya.
 
 `validate` comprueba la estructura (ids únicos entre tipos, jerarquías sin ciclos, responsables que son unidades, relaciones que encajan con sus extremos) y aplica reglas de **gobierno**: capacidades sin aplicación (aviso si son esenciales o diferenciadoras), aplicaciones sin responsable de negocio (aviso si son críticas), sin uso o sin tecnología, aplicaciones en retirada que nadie sustituye, elementos vivos que se apoyan en algo en retirada o retirado, tecnologías fuera de soporte (o que lo estarán en menos de 12 meses), capacidades con tres o más aplicaciones (posible duplicidad), procesos que no realizan ninguna capacidad, etapas de un flujo de valor que ninguna capacidad habilita (aviso), flujos sin etapas, servicios de negocio que no exponen nada y críticas que dependen de aplicaciones de criticidad baja.
 
@@ -403,6 +403,7 @@ iark convert   plataforma.json --module platform --out impacto.svg --view impact
 iark import    produccion.mmd --module platform --out plataforma.json                  # flowchart → documento
 iark generate  "Tienda con Kubernetes, PostgreSQL y Kafka en desarrollo y producción" --module platform --json plataforma.json
 iark platform deployments plataforma.json                                              # dónde corre cada servicio en cada entorno y qué versiones difieren
+iark platform compare     dev prod plataforma.json                                     # compara dos entornos: lo que solo está en uno y las versiones o réplicas que difieren; dice cómo emparejó cada recurso si no fue por nombre
 iark platform impact      kafka-prod plataforma.json [--direction dependencies|both] [--env prod]   # qué se cae si falla, con los responsables a avisar
 iark platform from-integration mapa.json                                               # sistemas de un mapa de integración → servicios y recursos con URN
 ```
@@ -440,8 +441,10 @@ iark convert   seguridad.json --module security --out amenazas.svg --view threat
 iark convert   seguridad.json --module security --out alcance.svg --view blast:pedidos
 iark import    flujos.mmd --module security --out seguridad.json                       # flowchart → documento
 iark generate  "Tienda con WAF, API, base de datos y pasarela de pagos" --module security --json seguridad.json
-iark security risks    seguridad.json [--status open]                                  # registro de riesgos ordenado por riesgo, con estado y controles
+iark security risks    seguridad.json [--status open]                                  # registro de riesgos ordenado por riesgo inherente, con estado, controles y el riesgo residual que queda tras los implementados (↓ si baja)
+iark security heatmap  seguridad.json [--residual]                                     # matriz de calor probabilidad × impacto: amenazas por celda y qué amenazas hay en cada una; --residual, donde quedan tras los controles
 iark security stride   seguridad.json [--gaps]                                         # cobertura STRIDE: qué categorías aplican a cada activo y flujo y cuáles siguen sin analizar
+iark security standards seguridad.json [--catalogo asvs]                               # cobertura de estándares: por catálogo (asvs, nist-800-53, iso-27001, cis), sus controles y las amenazas cubiertas, con cobertura prevista o sin cobertura
 iark security exposure seguridad.json                                                  # superficie de ataque: entradas desde zonas no confiables y caminos hasta lo que interesa proteger
 iark security from-integration mapa.json                                               # mapa de integración → activos y flujos con URN (zonas por heurística)
 iark security from-platform plataforma.json [--env prod]                               # entorno de una plataforma → zonas por red, activos y flujos con URN
@@ -682,7 +685,22 @@ curl -X POST 'localhost:8787/api/security/export?format=svg&view=dfd' -d @exampl
 | `POST /api/<módulo>/run/<comando>` | Cuerpo `{ input?, args?, options? }` → informe o conversión |
 | `POST /api/trace` | Cuerpo `{ documents: [{ module, document }], from?, direction?, depth? }` → grafo de trazabilidad |
 
-Sin estado, sin dependencias (`node:http`). Sin `--cors` solo responde al mismo origen; `--cors https://mi-app.example` (o `*`) abre la API a un navegador de otro origen. El cuerpo máximo es de 5 MB. La generación con IA sigue viviendo solo en el CLI. El `Dockerfile` compila y deja solo las dependencias de producción; la imagen no se ha construido en el entorno de desarrollo (no hay demonio Docker), aunque su etapa de ejecución se simuló copiando los mismos archivos.
+Sin estado, sin dependencias (`node:http`). Sin `--cors` solo responde al mismo origen; `--cors https://mi-app.example` (o `*`) abre la API a un navegador de otro origen. El cuerpo máximo es de 5 MB. La generación con IA sigue viviendo solo en el CLI.
+
+#### Imagen Docker
+
+El `Dockerfile` (dos etapas sobre `node:22-alpine`) compila la biblioteca, el CLI y el sitio, deja solo las dependencias de producción y arranca `iark serve --host 0.0.0.0 --port 8787 --static dist/app` como el usuario `node` (no root). La imagen pesa unos 355 MB (la base de Node, 167 MB; `node_modules`, 176 MB; el sitio, 9 MB; el CLI, 4 MB) y no guarda estado.
+
+```bash
+docker build -t iark-diagrams .
+docker run --rm -p 8787:8787 iark-diagrams                                   # editor, banco de trabajo, shell y API en http://localhost:8787
+docker run --rm -p 9000:8787 iark-diagrams --cors https://mi-app.example    # otro puerto del anfitrión y la API abierta a ese origen
+docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges -p 8787:8787 iark-diagrams   # endurecida: no escribe en disco
+```
+
+- Los argumentos tras el nombre de la imagen se añaden al `ENTRYPOINT` (`--cors`, `--static`…); si repites una opción, gana la última. Para cambiar el puerto de publicación basta `-p`; si cambias el `--port` de dentro, el `HEALTHCHECK` (que consulta `/api/modules` en el 8787) fallará: sobrescríbelo con `--health-cmd` o `--no-healthcheck`.
+- El contenedor pasa a `healthy` en unos segundos (`docker inspect --format '{{.State.Health.Status}}' <contenedor>`) y `docker stop` lo detiene en menos de un segundo con código 0: `iark serve` cierra el servidor al recibir `SIGTERM`, sin necesidad de `--init`.
+- Probado con Docker 29 (`docker build` y `docker run --network host`, en un entorno sin red de puente): `/`, `/modulos.html?module=data`, `/suite.html`, `/trazabilidad.html`, `/.well-known/iark.json`, `/api/modules`, validar y exportar (SVG, Mermaid y draw.io) un ejemplo de cada módulo, importar Mermaid, `run/<comando>` y `POST /api/trace`.
 
 ## Estructura del proyecto
 
