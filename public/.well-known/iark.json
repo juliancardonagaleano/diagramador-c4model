@@ -87,10 +87,12 @@
       "id": "platform",
       "name": "Arquitectura de plataforma",
       "version": "0.1.0",
-      "description": "Entornos, redes, recursos, servicios, despliegues y pipelines, con topología, despliegue por entorno e impacto; exporta a Mermaid, SVG y draw.io.",
+      "description": "Entornos, redes, recursos, servicios, despliegues y pipelines, con topología, despliegue por entorno e impacto; importa de Mermaid, Terraform y Kubernetes y exporta a Mermaid, SVG y draw.io.",
       "documentVersion": "1.0",
       "importFormats": [
-        "mermaid"
+        "mermaid",
+        "terraform",
+        "kubernetes"
       ],
       "exportFormats": [
         "mermaid",

@@ -1,0 +1,45 @@
+{
+  "variable": {
+    "environment": { "type": "string", "default": "test" }
+  },
+  "provider": {
+    "aws": { "region": "eu-west-1" }
+  },
+  "locals": {
+    "name": "tienda-${var.environment}"
+  },
+  "resource": {
+    "aws_vpc": {
+      "main": {
+        "cidr_block": "10.70.0.0/16",
+        "tags": { "Name": "${local.name}-vpc" }
+      }
+    },
+    "aws_subnet": {
+      "private": {
+        "vpc_id": "${aws_vpc.main.id}",
+        "cidr_block": "10.70.1.0/24",
+        "tags": { "Name": "${local.name}-private" }
+      }
+    },
+    "aws_db_subnet_group": {
+      "main": {
+        "name": "${local.name}-db",
+        "subnet_ids": ["${aws_subnet.private.id}"]
+      }
+    },
+    "aws_db_instance": {
+      "orders": {
+        "identifier": "${local.name}-orders",
+        "engine": "mysql",
+        "engine_version": "8.0",
+        "instance_class": "db.t4g.micro",
+        "db_subnet_group_name": "${aws_db_subnet_group.main.name}",
+        "depends_on": ["aws_subnet.private"]
+      }
+    },
+    "aws_sqs_queue": {
+      "pedidos": { "name": "${local.name}-pedidos" }
+    }
+  }
+}
