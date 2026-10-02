@@ -75,7 +75,10 @@
               "view",
               "file",
               "report",
-              "model"
+              "model",
+              "data-product",
+              "glossary",
+              "data-api"
             ]
           },
           "name": {
@@ -86,6 +89,10 @@
             "type": "string"
           },
           "technology": {
+            "type": "string"
+          },
+          "engine": {
+            "description": "Motor de base de datos (postgresql, mysql, sqlserver, oracle, sqlite, bigquery, snowflake, redshift, databricks, mongodb, cassandra, dynamodb, kafka; el registro de motores es extensible). Lo heredan las tablas, vistas y archivos del activo.",
             "type": "string"
           },
           "owner": {
@@ -173,6 +180,50 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 120
+          },
+          "inputPorts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "outputPorts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "exposes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "freshness": {
+            "type": "string"
+          },
+          "sla": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "rest",
+              "graphql",
+              "grpc",
+              "odata",
+              "sql",
+              "events"
+            ]
+          },
+          "endpoint": {
+            "type": "string"
           }
         },
         "required": [
@@ -335,6 +386,22 @@
           },
           "description": {
             "type": "string"
+          },
+          "sourceMin": {
+            "description": "Mínimo del origen: 0 = opcional, 1 = obligatorio (por defecto, 1 si la cardinalidad dice «uno» y 0 si dice «varios»).",
+            "type": "number",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "targetMin": {
+            "description": "Mínimo del destino: 0 = opcional, 1 = obligatorio (mismos valores por defecto que sourceMin).",
+            "type": "number",
+            "enum": [
+              0,
+              1
+            ]
           }
         },
         "required": [
@@ -382,6 +449,72 @@
           "id",
           "name",
           "format"
+        ]
+      }
+    },
+    "terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "definition": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "approved",
+              "deprecated"
+            ]
+          },
+          "glossaryId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "synonyms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "assetId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "column": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "assetId"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name"
         ]
       }
     }

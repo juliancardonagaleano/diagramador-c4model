@@ -1,0 +1,900 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Modelo de ejemplo en el Open Group ArchiMate Model Exchange File Format, con la forma de un archivo exportado por Archi. -->
+<model xmlns="http://www.opengroup.org/xsd/archimate/3.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.opengroup.org/xsd/archimate/3.0/ http://www.opengroup.org/xsd/archimate/3.1/archimate3_Diagram.xsd" identifier="id-comercio-andino">
+  <name xml:lang="en">Comercio Andino - enterprise architecture</name>
+  <name xml:lang="es">Comercio Andino - arquitectura empresarial</name>
+  <documentation xml:lang="es">Capacidades de negocio, aplicaciones y tecnología de un comercio con tienda online y almacenes propios.</documentation>
+  <properties>
+    <property propertyDefinitionRef="propid-24"><value xml:lang="en">Arquitectura TI</value></property>
+  </properties>
+  <elements>
+    <element identifier="id-aefcde65a475fb91418d05aa313434ed" xsi:type="BusinessActor">
+      <name xml:lang="es">Dirección Comercial</name>
+      <documentation xml:lang="es">Responsable del negocio de venta y atención al cliente.</documentation>
+    </element>
+    <element identifier="id-31c5f69c96990faf61ea094c715c0c51" xsi:type="BusinessActor">
+      <name xml:lang="es">Ventas</name>
+    </element>
+    <element identifier="id-cc984243de4811cd3c98ddc7dfe6a299" xsi:type="BusinessActor">
+      <name xml:lang="es">Atención al cliente</name>
+    </element>
+    <element identifier="id-40dbe76139d98c36763d11d854638445" xsi:type="BusinessActor">
+      <name xml:lang="es">Operaciones</name>
+    </element>
+    <element identifier="id-93cf8313e0596eea22790b4a9c479e2a" xsi:type="BusinessActor">
+      <name xml:lang="es">Logística</name>
+    </element>
+    <element identifier="id-fb2491e716f42b9bdf894b2097187b3a" xsi:type="BusinessActor">
+      <name xml:lang="es">Finanzas</name>
+    </element>
+    <element identifier="id-db7d4092cde67ee7fcb9d0835bfb70a2" xsi:type="BusinessActor">
+      <name xml:lang="es">Tecnología (TI)</name>
+    </element>
+    <element identifier="id-0892c510d8a8c71321c335327d9c5d0c" xsi:type="BusinessActor">
+      <name xml:lang="es">Equipo Plataforma</name>
+    </element>
+    <element identifier="id-546b49142836d47a4afdebc9e4c19b5b" xsi:type="BusinessActor">
+      <name xml:lang="es">Cliente</name>
+      <name xml:lang="en">Customer</name>
+      <properties>
+        <property propertyDefinitionRef="propid-12"><value xml:lang="es">Sí</value></property>
+      </properties>
+    </element>
+    <element identifier="id-3108a87519da59f11bb9ef17d12eb7d4" xsi:type="BusinessRole">
+      <name xml:lang="es">Responsable de catálogo</name>
+    </element>
+    <element identifier="id-d1d3ea4fe1e202ff90563c2a9c037f59" xsi:type="BusinessCollaboration">
+      <name xml:lang="es">Comité de transformación digital</name>
+    </element>
+    <element identifier="id-cbde2c9c004f4094f1a1cd47a6ec0419" xsi:type="Capability">
+      <name xml:lang="es">Gestión comercial</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Core</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Dirección Comercial</value></property>
+      </properties>
+    </element>
+    <element identifier="id-ac55e4dd3a0f83f846a40d2b5afe8450" xsi:type="Capability">
+      <name xml:lang="es">Ventas online</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Diferenciadora</value></property>
+        <property propertyDefinitionRef="propid-6"><value xml:lang="es">4</value></property>
+      </properties>
+    </element>
+    <element identifier="id-209e7ddd7c4fa43b970abb1558f24359" xsi:type="Capability">
+      <name xml:lang="es">Gestión de pedidos</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Esencial</value></property>
+        <property propertyDefinitionRef="propid-6"><value xml:lang="es">Nivel 4</value></property>
+      </properties>
+    </element>
+    <element identifier="id-db0180f0ae67bad841dc4e8015076f0a" xsi:type="Capability">
+      <name xml:lang="es">Gestión de clientes</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Esencial</value></property>
+        <property propertyDefinitionRef="propid-6"><value xml:lang="es">3</value></property>
+      </properties>
+    </element>
+    <element identifier="id-d9db3be4ac99af058af45eea48d57954" xsi:type="Capability">
+      <name xml:lang="es">Precios y promociones</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Diferenciadora</value></property>
+        <property propertyDefinitionRef="propid-6"><value xml:lang="es">Defined</value></property>
+      </properties>
+    </element>
+    <element identifier="id-3d7ca44604e5149d898c9e6433b8fc74" xsi:type="Capability">
+      <name xml:lang="es">Cadena de suministro</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Core</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Operaciones</value></property>
+      </properties>
+    </element>
+    <element identifier="id-23ec5ecdb32c0409126566963bcbc5ea" xsi:type="Capability">
+      <name xml:lang="es">Gestión de inventario</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Esencial</value></property>
+        <property propertyDefinitionRef="propid-6"><value xml:lang="es">3</value></property>
+      </properties>
+    </element>
+    <element identifier="id-c8f7d949cd82e0f3bc654d81fad2a10c" xsi:type="Capability">
+      <name xml:lang="es">Distribución y entrega</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Core</value></property>
+        <property propertyDefinitionRef="propid-6"><value xml:lang="es">2/5</value></property>
+      </properties>
+    </element>
+    <element identifier="id-12f215c8624418255d0f3ce7624bf9af" xsi:type="Capability">
+      <name xml:lang="es">Compras &amp; proveedores</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Soporte</value></property>
+        <property propertyDefinitionRef="propid-6"><value xml:lang="es">3</value></property>
+      </properties>
+    </element>
+    <element identifier="id-45ea2991ae9b4aaeb7b64b7c06a627d6" xsi:type="Capability">
+      <name xml:lang="es">Gestión financiera</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Core</value></property>
+      </properties>
+    </element>
+    <element identifier="id-c2106e59c99b07569ea58e395a04b3ac" xsi:type="Capability">
+      <name xml:lang="es">Facturación</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Core</value></property>
+        <property propertyDefinitionRef="propid-6"><value xml:lang="es">4</value></property>
+      </properties>
+    </element>
+    <element identifier="id-f732feba5996cecfd0f5a3d7c052ae9f" xsi:type="Capability">
+      <name xml:lang="es">Cobros y pagos</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Core</value></property>
+        <property propertyDefinitionRef="propid-6"><value xml:lang="es">3</value></property>
+      </properties>
+    </element>
+    <element identifier="id-1b24528744c8c58fa91bf106cfa435ff" xsi:type="Capability">
+      <name xml:lang="es">Contabilidad</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Supporting</value></property>
+        <property propertyDefinitionRef="propid-6"><value xml:lang="es">Optimizado</value></property>
+      </properties>
+    </element>
+    <element identifier="id-a6402e3cbc3ed2eb2540788a4125e0dd" xsi:type="Capability">
+      <name xml:lang="es">Experiencia del cliente</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Diferenciadora</value></property>
+      </properties>
+    </element>
+    <element identifier="id-e29eb97ed0316009a989fecc15e61ff1" xsi:type="Capability">
+      <name xml:lang="es">Atención al cliente</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Differentiating</value></property>
+        <property propertyDefinitionRef="propid-6"><value xml:lang="es">3</value></property>
+      </properties>
+    </element>
+    <element identifier="id-870d5072202bedfa8882148c9c6fe488" xsi:type="Capability">
+      <name xml:lang="es">Fidelización</name>
+      <properties>
+        <property propertyDefinitionRef="propid-7"><value xml:lang="es">Diferenciadora</value></property>
+        <property propertyDefinitionRef="propid-6"><value xml:lang="es">3</value></property>
+      </properties>
+    </element>
+    <element identifier="id-9949260cd9d89ab3c83b8b2f263f59b2" xsi:type="Resource">
+      <name xml:lang="es">Plataforma de datos de clientes</name>
+    </element>
+    <element identifier="id-8aa212f2b09e6ae3ed2538dd7e0e92ef" xsi:type="CourseOfAction">
+      <name xml:lang="es">Migrar el WMS a la nube</name>
+    </element>
+    <element identifier="id-b59e2dd439a3852123ef3c0e82a64b2f" xsi:type="ValueStream">
+      <name xml:lang="es">Del pedido a la entrega</name>
+      <documentation xml:lang="es">Desde que el cliente descubre un producto hasta que lo recibe.</documentation>
+    </element>
+    <element identifier="id-d6a87cbdd0f3ef6bf2b32ae3b74d1516" xsi:type="ValueStream">
+      <name xml:lang="es">Comprar</name>
+    </element>
+    <element identifier="id-ba37d39310474c0f7b516d6cfa5b4c2e" xsi:type="ValueStream">
+      <name xml:lang="es">Descubrir producto</name>
+      <documentation xml:lang="es">El cliente encuentra lo que busca.</documentation>
+    </element>
+    <element identifier="id-c310d706fbdfe44706faa238f985f4d5" xsi:type="ValueStream">
+      <name xml:lang="es">Entregar al cliente</name>
+    </element>
+    <element identifier="id-e56678d9fddd215f36090575aaefd446" xsi:type="ValueStream">
+      <name xml:lang="es">Preparar el pedido</name>
+    </element>
+    <element identifier="id-cbf25a93d535c0e263c037a6c2fc4294" xsi:type="ValueStream">
+      <name xml:lang="es">Atención posventa</name>
+    </element>
+    <element identifier="id-ff8da972f667cd271ef093ddf34e4878" xsi:type="BusinessProcess">
+      <name xml:lang="es">Alta de pedido</name>
+    </element>
+    <element identifier="id-ffbed6c56f3808f3261687f3bb49aa06" xsi:type="BusinessProcess">
+      <name xml:lang="es">Preparación de pedido</name>
+    </element>
+    <element identifier="id-bd9d10b3260c162174c4a5689ca02042" xsi:type="BusinessProcess">
+      <name xml:lang="es">Gestión de devoluciones</name>
+    </element>
+    <element identifier="id-2d08ec93c6177c6e19c093a142cf63c9" xsi:type="BusinessProcess">
+      <name xml:lang="es">Cierre contable mensual</name>
+    </element>
+    <element identifier="id-7ab782572e2a83c7cbfa1097fff4913b" xsi:type="BusinessFunction">
+      <name xml:lang="es">Gestión de catálogo</name>
+    </element>
+    <element identifier="id-275c93cb97cad730375b3b0155b71b46" xsi:type="BusinessInteraction">
+      <name xml:lang="es">Atención de reclamaciones</name>
+    </element>
+    <element identifier="id-4766e8007252c88c46254d6fa65aa2b8" xsi:type="BusinessService">
+      <name xml:lang="es">Venta online</name>
+      <properties>
+        <property propertyDefinitionRef="propid-15"><value xml:lang="es">Clientes particulares</value></property>
+      </properties>
+    </element>
+    <element identifier="id-a33b24ffd4da731ae5316739f581839f" xsi:type="BusinessService">
+      <name xml:lang="es">Entrega a domicilio</name>
+    </element>
+    <element identifier="id-c26a647d2138e7cc48b932c7843adcf8" xsi:type="BusinessEvent">
+      <name xml:lang="es">Pedido recibido</name>
+    </element>
+    <element identifier="id-a45fb17e7253906a923bb19e526a76c2" xsi:type="AndJunction" />
+    <element identifier="id-1b93144b5c975ca1765d7c243f33c1bf" xsi:type="ApplicationComponent">
+      <name xml:lang="es">Tienda online</name>
+      <properties>
+        <property propertyDefinitionRef="propid-11"><value xml:lang="es">React + Node.js</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Ventas</value></property>
+        <property propertyDefinitionRef="propid-8"><value xml:lang="es">Crítica</value></property>
+        <property propertyDefinitionRef="propid-1"><value xml:lang="es">180.000 €</value></property>
+        <property propertyDefinitionRef="propid-2"><value xml:lang="es">25.000</value></property>
+        <property propertyDefinitionRef="propid-3"><value xml:lang="es">Conservar</value></property>
+        <property propertyDefinitionRef="propid-13"><value xml:lang="es">urn:iark:integration:tienda-web</value></property>
+      </properties>
+    </element>
+    <element identifier="id-e645d5fbef797a92f7261068e4045756" xsi:type="ApplicationComponent">
+      <name xml:lang="es">ERP corporativo</name>
+      <properties>
+        <property propertyDefinitionRef="propid-11"><value xml:lang="es">SAP S/4HANA</value></property>
+        <property propertyDefinitionRef="propid-23"><value xml:lang="en">SAP</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Finanzas</value></property>
+        <property propertyDefinitionRef="propid-22"><value xml:lang="en">Critical</value></property>
+        <property propertyDefinitionRef="propid-17"><value xml:lang="en">1,200,000 USD</value></property>
+        <property propertyDefinitionRef="propid-18"><value xml:lang="en">450</value></property>
+        <property propertyDefinitionRef="propid-19"><value xml:lang="en">Keep</value></property>
+      </properties>
+    </element>
+    <element identifier="id-a49f21d00361414350461c73555db6f7" xsi:type="ApplicationComponent">
+      <name xml:lang="es">CRM</name>
+      <properties>
+        <property propertyDefinitionRef="propid-23"><value xml:lang="en">Salesforce</value></property>
+        <property propertyDefinitionRef="propid-12"><value xml:lang="es">Sí</value></property>
+        <property propertyDefinitionRef="propid-8"><value xml:lang="es">Alta</value></property>
+        <property propertyDefinitionRef="propid-1"><value xml:lang="es">240.000</value></property>
+        <property propertyDefinitionRef="propid-2"><value xml:lang="es">120</value></property>
+        <property propertyDefinitionRef="propid-3"><value xml:lang="es">Conservar</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Ventas</value></property>
+      </properties>
+    </element>
+    <element identifier="id-aba91814150cc8fa58587f966edd9a14" xsi:type="ApplicationComponent">
+      <name xml:lang="es">Motor de precios</name>
+      <properties>
+        <property propertyDefinitionRef="propid-11"><value xml:lang="es">Java + Redis</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Ventas</value></property>
+        <property propertyDefinitionRef="propid-8"><value xml:lang="es">Media</value></property>
+        <property propertyDefinitionRef="propid-25"><value xml:lang="es">Aprobado</value></property>
+        <property propertyDefinitionRef="propid-26"><value xml:lang="es">CC-4410</value></property>
+      </properties>
+    </element>
+    <element identifier="id-a127d309ea0fa4158ed6bb01b45737e1" xsi:type="ApplicationComponent">
+      <name xml:lang="es">WMS heredado</name>
+      <properties>
+        <property propertyDefinitionRef="propid-11"><value xml:lang="es">Oracle Forms</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Logística</value></property>
+        <property propertyDefinitionRef="propid-5"><value xml:lang="es">En retirada</value></property>
+        <property propertyDefinitionRef="propid-3"><value xml:lang="es">Reemplazar</value></property>
+        <property propertyDefinitionRef="propid-4"><value xml:lang="es">31/03/2027</value></property>
+        <property propertyDefinitionRef="propid-8"><value xml:lang="es">Alta</value></property>
+        <property propertyDefinitionRef="propid-1"><value xml:lang="es">90.000</value></property>
+        <property propertyDefinitionRef="propid-2"><value xml:lang="es">60</value></property>
+        <property propertyDefinitionRef="propid-27"><value xml:lang="en">wms@comercioandino.example</value></property>
+      </properties>
+    </element>
+    <element identifier="id-e441f0d6d2ddca6173b162ce81167bb2" xsi:type="ApplicationComponent">
+      <name xml:lang="es">WMS nuevo</name>
+      <properties>
+        <property propertyDefinitionRef="propid-11"><value xml:lang="es">Java + PostgreSQL</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Logística</value></property>
+        <property propertyDefinitionRef="propid-21"><value xml:lang="en">Planned</value></property>
+        <property propertyDefinitionRef="propid-3"><value xml:lang="es">Conservar</value></property>
+        <property propertyDefinitionRef="propid-8"><value xml:lang="es">Alta</value></property>
+        <property propertyDefinitionRef="propid-1"><value xml:lang="es">150.000</value></property>
+        <property propertyDefinitionRef="propid-2"><value xml:lang="es">60</value></property>
+      </properties>
+    </element>
+    <element identifier="id-2f6b991cc286e97bb45ce633424e64e3" xsi:type="ApplicationComponent">
+      <name xml:lang="es">Gestión de transporte</name>
+      <properties>
+        <property propertyDefinitionRef="propid-10"><value xml:lang="es">Transporeon</value></property>
+        <property propertyDefinitionRef="propid-12"><value xml:lang="es">Sí</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Logística</value></property>
+        <property propertyDefinitionRef="propid-8"><value xml:lang="es">Media</value></property>
+        <property propertyDefinitionRef="propid-1"><value xml:lang="es">48k</value></property>
+        <property propertyDefinitionRef="propid-2"><value xml:lang="es">35</value></property>
+      </properties>
+    </element>
+    <element identifier="id-582a17905a426f0d51a9dacd4afdde56" xsi:type="ApplicationComponent">
+      <name xml:lang="es">Portal de proveedores</name>
+      <properties>
+        <property propertyDefinitionRef="propid-11"><value xml:lang="es">Node.js</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Logística</value></property>
+        <property propertyDefinitionRef="propid-3"><value xml:lang="es">Migrar</value></property>
+        <property propertyDefinitionRef="propid-4"><value xml:lang="es">diciembre de 2026</value></property>
+        <property propertyDefinitionRef="propid-8"><value xml:lang="es">Media</value></property>
+        <property propertyDefinitionRef="propid-1"><value xml:lang="es">30.000</value></property>
+        <property propertyDefinitionRef="propid-2"><value xml:lang="es">300</value></property>
+        <property propertyDefinitionRef="propid-28"><value xml:lang="en">PORT</value></property>
+      </properties>
+    </element>
+    <element identifier="id-9bd4fa961f962c715bdd4ed4be7a3733" xsi:type="ApplicationComponent">
+      <name xml:lang="es">Facturación electrónica</name>
+      <properties>
+        <property propertyDefinitionRef="propid-11"><value xml:lang="es">Java</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Finanzas</value></property>
+        <property propertyDefinitionRef="propid-8"><value xml:lang="es">Alta</value></property>
+        <property propertyDefinitionRef="propid-13"><value xml:lang="es">urn:iark:integration:facturacion</value></property>
+      </properties>
+    </element>
+    <element identifier="id-1563a1b0c51d5120725b6f374a3abf3a" xsi:type="ApplicationComponent">
+      <name xml:lang="es">Pasarela de pagos</name>
+      <properties>
+        <property propertyDefinitionRef="propid-10"><value xml:lang="es">Stripe</value></property>
+        <property propertyDefinitionRef="propid-12"><value xml:lang="es">Sí</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Finanzas</value></property>
+        <property propertyDefinitionRef="propid-8"><value xml:lang="es">Alta</value></property>
+      </properties>
+    </element>
+    <element identifier="id-0b851fec9fe52cad3f712de3e88d42db" xsi:type="ApplicationComponent">
+      <name xml:lang="es">Contact center</name>
+      <properties>
+        <property propertyDefinitionRef="propid-10"><value xml:lang="es">Genesys</value></property>
+        <property propertyDefinitionRef="propid-12"><value xml:lang="es">Sí</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Atención al cliente</value></property>
+        <property propertyDefinitionRef="propid-8"><value xml:lang="es">Media</value></property>
+        <property propertyDefinitionRef="propid-3"><value xml:lang="es">Pendiente de decidir</value></property>
+      </properties>
+    </element>
+    <element identifier="id-84b9e663a6fd50ac8b21dfc32ceb70f5" xsi:type="ApplicationService">
+      <name xml:lang="es">API de pedidos</name>
+    </element>
+    <element identifier="id-a8d816a7574c8e32a73a73824a89d122" xsi:type="DataObject">
+      <name xml:lang="es">Catálogo de productos</name>
+    </element>
+    <element identifier="id-b84b6b1bdd395662e678c05da9ef95cf" xsi:type="ApplicationCollaboration">
+      <name xml:lang="es">Suite de comercio electrónico</name>
+    </element>
+    <element identifier="id-68df71f4093129dafdb120736568ab84" xsi:type="ApplicationInterface">
+      <name xml:lang="es">Interfaz REST de la tienda</name>
+    </element>
+    <element identifier="id-d3e09e7b9720465fdaf52cc80eda3ff8" xsi:type="Node">
+      <name xml:lang="es">AWS sa-east-1</name>
+    </element>
+    <element identifier="id-456714d81856b9f215c2ad79e23f2828" xsi:type="Node">
+      <name xml:lang="es">CPD Bogotá</name>
+      <properties>
+        <property propertyDefinitionRef="propid-5"><value xml:lang="es">En retirada</value></property>
+        <property propertyDefinitionRef="propid-4"><value xml:lang="es">2027</value></property>
+      </properties>
+    </element>
+    <element identifier="id-dae0b408ba4aed9f098052aa274250dc" xsi:type="Device">
+      <name xml:lang="es">Terminal de almacén</name>
+    </element>
+    <element identifier="id-e634e34c54b160b1968cc82d89ef59d9" xsi:type="SystemSoftware">
+      <name xml:lang="es">Kubernetes 1.29</name>
+      <properties>
+        <property propertyDefinitionRef="propid-14"><value xml:lang="es">1.29</value></property>
+      </properties>
+    </element>
+    <element identifier="id-0ab92201655249b0469f84bb58189607" xsi:type="SystemSoftware">
+      <name xml:lang="es">PostgreSQL 16</name>
+    </element>
+    <element identifier="id-22c76b3c5daf1e177ad1095c58c834c2" xsi:type="SystemSoftware">
+      <name xml:lang="es">SAP HANA 2.0</name>
+      <properties>
+        <property propertyDefinitionRef="propid-4"><value xml:lang="es">2034-12</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Tecnología (TI)</value></property>
+        <property propertyDefinitionRef="propid-14"><value xml:lang="es">2.0</value></property>
+      </properties>
+    </element>
+    <element identifier="id-2172fdc87c757263071cb142052dbb21" xsi:type="SystemSoftware">
+      <name xml:lang="es">Oracle Database 11g</name>
+      <properties>
+        <property propertyDefinitionRef="propid-5"><value xml:lang="es">En retirada</value></property>
+        <property propertyDefinitionRef="propid-4"><value xml:lang="es">2020-12</value></property>
+        <property propertyDefinitionRef="propid-9"><value xml:lang="es">Tecnología (TI)</value></property>
+      </properties>
+    </element>
+    <element identifier="id-8248d092bdb1e84e46b157a8035383b5" xsi:type="SystemSoftware">
+      <name xml:lang="es">Apache Kafka 3.6</name>
+    </element>
+    <element identifier="id-ba07e9334145e3d9e67eaa607a9ede52" xsi:type="TechnologyService">
+      <name xml:lang="es">Servicio de colas gestionado</name>
+    </element>
+    <element identifier="id-f0ab80e74cb9586c529d7b53e0d2efee" xsi:type="Artifact">
+      <name xml:lang="es">tienda-web:1.8.2</name>
+    </element>
+    <element identifier="id-a7868b070ccb7f1b0a51564fe2b6e8a6" xsi:type="CommunicationNetwork">
+      <name xml:lang="es">Red corporativa</name>
+    </element>
+    <element identifier="id-c3fd2d773366b36c1568363054087e50" xsi:type="Stakeholder">
+      <name xml:lang="es">Junta directiva</name>
+    </element>
+    <element identifier="id-a30b00ae4c6b96ec32bad31054b22715" xsi:type="Goal">
+      <name xml:lang="es">Crecer en ventas online</name>
+    </element>
+    <element identifier="id-5b5797d881203aa1fcdf7d59f4517d56" xsi:type="Driver">
+      <name xml:lang="es">Competencia de marketplaces</name>
+    </element>
+    <element identifier="id-539b98e3a8888560dc7b6c5f60916334" xsi:type="Requirement">
+      <name xml:lang="es">Entrega en menos de 48 horas</name>
+    </element>
+    <element identifier="id-23e3074d459158a7876e9df42cfc49d1" xsi:type="WorkPackage">
+      <name xml:lang="es">Programa de migración del WMS</name>
+    </element>
+    <element identifier="id-e7bd02f87ba8192c31f443528d2f5578" xsi:type="Plateau">
+      <name xml:lang="es">Arquitectura objetivo 2027</name>
+    </element>
+  </elements>
+  <relationships>
+    <relationship identifier="id-d2efe96522ef635cd094361d32c2709d" source="id-aefcde65a475fb91418d05aa313434ed" target="id-31c5f69c96990faf61ea094c715c0c51" xsi:type="Composition" />
+    <relationship identifier="id-07acd76348a1450448fc66839ecaf093" source="id-aefcde65a475fb91418d05aa313434ed" target="id-cc984243de4811cd3c98ddc7dfe6a299" xsi:type="Composition" />
+    <relationship identifier="id-986475a6d35c7118495830b3cb9dc41b" source="id-40dbe76139d98c36763d11d854638445" target="id-93cf8313e0596eea22790b4a9c479e2a" xsi:type="Composition" />
+    <relationship identifier="id-4e56f4ab9612e4560d8bfdb7b8a34dc3" source="id-db7d4092cde67ee7fcb9d0835bfb70a2" target="id-0892c510d8a8c71321c335327d9c5d0c" xsi:type="Composition" />
+    <relationship identifier="id-8fb199292c51f7b5267d9800f228a555" source="id-d1d3ea4fe1e202ff90563c2a9c037f59" target="id-31c5f69c96990faf61ea094c715c0c51" xsi:type="Aggregation" />
+    <relationship identifier="id-c270cdb8c353a54244cafc704108026b" source="id-d1d3ea4fe1e202ff90563c2a9c037f59" target="id-93cf8313e0596eea22790b4a9c479e2a" xsi:type="Aggregation" />
+    <relationship identifier="id-f813db89d906fe867d5d6ff0a28f7c3c" source="id-d1d3ea4fe1e202ff90563c2a9c037f59" target="id-db7d4092cde67ee7fcb9d0835bfb70a2" xsi:type="Aggregation" />
+    <relationship identifier="id-0ac4664a31710b256d1f879d188caf1e" source="id-cbde2c9c004f4094f1a1cd47a6ec0419" target="id-ac55e4dd3a0f83f846a40d2b5afe8450" xsi:type="Composition" />
+    <relationship identifier="id-533c58773232d2b770d717d4768e2550" source="id-cbde2c9c004f4094f1a1cd47a6ec0419" target="id-209e7ddd7c4fa43b970abb1558f24359" xsi:type="Composition" />
+    <relationship identifier="id-d422ec7eb3f15ff42d4ca63f03054800" source="id-cbde2c9c004f4094f1a1cd47a6ec0419" target="id-db0180f0ae67bad841dc4e8015076f0a" xsi:type="Composition" />
+    <relationship identifier="id-b34765de7afaea2b9acb3f0df78ede2f" source="id-cbde2c9c004f4094f1a1cd47a6ec0419" target="id-d9db3be4ac99af058af45eea48d57954" xsi:type="Composition" />
+    <relationship identifier="id-095b9b435d786b4f0c1b3bc2cb46db47" source="id-3d7ca44604e5149d898c9e6433b8fc74" target="id-23ec5ecdb32c0409126566963bcbc5ea" xsi:type="Composition" />
+    <relationship identifier="id-af3311f3f154f3331942d2576f863ae6" source="id-3d7ca44604e5149d898c9e6433b8fc74" target="id-c8f7d949cd82e0f3bc654d81fad2a10c" xsi:type="Composition" />
+    <relationship identifier="id-4c85267da66c7d99c1aaefad6e5ced64" source="id-3d7ca44604e5149d898c9e6433b8fc74" target="id-12f215c8624418255d0f3ce7624bf9af" xsi:type="Composition" />
+    <relationship identifier="id-31906ff374b5e8b83d6d1680b0dd3662" source="id-45ea2991ae9b4aaeb7b64b7c06a627d6" target="id-c2106e59c99b07569ea58e395a04b3ac" xsi:type="Composition" />
+    <relationship identifier="id-308ea5b91bf19785439b0ffe02b42856" source="id-45ea2991ae9b4aaeb7b64b7c06a627d6" target="id-f732feba5996cecfd0f5a3d7c052ae9f" xsi:type="Composition" />
+    <relationship identifier="id-2300a0e622dda92517119164fc8bb81e" source="id-a6402e3cbc3ed2eb2540788a4125e0dd" target="id-e29eb97ed0316009a989fecc15e61ff1" xsi:type="Composition" />
+    <relationship identifier="id-5407d816a154891417c40bea27c8b9f4" source="id-a6402e3cbc3ed2eb2540788a4125e0dd" target="id-870d5072202bedfa8882148c9c6fe488" xsi:type="Composition" />
+    <relationship identifier="id-f65dd16a2fd040a58c1964edc7c93030" source="id-45ea2991ae9b4aaeb7b64b7c06a627d6" target="id-1b24528744c8c58fa91bf106cfa435ff" xsi:type="Aggregation" />
+    <relationship identifier="id-c2dc76aea81833c1c06a2e0f9cc063ed" source="id-a6402e3cbc3ed2eb2540788a4125e0dd" target="id-870d5072202bedfa8882148c9c6fe488" xsi:type="Aggregation" />
+    <relationship identifier="id-6ba3d71d00a39cd9cf765c6e1f1468d2" source="id-b59e2dd439a3852123ef3c0e82a64b2f" target="id-d6a87cbdd0f3ef6bf2b32ae3b74d1516" xsi:type="Composition" />
+    <relationship identifier="id-d498d2b62318ed8886a408a492eaf398" source="id-b59e2dd439a3852123ef3c0e82a64b2f" target="id-ba37d39310474c0f7b516d6cfa5b4c2e" xsi:type="Composition" />
+    <relationship identifier="id-e74fe537c564a9bb0b6aa901f5773258" source="id-b59e2dd439a3852123ef3c0e82a64b2f" target="id-c310d706fbdfe44706faa238f985f4d5" xsi:type="Composition" />
+    <relationship identifier="id-77031328451322d40eb5efc7e6826e74" source="id-b59e2dd439a3852123ef3c0e82a64b2f" target="id-e56678d9fddd215f36090575aaefd446" xsi:type="Composition" />
+    <relationship identifier="id-5a23af4ca7a14c7e5c685afd2f601016" source="id-ba37d39310474c0f7b516d6cfa5b4c2e" target="id-d6a87cbdd0f3ef6bf2b32ae3b74d1516" xsi:type="Flow" />
+    <relationship identifier="id-2e2d52c910a85c6e3771bb36efa8389c" source="id-d6a87cbdd0f3ef6bf2b32ae3b74d1516" target="id-e56678d9fddd215f36090575aaefd446" xsi:type="Flow" />
+    <relationship identifier="id-bfa785d22371ac9a0f25184ec4fbff0f" source="id-e56678d9fddd215f36090575aaefd446" target="id-c310d706fbdfe44706faa238f985f4d5" xsi:type="Triggering" />
+    <relationship identifier="id-1c3cb69efb08c0b0774337b1a918f904" source="id-b59e2dd439a3852123ef3c0e82a64b2f" target="id-546b49142836d47a4afdebc9e4c19b5b" xsi:type="Serving" />
+    <relationship identifier="id-478332b287efacc7b69e4f51646b0d0c" source="id-ac55e4dd3a0f83f846a40d2b5afe8450" target="id-ba37d39310474c0f7b516d6cfa5b4c2e" xsi:type="Serving" />
+    <relationship identifier="id-2fd8dbf518229b415d68db4cef1f422e" source="id-ac55e4dd3a0f83f846a40d2b5afe8450" target="id-d6a87cbdd0f3ef6bf2b32ae3b74d1516" xsi:type="Serving" />
+    <relationship identifier="id-c07a98580bf30362fd0fdc1c6a739202" source="id-209e7ddd7c4fa43b970abb1558f24359" target="id-d6a87cbdd0f3ef6bf2b32ae3b74d1516" xsi:type="Serving" />
+    <relationship identifier="id-878852d82c7bd1aad066db1bc5d874d1" source="id-23ec5ecdb32c0409126566963bcbc5ea" target="id-e56678d9fddd215f36090575aaefd446" xsi:type="Realization" />
+    <relationship identifier="id-e1e134ddb8782d0b65a7da24d1b2030b" source="id-c8f7d949cd82e0f3bc654d81fad2a10c" target="id-c310d706fbdfe44706faa238f985f4d5" xsi:type="Serving" />
+    <relationship identifier="id-e666dc4fe1428a975977f433810a20ed" source="id-e29eb97ed0316009a989fecc15e61ff1" target="id-cbf25a93d535c0e263c037a6c2fc4294" xsi:type="Serving" />
+    <relationship identifier="id-bb24fa9f6e767add49db490f55d154ee" source="id-31c5f69c96990faf61ea094c715c0c51" target="id-ff8da972f667cd271ef093ddf34e4878" xsi:type="Assignment" />
+    <relationship identifier="id-cb2351eb3f2fb4bef3f74255bdd8a2e6" source="id-93cf8313e0596eea22790b4a9c479e2a" target="id-ffbed6c56f3808f3261687f3bb49aa06" xsi:type="Assignment" />
+    <relationship identifier="id-1313d1049f856fde88e9378d8215d348" source="id-cc984243de4811cd3c98ddc7dfe6a299" target="id-bd9d10b3260c162174c4a5689ca02042" xsi:type="Assignment" />
+    <relationship identifier="id-c0441aa223d5d960adfda8f9a7fb2dea" source="id-fb2491e716f42b9bdf894b2097187b3a" target="id-2d08ec93c6177c6e19c093a142cf63c9" xsi:type="Assignment" />
+    <relationship identifier="id-a2615f362d6ca63fdff57da503ce7486" source="id-3108a87519da59f11bb9ef17d12eb7d4" target="id-7ab782572e2a83c7cbfa1097fff4913b" xsi:type="Assignment" />
+    <relationship identifier="id-148619119609fce73b004ebf0f8caf32" source="id-cc984243de4811cd3c98ddc7dfe6a299" target="id-275c93cb97cad730375b3b0155b71b46" xsi:type="Assignment" />
+    <relationship identifier="id-6a3cc51e4e443762888a31b08f5e193b" source="id-ff8da972f667cd271ef093ddf34e4878" target="id-c26a647d2138e7cc48b932c7843adcf8" xsi:type="Triggering" />
+    <relationship identifier="id-3fd273bde415c168f149ab612315f2a8" source="id-c26a647d2138e7cc48b932c7843adcf8" target="id-ffbed6c56f3808f3261687f3bb49aa06" xsi:type="Triggering" />
+    <relationship identifier="id-bf87685bf12a6c0f81eb9afb07c5a7fb" source="id-ff8da972f667cd271ef093ddf34e4878" target="id-a45fb17e7253906a923bb19e526a76c2" xsi:type="Realization" />
+    <relationship identifier="id-b7df427e584b01187e98968ed9af413e" source="id-a45fb17e7253906a923bb19e526a76c2" target="id-ac55e4dd3a0f83f846a40d2b5afe8450" xsi:type="Realization" />
+    <relationship identifier="id-876756a53df046b2d1685fa2c5dce62b" source="id-a45fb17e7253906a923bb19e526a76c2" target="id-209e7ddd7c4fa43b970abb1558f24359" xsi:type="Realization" />
+    <relationship identifier="id-79f64032ac510136e0cdd998f644edff" source="id-ffbed6c56f3808f3261687f3bb49aa06" target="id-23ec5ecdb32c0409126566963bcbc5ea" xsi:type="Realization" />
+    <relationship identifier="id-d44841a12655de2ea521179ac766f045" source="id-bd9d10b3260c162174c4a5689ca02042" target="id-e29eb97ed0316009a989fecc15e61ff1" xsi:type="Realization" />
+    <relationship identifier="id-0ce9c6c2d0e83c2f47d709a4864c5493" source="id-2d08ec93c6177c6e19c093a142cf63c9" target="id-1b24528744c8c58fa91bf106cfa435ff" xsi:type="Realization" />
+    <relationship identifier="id-446f45a8f7a2b20389ae45568fb96dff" source="id-ff8da972f667cd271ef093ddf34e4878" target="id-4766e8007252c88c46254d6fa65aa2b8" xsi:type="Realization" />
+    <relationship identifier="id-7739ee26d11fdecc758a526d8c099dc3" source="id-ffbed6c56f3808f3261687f3bb49aa06" target="id-a33b24ffd4da731ae5316739f581839f" xsi:type="Realization" />
+    <relationship identifier="id-cdd810f1bf5e802c4497c2e4f7731387" source="id-bd9d10b3260c162174c4a5689ca02042" target="id-2d08ec93c6177c6e19c093a142cf63c9" xsi:type="Flow">
+      <name xml:lang="es">ajustes por devoluciones</name>
+    </relationship>
+    <relationship identifier="id-6d9e81c66f0a64173d94460f70ede6e0" source="id-7ab782572e2a83c7cbfa1097fff4913b" target="id-d9db3be4ac99af058af45eea48d57954" xsi:type="Association" />
+    <relationship identifier="id-b3684e2f8c706fc9adca6fc2242aae80" source="id-7ab782572e2a83c7cbfa1097fff4913b" target="id-ff8da972f667cd271ef093ddf34e4878" xsi:type="Serving" />
+    <relationship identifier="id-50344da959ac340426459b04af712573" source="id-a33b24ffd4da731ae5316739f581839f" target="id-546b49142836d47a4afdebc9e4c19b5b" xsi:type="Serving" />
+    <relationship identifier="id-2f96bcfbdb58fc20eb46212b18c02574" source="id-93cf8313e0596eea22790b4a9c479e2a" target="id-23ec5ecdb32c0409126566963bcbc5ea" xsi:type="Assignment" />
+    <relationship identifier="id-0bba6ffcee50d8eba03ed50ac78c6191" source="id-93cf8313e0596eea22790b4a9c479e2a" target="id-c8f7d949cd82e0f3bc654d81fad2a10c" xsi:type="Assignment" />
+    <relationship identifier="id-4b7b29f3dd76069d70d8593bb726d333" source="id-1b93144b5c975ca1765d7c243f33c1bf" target="id-ac55e4dd3a0f83f846a40d2b5afe8450" xsi:type="Realization" />
+    <relationship identifier="id-a1276a4ab444170cee89f6385cff23a3" source="id-1b93144b5c975ca1765d7c243f33c1bf" target="id-ff8da972f667cd271ef093ddf34e4878" xsi:type="Serving" />
+    <relationship identifier="id-fbf8ea30cad502afbd0fc4ba71edb4c0" source="id-e645d5fbef797a92f7261068e4045756" target="id-ff8da972f667cd271ef093ddf34e4878" xsi:type="Serving" />
+    <relationship identifier="id-6567890b556fd7d7379360988028f21e" source="id-e645d5fbef797a92f7261068e4045756" target="id-c2106e59c99b07569ea58e395a04b3ac" xsi:type="Realization" />
+    <relationship identifier="id-ac3703fb04dd0136b5f72c4afbcccb8b" source="id-e645d5fbef797a92f7261068e4045756" target="id-1b24528744c8c58fa91bf106cfa435ff" xsi:type="Realization" />
+    <relationship identifier="id-77c086debc0914b9788c3894824b008e" source="id-e645d5fbef797a92f7261068e4045756" target="id-209e7ddd7c4fa43b970abb1558f24359" xsi:type="Realization" />
+    <relationship identifier="id-85f348b9d8222f8a80cf4196c4df3141" source="id-a49f21d00361414350461c73555db6f7" target="id-db0180f0ae67bad841dc4e8015076f0a" xsi:type="Realization" />
+    <relationship identifier="id-f3fa4f0fca7b894e1011a32ae091e5b8" source="id-0b851fec9fe52cad3f712de3e88d42db" target="id-e29eb97ed0316009a989fecc15e61ff1" xsi:type="Serving" />
+    <relationship identifier="id-b57c3f8c256120b50ca66becfba03b57" source="id-0b851fec9fe52cad3f712de3e88d42db" target="id-bd9d10b3260c162174c4a5689ca02042" xsi:type="Serving" />
+    <relationship identifier="id-8d6093f7079f26fca6f814300a9cec90" source="id-aba91814150cc8fa58587f966edd9a14" target="id-d9db3be4ac99af058af45eea48d57954" xsi:type="Realization" />
+    <relationship identifier="id-63377a93216da6048e153682deb40f9c" source="id-a127d309ea0fa4158ed6bb01b45737e1" target="id-23ec5ecdb32c0409126566963bcbc5ea" xsi:type="Serving" />
+    <relationship identifier="id-3da667aaf4d57d966611858815f8fd12" source="id-e441f0d6d2ddca6173b162ce81167bb2" target="id-23ec5ecdb32c0409126566963bcbc5ea" xsi:type="Serving" />
+    <relationship identifier="id-fc572ac2eb837838c37dc0f73a83cd85" source="id-2f6b991cc286e97bb45ce633424e64e3" target="id-c8f7d949cd82e0f3bc654d81fad2a10c" xsi:type="Serving" />
+    <relationship identifier="id-8471651d4a2a5f85f04c099d9a2deac4" source="id-582a17905a426f0d51a9dacd4afdde56" target="id-12f215c8624418255d0f3ce7624bf9af" xsi:type="Realization" />
+    <relationship identifier="id-f89e8df111f10055a59c65be9fcbf706" source="id-9bd4fa961f962c715bdd4ed4be7a3733" target="id-c2106e59c99b07569ea58e395a04b3ac" xsi:type="Serving" />
+    <relationship identifier="id-1c6674722b6c40c98d082ef4f5fb51c6" source="id-1563a1b0c51d5120725b6f374a3abf3a" target="id-f732feba5996cecfd0f5a3d7c052ae9f" xsi:type="Serving" />
+    <relationship identifier="id-4f6dceaf890854a5b733c23208feaabe" source="id-1b93144b5c975ca1765d7c243f33c1bf" target="id-e645d5fbef797a92f7261068e4045756" xsi:type="Flow">
+      <name xml:lang="es">pedidos confirmados</name>
+    </relationship>
+    <relationship identifier="id-12a2b202329dc19b0c643b60c2bd10b4" source="id-e645d5fbef797a92f7261068e4045756" target="id-9bd4fa961f962c715bdd4ed4be7a3733" xsi:type="Flow">
+      <name xml:lang="es">facturas a emitir</name>
+    </relationship>
+    <relationship identifier="id-3d7ef93f0a4879e899f4b69b1be85ed2" source="id-1b93144b5c975ca1765d7c243f33c1bf" target="id-1563a1b0c51d5120725b6f374a3abf3a" xsi:type="Flow">
+      <name xml:lang="es">cobros</name>
+    </relationship>
+    <relationship identifier="id-e7e3c23ba33c0066a8f8b8bd0ad4598a" source="id-a127d309ea0fa4158ed6bb01b45737e1" target="id-2f6b991cc286e97bb45ce633424e64e3" xsi:type="Triggering">
+      <name xml:lang="es">liberar envío</name>
+    </relationship>
+    <relationship identifier="id-4c877890a087c7f3ce848f864dd8b068" source="id-1b93144b5c975ca1765d7c243f33c1bf" target="id-84b9e663a6fd50ac8b21dfc32ceb70f5" xsi:type="Realization" />
+    <relationship identifier="id-0f29a348f351d47cecad166bb968b1c9" source="id-84b9e663a6fd50ac8b21dfc32ceb70f5" target="id-a49f21d00361414350461c73555db6f7" xsi:type="Serving" />
+    <relationship identifier="id-79022effe4383a3affc05259d4f55fc1" source="id-1b93144b5c975ca1765d7c243f33c1bf" target="id-a8d816a7574c8e32a73a73824a89d122" xsi:type="Access" accessType="Read" />
+    <relationship identifier="id-0612c9d2c68095500875e5f7a179ffae" source="id-e645d5fbef797a92f7261068e4045756" target="id-a8d816a7574c8e32a73a73824a89d122" xsi:type="Access" accessType="ReadWrite" />
+    <relationship identifier="id-879466b74554df83e49ba8b67cb65470" source="id-b84b6b1bdd395662e678c05da9ef95cf" target="id-1b93144b5c975ca1765d7c243f33c1bf" xsi:type="Aggregation" />
+    <relationship identifier="id-c83f87a60085816109757227fec59a9d" source="id-b84b6b1bdd395662e678c05da9ef95cf" target="id-aba91814150cc8fa58587f966edd9a14" xsi:type="Aggregation" />
+    <relationship identifier="id-ca0dbb6afd2f073e8db55a9225a38216" source="id-ff8da972f667cd271ef093ddf34e4878" target="id-1b93144b5c975ca1765d7c243f33c1bf" xsi:type="Association" />
+    <relationship identifier="id-89654a2c48418c7a6cb98f5c0a6f1f99" source="id-1b93144b5c975ca1765d7c243f33c1bf" target="id-a49f21d00361414350461c73555db6f7" xsi:type="Association" />
+    <relationship identifier="id-119764720eb84d566e03c602bb1cf98f" source="id-1b93144b5c975ca1765d7c243f33c1bf" target="id-546b49142836d47a4afdebc9e4c19b5b" xsi:type="Serving" />
+    <relationship identifier="id-93b84d38017808ab451eb75821be064e" source="id-1b93144b5c975ca1765d7c243f33c1bf" target="id-68df71f4093129dafdb120736568ab84" xsi:type="Composition" />
+    <relationship identifier="id-1cfbd7c47e03706052cf90f023f18194" source="id-d3e09e7b9720465fdaf52cc80eda3ff8" target="id-e634e34c54b160b1968cc82d89ef59d9" xsi:type="Composition" />
+    <relationship identifier="id-d3889c1a9c401b90fb06f76af20d6c74" source="id-d3e09e7b9720465fdaf52cc80eda3ff8" target="id-f0ab80e74cb9586c529d7b53e0d2efee" xsi:type="Assignment" />
+    <relationship identifier="id-f7ff386a0a3143a8245ab0ae67cd49e8" source="id-456714d81856b9f215c2ad79e23f2828" target="id-2172fdc87c757263071cb142052dbb21" xsi:type="Assignment" />
+    <relationship identifier="id-85b0c41c19865411d73d2dabda55d0f2" source="id-0892c510d8a8c71321c335327d9c5d0c" target="id-d3e09e7b9720465fdaf52cc80eda3ff8" xsi:type="Assignment" />
+    <relationship identifier="id-6138095dd47a30ff1b4f683c9a722597" source="id-f0ab80e74cb9586c529d7b53e0d2efee" target="id-1b93144b5c975ca1765d7c243f33c1bf" xsi:type="Realization" />
+    <relationship identifier="id-0f3fea963db05fc0ee6fc01bd599e203" source="id-e634e34c54b160b1968cc82d89ef59d9" target="id-aba91814150cc8fa58587f966edd9a14" xsi:type="Serving" />
+    <relationship identifier="id-35969da0680c3aca6084d99addc88930" source="id-e634e34c54b160b1968cc82d89ef59d9" target="id-1b93144b5c975ca1765d7c243f33c1bf" xsi:type="Serving" />
+    <relationship identifier="id-fd05785aea7c1c2470f592d02ead530d" source="id-0ab92201655249b0469f84bb58189607" target="id-e441f0d6d2ddca6173b162ce81167bb2" xsi:type="Serving" />
+    <relationship identifier="id-473ce09e42859d8df0c8bd5689180b2d" source="id-22c76b3c5daf1e177ad1095c58c834c2" target="id-e645d5fbef797a92f7261068e4045756" xsi:type="Serving" />
+    <relationship identifier="id-60cc48825806aab13a4e06aa7cc8dcb2" source="id-2172fdc87c757263071cb142052dbb21" target="id-a127d309ea0fa4158ed6bb01b45737e1" xsi:type="Serving" />
+    <relationship identifier="id-99a42feaf8f1d55dcb59e913688f92c3" source="id-ba07e9334145e3d9e67eaa607a9ede52" target="id-1563a1b0c51d5120725b6f374a3abf3a" xsi:type="Serving" />
+    <relationship identifier="id-a30543bc2a42186491410a7819f1a329" source="id-8248d092bdb1e84e46b157a8035383b5" target="id-e634e34c54b160b1968cc82d89ef59d9" xsi:type="Serving" />
+    <relationship identifier="id-2ca6ccb59d414cce40a8dd9bbfbde5cb" source="id-8248d092bdb1e84e46b157a8035383b5" target="id-ba07e9334145e3d9e67eaa607a9ede52" xsi:type="Realization" />
+    <relationship identifier="id-b6fa9d4634e43bbcf1fb9a2ec7b088fe" source="id-dae0b408ba4aed9f098052aa274250dc" target="id-d3e09e7b9720465fdaf52cc80eda3ff8" xsi:type="Association" />
+    <relationship identifier="id-ba717a56b1b097813473336fa5f1d461" source="id-456714d81856b9f215c2ad79e23f2828" target="id-d3e09e7b9720465fdaf52cc80eda3ff8" xsi:type="Flow" />
+    <relationship identifier="id-d092d013427b290fea318cb1984ee520" source="id-a7868b070ccb7f1b0a51564fe2b6e8a6" target="id-dae0b408ba4aed9f098052aa274250dc" xsi:type="Serving" />
+    <relationship identifier="id-aa239f18f6330e1fa586ad150d8e5667" source="id-c3fd2d773366b36c1568363054087e50" target="id-a30b00ae4c6b96ec32bad31054b22715" xsi:type="Association" />
+    <relationship identifier="id-7bb305221a656549549e9765caa1c652" source="id-5b5797d881203aa1fcdf7d59f4517d56" target="id-a30b00ae4c6b96ec32bad31054b22715" xsi:type="Influence" modifier="+" />
+    <relationship identifier="id-a2dcc96aaa66603494fa0b8c806a2d40" source="id-ac55e4dd3a0f83f846a40d2b5afe8450" target="id-a30b00ae4c6b96ec32bad31054b22715" xsi:type="Realization" />
+    <relationship identifier="id-d55d8e521191d142ab24f0d5a5c5f821" source="id-539b98e3a8888560dc7b6c5f60916334" target="id-a30b00ae4c6b96ec32bad31054b22715" xsi:type="Realization" />
+    <relationship identifier="id-a212dff3605d85a7b19024c9c4f89dc8" source="id-23e3074d459158a7876e9df42cfc49d1" target="id-e7bd02f87ba8192c31f443528d2f5578" xsi:type="Realization" />
+    <relationship identifier="id-0a7fb7bc3cf720ca7f22cfc96bfb5ce0" source="id-23e3074d459158a7876e9df42cfc49d1" target="id-a127d309ea0fa4158ed6bb01b45737e1" xsi:type="Association" />
+  </relationships>
+  <organizations>
+    <item>
+      <label xml:lang="en">Strategy</label>
+      <item identifierRef="id-cbde2c9c004f4094f1a1cd47a6ec0419" />
+      <item identifierRef="id-ac55e4dd3a0f83f846a40d2b5afe8450" />
+      <item identifierRef="id-209e7ddd7c4fa43b970abb1558f24359" />
+      <item identifierRef="id-db0180f0ae67bad841dc4e8015076f0a" />
+      <item identifierRef="id-d9db3be4ac99af058af45eea48d57954" />
+      <item identifierRef="id-3d7ca44604e5149d898c9e6433b8fc74" />
+      <item identifierRef="id-23ec5ecdb32c0409126566963bcbc5ea" />
+      <item identifierRef="id-c8f7d949cd82e0f3bc654d81fad2a10c" />
+      <item identifierRef="id-12f215c8624418255d0f3ce7624bf9af" />
+      <item identifierRef="id-45ea2991ae9b4aaeb7b64b7c06a627d6" />
+      <item identifierRef="id-c2106e59c99b07569ea58e395a04b3ac" />
+      <item identifierRef="id-f732feba5996cecfd0f5a3d7c052ae9f" />
+      <item identifierRef="id-1b24528744c8c58fa91bf106cfa435ff" />
+      <item identifierRef="id-a6402e3cbc3ed2eb2540788a4125e0dd" />
+      <item identifierRef="id-e29eb97ed0316009a989fecc15e61ff1" />
+      <item identifierRef="id-870d5072202bedfa8882148c9c6fe488" />
+      <item identifierRef="id-9949260cd9d89ab3c83b8b2f263f59b2" />
+      <item identifierRef="id-8aa212f2b09e6ae3ed2538dd7e0e92ef" />
+      <item identifierRef="id-b59e2dd439a3852123ef3c0e82a64b2f" />
+      <item identifierRef="id-d6a87cbdd0f3ef6bf2b32ae3b74d1516" />
+      <item identifierRef="id-ba37d39310474c0f7b516d6cfa5b4c2e" />
+      <item identifierRef="id-c310d706fbdfe44706faa238f985f4d5" />
+      <item identifierRef="id-e56678d9fddd215f36090575aaefd446" />
+      <item identifierRef="id-cbf25a93d535c0e263c037a6c2fc4294" />
+    </item>
+    <item>
+      <label xml:lang="en">Business</label>
+      <item identifierRef="id-aefcde65a475fb91418d05aa313434ed" />
+      <item identifierRef="id-31c5f69c96990faf61ea094c715c0c51" />
+      <item identifierRef="id-cc984243de4811cd3c98ddc7dfe6a299" />
+      <item identifierRef="id-40dbe76139d98c36763d11d854638445" />
+      <item identifierRef="id-93cf8313e0596eea22790b4a9c479e2a" />
+      <item identifierRef="id-fb2491e716f42b9bdf894b2097187b3a" />
+      <item identifierRef="id-db7d4092cde67ee7fcb9d0835bfb70a2" />
+      <item identifierRef="id-0892c510d8a8c71321c335327d9c5d0c" />
+      <item identifierRef="id-546b49142836d47a4afdebc9e4c19b5b" />
+      <item identifierRef="id-3108a87519da59f11bb9ef17d12eb7d4" />
+      <item identifierRef="id-d1d3ea4fe1e202ff90563c2a9c037f59" />
+      <item identifierRef="id-ff8da972f667cd271ef093ddf34e4878" />
+      <item identifierRef="id-ffbed6c56f3808f3261687f3bb49aa06" />
+      <item identifierRef="id-bd9d10b3260c162174c4a5689ca02042" />
+      <item identifierRef="id-2d08ec93c6177c6e19c093a142cf63c9" />
+      <item identifierRef="id-7ab782572e2a83c7cbfa1097fff4913b" />
+      <item identifierRef="id-275c93cb97cad730375b3b0155b71b46" />
+      <item identifierRef="id-4766e8007252c88c46254d6fa65aa2b8" />
+      <item identifierRef="id-a33b24ffd4da731ae5316739f581839f" />
+      <item identifierRef="id-c26a647d2138e7cc48b932c7843adcf8" />
+      <item identifierRef="id-a45fb17e7253906a923bb19e526a76c2" />
+    </item>
+    <item>
+      <label xml:lang="en">Application</label>
+      <item identifierRef="id-1b93144b5c975ca1765d7c243f33c1bf" />
+      <item identifierRef="id-e645d5fbef797a92f7261068e4045756" />
+      <item identifierRef="id-a49f21d00361414350461c73555db6f7" />
+      <item identifierRef="id-aba91814150cc8fa58587f966edd9a14" />
+      <item identifierRef="id-a127d309ea0fa4158ed6bb01b45737e1" />
+      <item identifierRef="id-e441f0d6d2ddca6173b162ce81167bb2" />
+      <item identifierRef="id-2f6b991cc286e97bb45ce633424e64e3" />
+      <item identifierRef="id-582a17905a426f0d51a9dacd4afdde56" />
+      <item identifierRef="id-9bd4fa961f962c715bdd4ed4be7a3733" />
+      <item identifierRef="id-1563a1b0c51d5120725b6f374a3abf3a" />
+      <item identifierRef="id-0b851fec9fe52cad3f712de3e88d42db" />
+      <item identifierRef="id-84b9e663a6fd50ac8b21dfc32ceb70f5" />
+      <item identifierRef="id-a8d816a7574c8e32a73a73824a89d122" />
+      <item identifierRef="id-b84b6b1bdd395662e678c05da9ef95cf" />
+      <item identifierRef="id-68df71f4093129dafdb120736568ab84" />
+    </item>
+    <item>
+      <label xml:lang="en">Technology &amp; Physical</label>
+      <item identifierRef="id-d3e09e7b9720465fdaf52cc80eda3ff8" />
+      <item identifierRef="id-456714d81856b9f215c2ad79e23f2828" />
+      <item identifierRef="id-dae0b408ba4aed9f098052aa274250dc" />
+      <item identifierRef="id-e634e34c54b160b1968cc82d89ef59d9" />
+      <item identifierRef="id-0ab92201655249b0469f84bb58189607" />
+      <item identifierRef="id-22c76b3c5daf1e177ad1095c58c834c2" />
+      <item identifierRef="id-2172fdc87c757263071cb142052dbb21" />
+      <item identifierRef="id-8248d092bdb1e84e46b157a8035383b5" />
+      <item identifierRef="id-ba07e9334145e3d9e67eaa607a9ede52" />
+      <item identifierRef="id-f0ab80e74cb9586c529d7b53e0d2efee" />
+      <item identifierRef="id-a7868b070ccb7f1b0a51564fe2b6e8a6" />
+    </item>
+    <item>
+      <label xml:lang="en">Motivation</label>
+      <item identifierRef="id-c3fd2d773366b36c1568363054087e50" />
+      <item identifierRef="id-a30b00ae4c6b96ec32bad31054b22715" />
+      <item identifierRef="id-5b5797d881203aa1fcdf7d59f4517d56" />
+      <item identifierRef="id-539b98e3a8888560dc7b6c5f60916334" />
+    </item>
+    <item>
+      <label xml:lang="en">Implementation &amp; Migration</label>
+      <item identifierRef="id-23e3074d459158a7876e9df42cfc49d1" />
+      <item identifierRef="id-e7bd02f87ba8192c31f443528d2f5578" />
+    </item>
+    <item>
+      <label xml:lang="en">Relations</label>
+      <item identifierRef="id-d2efe96522ef635cd094361d32c2709d" />
+      <item identifierRef="id-07acd76348a1450448fc66839ecaf093" />
+      <item identifierRef="id-986475a6d35c7118495830b3cb9dc41b" />
+      <item identifierRef="id-4e56f4ab9612e4560d8bfdb7b8a34dc3" />
+      <item identifierRef="id-8fb199292c51f7b5267d9800f228a555" />
+      <item identifierRef="id-c270cdb8c353a54244cafc704108026b" />
+      <item identifierRef="id-f813db89d906fe867d5d6ff0a28f7c3c" />
+      <item identifierRef="id-0ac4664a31710b256d1f879d188caf1e" />
+      <item identifierRef="id-533c58773232d2b770d717d4768e2550" />
+      <item identifierRef="id-d422ec7eb3f15ff42d4ca63f03054800" />
+      <item identifierRef="id-b34765de7afaea2b9acb3f0df78ede2f" />
+      <item identifierRef="id-095b9b435d786b4f0c1b3bc2cb46db47" />
+      <item identifierRef="id-af3311f3f154f3331942d2576f863ae6" />
+      <item identifierRef="id-4c85267da66c7d99c1aaefad6e5ced64" />
+      <item identifierRef="id-31906ff374b5e8b83d6d1680b0dd3662" />
+      <item identifierRef="id-308ea5b91bf19785439b0ffe02b42856" />
+      <item identifierRef="id-2300a0e622dda92517119164fc8bb81e" />
+      <item identifierRef="id-5407d816a154891417c40bea27c8b9f4" />
+      <item identifierRef="id-f65dd16a2fd040a58c1964edc7c93030" />
+      <item identifierRef="id-c2dc76aea81833c1c06a2e0f9cc063ed" />
+      <item identifierRef="id-6ba3d71d00a39cd9cf765c6e1f1468d2" />
+      <item identifierRef="id-d498d2b62318ed8886a408a492eaf398" />
+      <item identifierRef="id-e74fe537c564a9bb0b6aa901f5773258" />
+      <item identifierRef="id-77031328451322d40eb5efc7e6826e74" />
+      <item identifierRef="id-5a23af4ca7a14c7e5c685afd2f601016" />
+      <item identifierRef="id-2e2d52c910a85c6e3771bb36efa8389c" />
+      <item identifierRef="id-bfa785d22371ac9a0f25184ec4fbff0f" />
+      <item identifierRef="id-1c3cb69efb08c0b0774337b1a918f904" />
+      <item identifierRef="id-478332b287efacc7b69e4f51646b0d0c" />
+      <item identifierRef="id-2fd8dbf518229b415d68db4cef1f422e" />
+      <item identifierRef="id-c07a98580bf30362fd0fdc1c6a739202" />
+      <item identifierRef="id-878852d82c7bd1aad066db1bc5d874d1" />
+      <item identifierRef="id-e1e134ddb8782d0b65a7da24d1b2030b" />
+      <item identifierRef="id-e666dc4fe1428a975977f433810a20ed" />
+      <item identifierRef="id-bb24fa9f6e767add49db490f55d154ee" />
+      <item identifierRef="id-cb2351eb3f2fb4bef3f74255bdd8a2e6" />
+      <item identifierRef="id-1313d1049f856fde88e9378d8215d348" />
+      <item identifierRef="id-c0441aa223d5d960adfda8f9a7fb2dea" />
+      <item identifierRef="id-a2615f362d6ca63fdff57da503ce7486" />
+      <item identifierRef="id-148619119609fce73b004ebf0f8caf32" />
+      <item identifierRef="id-6a3cc51e4e443762888a31b08f5e193b" />
+      <item identifierRef="id-3fd273bde415c168f149ab612315f2a8" />
+      <item identifierRef="id-bf87685bf12a6c0f81eb9afb07c5a7fb" />
+      <item identifierRef="id-b7df427e584b01187e98968ed9af413e" />
+      <item identifierRef="id-876756a53df046b2d1685fa2c5dce62b" />
+      <item identifierRef="id-79f64032ac510136e0cdd998f644edff" />
+      <item identifierRef="id-d44841a12655de2ea521179ac766f045" />
+      <item identifierRef="id-0ce9c6c2d0e83c2f47d709a4864c5493" />
+      <item identifierRef="id-446f45a8f7a2b20389ae45568fb96dff" />
+      <item identifierRef="id-7739ee26d11fdecc758a526d8c099dc3" />
+      <item identifierRef="id-cdd810f1bf5e802c4497c2e4f7731387" />
+      <item identifierRef="id-6d9e81c66f0a64173d94460f70ede6e0" />
+      <item identifierRef="id-b3684e2f8c706fc9adca6fc2242aae80" />
+      <item identifierRef="id-50344da959ac340426459b04af712573" />
+      <item identifierRef="id-2f96bcfbdb58fc20eb46212b18c02574" />
+      <item identifierRef="id-0bba6ffcee50d8eba03ed50ac78c6191" />
+      <item identifierRef="id-4b7b29f3dd76069d70d8593bb726d333" />
+      <item identifierRef="id-a1276a4ab444170cee89f6385cff23a3" />
+      <item identifierRef="id-fbf8ea30cad502afbd0fc4ba71edb4c0" />
+      <item identifierRef="id-6567890b556fd7d7379360988028f21e" />
+      <item identifierRef="id-ac3703fb04dd0136b5f72c4afbcccb8b" />
+      <item identifierRef="id-77c086debc0914b9788c3894824b008e" />
+      <item identifierRef="id-85f348b9d8222f8a80cf4196c4df3141" />
+      <item identifierRef="id-f3fa4f0fca7b894e1011a32ae091e5b8" />
+      <item identifierRef="id-b57c3f8c256120b50ca66becfba03b57" />
+      <item identifierRef="id-8d6093f7079f26fca6f814300a9cec90" />
+      <item identifierRef="id-63377a93216da6048e153682deb40f9c" />
+      <item identifierRef="id-3da667aaf4d57d966611858815f8fd12" />
+      <item identifierRef="id-fc572ac2eb837838c37dc0f73a83cd85" />
+      <item identifierRef="id-8471651d4a2a5f85f04c099d9a2deac4" />
+      <item identifierRef="id-f89e8df111f10055a59c65be9fcbf706" />
+      <item identifierRef="id-1c6674722b6c40c98d082ef4f5fb51c6" />
+      <item identifierRef="id-4f6dceaf890854a5b733c23208feaabe" />
+      <item identifierRef="id-12a2b202329dc19b0c643b60c2bd10b4" />
+      <item identifierRef="id-3d7ef93f0a4879e899f4b69b1be85ed2" />
+      <item identifierRef="id-e7e3c23ba33c0066a8f8b8bd0ad4598a" />
+      <item identifierRef="id-4c877890a087c7f3ce848f864dd8b068" />
+      <item identifierRef="id-0f29a348f351d47cecad166bb968b1c9" />
+      <item identifierRef="id-79022effe4383a3affc05259d4f55fc1" />
+      <item identifierRef="id-0612c9d2c68095500875e5f7a179ffae" />
+      <item identifierRef="id-879466b74554df83e49ba8b67cb65470" />
+      <item identifierRef="id-c83f87a60085816109757227fec59a9d" />
+      <item identifierRef="id-ca0dbb6afd2f073e8db55a9225a38216" />
+      <item identifierRef="id-89654a2c48418c7a6cb98f5c0a6f1f99" />
+      <item identifierRef="id-119764720eb84d566e03c602bb1cf98f" />
+      <item identifierRef="id-93b84d38017808ab451eb75821be064e" />
+      <item identifierRef="id-1cfbd7c47e03706052cf90f023f18194" />
+      <item identifierRef="id-d3889c1a9c401b90fb06f76af20d6c74" />
+      <item identifierRef="id-f7ff386a0a3143a8245ab0ae67cd49e8" />
+      <item identifierRef="id-85b0c41c19865411d73d2dabda55d0f2" />
+      <item identifierRef="id-6138095dd47a30ff1b4f683c9a722597" />
+      <item identifierRef="id-0f3fea963db05fc0ee6fc01bd599e203" />
+      <item identifierRef="id-35969da0680c3aca6084d99addc88930" />
+      <item identifierRef="id-fd05785aea7c1c2470f592d02ead530d" />
+      <item identifierRef="id-473ce09e42859d8df0c8bd5689180b2d" />
+      <item identifierRef="id-60cc48825806aab13a4e06aa7cc8dcb2" />
+      <item identifierRef="id-99a42feaf8f1d55dcb59e913688f92c3" />
+      <item identifierRef="id-a30543bc2a42186491410a7819f1a329" />
+      <item identifierRef="id-2ca6ccb59d414cce40a8dd9bbfbde5cb" />
+      <item identifierRef="id-b6fa9d4634e43bbcf1fb9a2ec7b088fe" />
+      <item identifierRef="id-ba717a56b1b097813473336fa5f1d461" />
+      <item identifierRef="id-d092d013427b290fea318cb1984ee520" />
+      <item identifierRef="id-aa239f18f6330e1fa586ad150d8e5667" />
+      <item identifierRef="id-7bb305221a656549549e9765caa1c652" />
+      <item identifierRef="id-a2dcc96aaa66603494fa0b8c806a2d40" />
+      <item identifierRef="id-d55d8e521191d142ab24f0d5a5c5f821" />
+      <item identifierRef="id-a212dff3605d85a7b19024c9c4f89dc8" />
+      <item identifierRef="id-0a7fb7bc3cf720ca7f22cfc96bfb5ce0" />
+    </item>
+    <item>
+      <label xml:lang="en">Views</label>
+      <item identifierRef="id-vista-capacidades" />
+      <item identifierRef="id-vista-paisaje" />
+    </item>
+  </organizations>
+  <propertyDefinitions>
+    <propertyDefinition identifier="propid-1" type="string">
+      <name xml:lang="es">Coste anual</name>
+      <name xml:lang="en">Annual cost</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-2" type="string">
+      <name xml:lang="es">Usuarios</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-3" type="string">
+      <name xml:lang="es">Estrategia</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-4" type="string">
+      <name xml:lang="es">Fin de soporte</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-5" type="string">
+      <name xml:lang="es">Ciclo de vida</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-6" type="string">
+      <name xml:lang="es">Madurez</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-7" type="string">
+      <name xml:lang="es">Importancia</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-8" type="string">
+      <name xml:lang="es">Criticidad</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-9" type="string">
+      <name xml:lang="es">Responsable</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-10" type="string">
+      <name xml:lang="es">Proveedor</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-11" type="string">
+      <name xml:lang="es">Tecnología</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-12" type="string">
+      <name xml:lang="es">Externo</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-13" type="string">
+      <name xml:lang="es">Referencia</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-14" type="string">
+      <name xml:lang="es">Versión</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-15" type="string">
+      <name xml:lang="es">Público objetivo</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-16" type="string">
+      <name xml:lang="es">Tipo de tecnología</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-17" type="string">
+      <name xml:lang="en">annual cost</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-18" type="string">
+      <name xml:lang="en">Users</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-19" type="string">
+      <name xml:lang="en">Strategy</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-20" type="string">
+      <name xml:lang="en">End of support</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-21" type="string">
+      <name xml:lang="en">Lifecycle</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-22" type="string">
+      <name xml:lang="en">Criticality</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-23" type="string">
+      <name xml:lang="en">Vendor</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-24" type="string">
+      <name xml:lang="en">Owner</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-25" type="string">
+      <name xml:lang="es">Estado</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-26" type="string">
+      <name xml:lang="es">Centro de coste</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-27" type="string">
+      <name xml:lang="en">Owner email</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="propid-28" type="string">
+      <name xml:lang="en">Jira project</name>
+    </propertyDefinition>
+  </propertyDefinitions>
+  <views>
+    <diagrams>
+      <view identifier="id-vista-capacidades" xsi:type="Diagram">
+        <name xml:lang="es">Mapa de capacidades</name>
+        <node identifier="id-nodo-c-0" elementRef="id-cbde2c9c004f4094f1a1cd47a6ec0419" xsi:type="Element" x="20" y="20" w="120" h="55">
+          <style>
+            <fillColor r="181" g="255" b="255" />
+            <lineColor r="92" g="92" b="92" />
+          </style>
+        </node>
+        <node identifier="id-nodo-c-1" elementRef="id-3d7ca44604e5149d898c9e6433b8fc74" xsi:type="Element" x="160" y="20" w="120" h="55">
+          <style>
+            <fillColor r="181" g="255" b="255" />
+            <lineColor r="92" g="92" b="92" />
+          </style>
+        </node>
+        <node identifier="id-nodo-c-2" elementRef="id-45ea2991ae9b4aaeb7b64b7c06a627d6" xsi:type="Element" x="300" y="20" w="120" h="55">
+          <style>
+            <fillColor r="181" g="255" b="255" />
+            <lineColor r="92" g="92" b="92" />
+          </style>
+        </node>
+        <node identifier="id-nodo-c-3" elementRef="id-a6402e3cbc3ed2eb2540788a4125e0dd" xsi:type="Element" x="440" y="20" w="120" h="55">
+          <style>
+            <fillColor r="181" g="255" b="255" />
+            <lineColor r="92" g="92" b="92" />
+          </style>
+        </node>
+      </view>
+      <view identifier="id-vista-paisaje" xsi:type="Diagram">
+        <name xml:lang="es">Paisaje de aplicaciones</name>
+        <node identifier="id-nodo-p-0" elementRef="id-1b93144b5c975ca1765d7c243f33c1bf" xsi:type="Element" x="20" y="120" w="120" h="55">
+          <style>
+            <fillColor r="181" g="255" b="255" />
+            <lineColor r="92" g="92" b="92" />
+          </style>
+        </node>
+        <node identifier="id-nodo-p-1" elementRef="id-e645d5fbef797a92f7261068e4045756" xsi:type="Element" x="160" y="120" w="120" h="55">
+          <style>
+            <fillColor r="181" g="255" b="255" />
+            <lineColor r="92" g="92" b="92" />
+          </style>
+        </node>
+        <node identifier="id-nodo-p-2" elementRef="id-a49f21d00361414350461c73555db6f7" xsi:type="Element" x="300" y="120" w="120" h="55">
+          <style>
+            <fillColor r="181" g="255" b="255" />
+            <lineColor r="92" g="92" b="92" />
+          </style>
+        </node>
+        <node identifier="id-nodo-p-3" elementRef="id-22c76b3c5daf1e177ad1095c58c834c2" xsi:type="Element" x="440" y="120" w="120" h="55">
+          <style>
+            <fillColor r="181" g="255" b="255" />
+            <lineColor r="92" g="92" b="92" />
+          </style>
+        </node>
+        <connection identifier="id-conexion-1" relationshipRef="id-4f6dceaf890854a5b733c23208feaabe" xsi:type="Line" source="id-nodo-p-0" target="id-nodo-p-1" />
+      </view>
+    </diagrams>
+  </views>
+</model>

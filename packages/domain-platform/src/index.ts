@@ -13,3 +13,5 @@ export { platformAiSpec, generatedPlatformSchema, type GeneratedPlatform } from 
 export { platformCommands } from './commands';
 export { platformEditor, stagesToText, parseStages } from './editor';
 export { platformModule } from './module';
+export * from './icons';
+export { iconIssues } from './icons/issues';

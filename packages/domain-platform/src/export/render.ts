@@ -26,6 +26,7 @@ import {
 import { compareEnvironments, MATCH_NOTES, versionText, type DiffKind, type Presence } from '../compare';
 import { costsByEnvironment, formatCost } from '../costs';
 import { findView, type PlatformView } from '../views';
+import { withProviderIcons } from './icons';
 
 export const SERVICE_COLORS: Record<ServiceKind, string> = { service: '#1168bd', worker: '#3b5bdb', job: '#7048e8', frontend: '#0b7285' };
 export const EXTERNAL_COLOR = '#6b7280';
@@ -155,6 +156,14 @@ export interface RenderedView {
   edges: Map<string, RenderedEdge>;
   /** Relleno y borde de los grupos que los tienen propios (las redes). */
   groupStyles: Map<string, GroupStyle>;
+  /** Icono de proveedor de los grupos que lo tienen (un clúster EKS, una VPC): trazados de 16 × 16 y color de acento. */
+  groupIcons: Map<string, ProviderIconStyle>;
+}
+
+/** Icono del servicio de un proveedor de nube: trazados de una caja de 16 × 16 y color de acento de su paquete. */
+export interface ProviderIconStyle {
+  paths: string[];
+  color: string;
 }
 
 /** Un nodo de la escena: su estilo, el grupo que lo contiene y lo que hace falta para exportarlo a otros formatos. */
@@ -187,7 +196,7 @@ const markOf = (kinds: DiffKind[]): DiffMark => (kinds.length === 0 ? 'same' : k
 /** Lo que se dibuja de una vista, antes de colocarlo. */
 export interface Scene {
   nodes: Map<string, SceneNode>;
-  groups: Map<string, { label: string; /** Título más corto, para cuando el grupo es demasiado estrecho para el completo. */ short?: string; groupId?: string; /** Recurso (anfitrión), red o pipeline que representa. */ elementId: string; /** Relleno y borde propios (las redes, según su exposición). */ style?: GroupStyle }>;
+  groups: Map<string, { label: string; /** Título más corto, para cuando el grupo es demasiado estrecho para el completo. */ short?: string; groupId?: string; /** Recurso (anfitrión), red o pipeline que representa. */ elementId: string; /** Relleno y borde propios (las redes, según su exposición). */ style?: GroupStyle; /** Icono del servicio del proveedor de nube (un clúster EKS, una VPC). */ icon?: ProviderIconStyle }>;
   edges: Map<string, RenderedEdge>;
 }
 
@@ -377,7 +386,8 @@ const sizeOf = (style: SvgNodeStyle): { width: number; height: number } => ({ wi
 
 /** Lo que hay que dibujar en una vista (nodos, grupos y flechas), sin coordenadas. */
 export function buildScene(doc: PlatformDocument, view: PlatformView): Scene {
-  return view.type === 'environment' ? environmentScene(doc, view) : view.type === 'delivery' ? deliveryScene(doc, view) : view.type === 'costs' ? costScene(doc, view) : view.type === 'compare' ? compareScene(doc, view) : flatScene(doc, view);
+  const scene = view.type === 'environment' ? environmentScene(doc, view) : view.type === 'delivery' ? deliveryScene(doc, view) : view.type === 'costs' ? costScene(doc, view) : view.type === 'compare' ? compareScene(doc, view) : flatScene(doc, view);
+  return withProviderIcons(doc, scene);
 }
 
 /** Coloca una vista con el autolayout genérico del kernel. */
@@ -390,11 +400,11 @@ export async function layoutView(doc: PlatformDocument, viewId?: string, options
   const layout = await layoutGraph(nodes, edges, groups, { direction: 'RIGHT', ...options });
   const widths = new Map(layout.groups.map((g) => [g.id, g.width]));
   const fitted = new Map([...scene.groups].map(([id, g]) => [id, g.short && g.label.length * 6.4 + 16 > (widths.get(id) ?? Infinity) ? g.short : g.label]));
-  return { view, layout, nodes: scene.nodes, groups: new Map([...scene.groups].map(([id, g]) => [id, g.label])), fittedGroups: fitted, edges: scene.edges, groupStyles: new Map([...scene.groups].flatMap(([id, g]) => (g.style ? [[id, g.style] as const] : []))) };
+  return { view, layout, nodes: scene.nodes, groups: new Map([...scene.groups].map(([id, g]) => [id, g.label])), fittedGroups: fitted, edges: scene.edges, groupStyles: new Map([...scene.groups].flatMap(([id, g]) => (g.style ? [[id, g.style] as const] : []))), groupIcons: new Map([...scene.groups].flatMap(([id, g]) => (g.icon ? [[id, g.icon] as const] : []))) };
 }
 
 export async function toSvg(doc: PlatformDocument, viewId?: string): Promise<string> {
-  const { view, layout, nodes, fittedGroups, edges, groupStyles } = await layoutView(doc, viewId);
+  const { view, layout, nodes, fittedGroups, edges, groupStyles, groupIcons } = await layoutView(doc, viewId);
   return renderGraphSvg(layout, {
     title: view.title,
     node: (id) => nodes.get(id)!,
@@ -402,6 +412,6 @@ export async function toSvg(doc: PlatformDocument, viewId?: string): Promise<str
       const e = edges.get(id)!;
       return { stroke: e.stroke, dashed: e.dashed, label: e.label, width: e.width };
     },
-    group: (id) => ({ label: fittedGroups.get(id) ?? id, ...groupStyles.get(id) }),
+    group: (id) => ({ label: fittedGroups.get(id) ?? id, ...groupStyles.get(id), ...(groupIcons.has(id) ? { icon: groupIcons.get(id)!.paths, iconColor: groupIcons.get(id)!.color } : {}) }),
   });
 }

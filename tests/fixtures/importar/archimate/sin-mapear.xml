@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model xmlns="http://www.opengroup.org/xsd/archimate/3.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.opengroup.org/xsd/archimate/3.0/ http://www.opengroup.org/xsd/archimate/3.1/archimate3_Diagram.xsd" identifier="id-sin-mapear">
+  <name xml:lang="es">Banca digital - modelo incompleto</name>
+  <properties>
+    <property propertyDefinitionRef="d-autor"><value xml:lang="es">Oficina de arquitectura</value></property>
+  </properties>
+  <elements>
+    <!-- Motivación -->
+    <element identifier="m-junta" xsi:type="Stakeholder"><name xml:lang="es">Junta directiva</name></element>
+    <element identifier="m-driver" xsi:type="Driver"><name xml:lang="es">Presión regulatoria</name></element>
+    <element identifier="m-assess" xsi:type="Assessment"><name xml:lang="es">Riesgo de obsolescencia del core</name></element>
+    <element identifier="m-goal" xsi:type="Goal"><name xml:lang="es">Reducir el coste operativo</name></element>
+    <element identifier="m-outcome" xsi:type="Outcome"><name xml:lang="es">Ahorro del 20 %</name></element>
+    <element identifier="m-principle" xsi:type="Principle"><name xml:lang="es">Datos como activo</name></element>
+    <element identifier="m-req" xsi:type="Requirement"><name xml:lang="es">Cumplir PSD2</name></element>
+    <element identifier="m-constraint" xsi:type="Constraint"><name xml:lang="es">Presupuesto cerrado</name></element>
+    <element identifier="m-value" xsi:type="Value"><name xml:lang="es">Confianza</name></element>
+    <!-- Estrategia, implementación y migración -->
+    <element identifier="s-recurso" xsi:type="Resource"><name xml:lang="es">Equipo de datos</name></element>
+    <element identifier="s-curso" xsi:type="CourseOfAction"><name xml:lang="es">Consolidar canales</name></element>
+    <element identifier="i-paquete" xsi:type="WorkPackage"><name xml:lang="es">Programa de consolidación</name></element>
+    <element identifier="i-entregable" xsi:type="Deliverable"><name xml:lang="es">Plan director</name></element>
+    <element identifier="i-plateau" xsi:type="Plateau"><name xml:lang="es">Arquitectura actual</name></element>
+    <element identifier="i-gap" xsi:type="Gap"><name xml:lang="es">Brecha de canales</name></element>
+    <!-- Estructura pasiva, interfaces, capa física y un tipo que no existe -->
+    <element identifier="o-lugar" xsi:type="Location"><name xml:lang="es">Sede Medellín</name></element>
+    <element identifier="o-grupo" xsi:type="Grouping"><name xml:lang="es">Agrupación de canales</name></element>
+    <element identifier="o-objeto" xsi:type="BusinessObject"><name xml:lang="es">Contrato de cuenta</name></element>
+    <element identifier="o-producto" xsi:type="Product"><name xml:lang="es">Cuenta de ahorros</name></element>
+    <element identifier="o-iface" xsi:type="ApplicationInterface"><name xml:lang="es">API pública</name></element>
+    <element identifier="o-appfn" xsi:type="ApplicationFunction"><name xml:lang="es">Validar saldo</name></element>
+    <element identifier="o-tecfn" xsi:type="TechnologyFunction"><name xml:lang="es">Cifrar datos</name></element>
+    <element identifier="o-cajero" xsi:type="Equipment"><name xml:lang="es">Cajero automático</name></element>
+    <element identifier="o-futuro" xsi:type="TipoDelFuturo"><name xml:lang="es">Algo que aún no existe</name></element>
+    <!-- Lo que sí se importa, con sus problemas -->
+    <element identifier="c-omni" xsi:type="Capability">
+      <name xml:lang="es">Atención omnicanal</name>
+      <properties>
+        <property propertyDefinitionRef="d-prioridad"><value xml:lang="es">Alta</value></property>
+        <property propertyDefinitionRef="d-madurez"><value xml:lang="es">3</value></property>
+      </properties>
+    </element>
+    <element identifier="c-movil" xsi:type="Capability">
+      <name xml:lang="es">Canal
+        móvil</name>
+      <properties>
+        <property propertyDefinitionRef="d-madurez"><value xml:lang="es">9</value></property>
+        <property propertyDefinitionRef="d-importancia"><value xml:lang="es">relevante</value></property>
+        <property propertyDefinitionRef="d-vacia"><value xml:lang="es"></value></property>
+      </properties>
+    </element>
+    <element identifier="c-web" xsi:type="Capability"><name xml:lang="es">Canal web</name></element>
+    <element identifier="c-ciclo-a" xsi:type="Capability"><name xml:lang="es">Capacidad circular A</name></element>
+    <element identifier="c-ciclo-b" xsi:type="Capability"><name xml:lang="es">Capacidad circular B</name></element>
+    <element identifier="c-omni" xsi:type="Capability"><name xml:lang="es">Atención omnicanal (copia con el mismo identificador)</name></element>
+    <element identifier="p-abrir" xsi:type="BusinessProcess"><name xml:lang="es">Abrir cuenta</name></element>
+    <element identifier="p-sin-nombre" xsi:type="BusinessProcess" />
+    <element identifier="p-cerrar" xsi:type="BusinessProcess"><name xml:lang="es">Cerrar cuenta</name></element>
+    <element identifier="b-apertura" xsi:type="BusinessService"><name xml:lang="es">Apertura digital</name></element>
+    <element identifier="a-chatbot" xsi:type="ApplicationComponent">
+      <name xml:lang="es">Chatbot</name>
+      <properties>
+        <property propertyDefinitionRef="d-coste"><value xml:lang="es">-5</value></property>
+        <property propertyDefinitionRef="d-usuarios"><value xml:lang="es">muchos</value></property>
+        <property propertyDefinitionRef="d-eol"><value xml:lang="es">pronto</value></property>
+        <property propertyDefinitionRef="d-madurez"><value xml:lang="es">3</value></property>
+        <property propertyDefinitionRef="d-estado"><value xml:lang="es">Aprobado</value></property>
+        <property propertyDefinitionRef="d-owner"><value xml:lang="es">Canal Digital</value></property>
+      </properties>
+    </element>
+    <element identifier="a-core" xsi:type="ApplicationComponent"><name xml:lang="es">Core bancario</name></element>
+    <element identifier="e-cuenta" xsi:type="BusinessEvent"><name xml:lang="es">Cuenta abierta</name></element>
+    <element identifier="j-and" xsi:type="AndJunction" />
+    <element identifier="j-or" xsi:type="OrJunction" />
+    <!-- Flujos de valor: una cadena de flujos sueltos, uno con subetapas y uno aislado -->
+    <element identifier="v-captacion" xsi:type="ValueStream"><name xml:lang="es">Captación</name></element>
+    <element identifier="v-activacion" xsi:type="ValueStream"><name xml:lang="es">Activación</name></element>
+    <element identifier="v-fidelizacion" xsi:type="ValueStream"><name xml:lang="es">Fidelización</name></element>
+    <element identifier="v-ciclo" xsi:type="ValueStream"><name xml:lang="es">Ciclo de vida del cliente</name></element>
+    <element identifier="v-incorporacion" xsi:type="ValueStream"><name xml:lang="es">Incorporación</name></element>
+    <element identifier="v-verificar" xsi:type="ValueStream"><name xml:lang="es">Verificar identidad</name></element>
+    <element identifier="v-firmar" xsi:type="ValueStream"><name xml:lang="es">Firmar contrato</name></element>
+    <element identifier="v-uso" xsi:type="ValueStream"><name xml:lang="es">Uso diario</name></element>
+    <element identifier="v-cierre" xsi:type="ValueStream"><name xml:lang="es">Cierre de cuenta</name></element>
+  </elements>
+  <relationships>
+    <relationship identifier="r01" source="m-driver" target="m-goal" xsi:type="Influence" modifier="+" />
+    <relationship identifier="r02" source="c-omni" target="m-goal" xsi:type="Realization" />
+    <relationship identifier="r03" source="c-movil" target="c-omni" xsi:type="Specialization" />
+    <relationship identifier="r04" source="c-movil" target="c-web" xsi:type="Association" />
+    <relationship identifier="r05" source="c-ciclo-a" target="c-ciclo-b" xsi:type="Composition" />
+    <relationship identifier="r06" source="c-ciclo-b" target="c-ciclo-a" xsi:type="Composition" />
+    <relationship identifier="r07" source="r03" target="c-omni" xsi:type="Association" />
+    <relationship identifier="r08" source="c-omni" target="no-existe" xsi:type="Serving" />
+    <relationship identifier="r09" source="p-abrir" target="j-and" xsi:type="Triggering" />
+    <relationship identifier="r10" source="j-and" target="a-core" xsi:type="Serving" />
+    <relationship identifier="r11" source="p-abrir" target="j-or" xsi:type="Realization" />
+    <relationship identifier="r12" source="j-or" target="c-omni" xsi:type="Realization" />
+    <relationship identifier="r13" source="j-or" target="c-movil" xsi:type="Realization" />
+    <relationship identifier="r14" source="p-abrir" target="e-cuenta" xsi:type="Triggering" />
+    <relationship identifier="r15" source="e-cuenta" target="p-cerrar" xsi:type="Triggering" />
+    <relationship identifier="r16" source="e-cuenta" target="p-abrir" xsi:type="Association" />
+    <relationship identifier="r17" source="b-apertura" target="m-junta" xsi:type="Serving" />
+    <relationship identifier="r18" source="v-ciclo" target="m-junta" xsi:type="Serving" />
+    <relationship identifier="r19" source="v-captacion" target="v-activacion" xsi:type="Flow" />
+    <relationship identifier="r20" source="v-activacion" target="v-fidelizacion" xsi:type="Triggering" />
+    <relationship identifier="r21" source="v-ciclo" target="v-incorporacion" xsi:type="Composition" />
+    <relationship identifier="r22" source="v-incorporacion" target="v-verificar" xsi:type="Composition" />
+    <relationship identifier="r23" source="v-incorporacion" target="v-firmar" xsi:type="Aggregation" />
+    <relationship identifier="r24" source="v-ciclo" target="v-uso" xsi:type="Composition" />
+    <relationship identifier="r25" source="v-verificar" target="v-firmar" xsi:type="Flow" />
+    <relationship identifier="r26" source="v-firmar" target="v-uso" xsi:type="Triggering" />
+    <relationship identifier="r27" source="v-cierre" target="v-ciclo" xsi:type="Flow" />
+    <relationship identifier="r28" source="c-web" target="v-ciclo" xsi:type="Serving" />
+    <relationship identifier="r29" source="a-chatbot" target="c-omni" xsi:type="Realization" />
+    <relationship identifier="r30" source="a-chatbot" target="p-abrir" xsi:type="Serving" />
+  </relationships>
+  <propertyDefinitions>
+    <propertyDefinition identifier="d-autor" type="string"><name xml:lang="es">Autor</name></propertyDefinition>
+    <propertyDefinition identifier="d-prioridad" type="string"><name xml:lang="es">Prioridad</name></propertyDefinition>
+    <propertyDefinition identifier="d-madurez" type="string"><name xml:lang="es">Madurez</name></propertyDefinition>
+    <propertyDefinition identifier="d-importancia" type="string"><name xml:lang="es">Importancia</name></propertyDefinition>
+    <propertyDefinition identifier="d-vacia" type="string"><name xml:lang="es">Notas</name></propertyDefinition>
+    <propertyDefinition identifier="d-coste" type="string"><name xml:lang="es">Coste anual</name></propertyDefinition>
+    <propertyDefinition identifier="d-usuarios" type="string"><name xml:lang="es">Usuarios</name></propertyDefinition>
+    <propertyDefinition identifier="d-eol" type="string"><name xml:lang="es">Fin de soporte</name></propertyDefinition>
+    <propertyDefinition identifier="d-estado" type="string"><name xml:lang="es">Estado</name></propertyDefinition>
+    <propertyDefinition identifier="d-owner" type="string"><name xml:lang="es">Responsable</name></propertyDefinition>
+  </propertyDefinitions>
+  <views>
+    <diagrams>
+      <view identifier="v-vista" xsi:type="Diagram">
+        <name xml:lang="es">Vista de canales</name>
+        <node identifier="n1" elementRef="c-omni" xsi:type="Element" x="10" y="10" w="120" h="55" />
+      </view>
+    </diagrams>
+  </views>
+</model>

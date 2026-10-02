@@ -303,6 +303,21 @@ export class WorkbenchController {
     return exportDocument(module, document, format, { viewId: viewId ?? this.state.viewId });
   }
 
+  /**
+   * Abre el texto de un archivo. Un JSON del módulo se carga tal cual; un JSON que no cumple su esquema pero que un
+   * importador reconoce por el contenido (el `manifest.json` de dbt, un plan de Terraform) se importa, y el resto de
+   * archivos se importan. Devuelve el resultado de la importación, o `undefined` si se cargó como documento.
+   */
+  async openText(text: string, file: string): Promise<ImportResult | undefined> {
+    const { module } = this.state;
+    if (!module) throw new Error('No hay ningún módulo activo.');
+    if (/\.json$/i.test(file) && (analyzeText(module, text).status === 'ok' || !module.importers.some((i) => i.detect?.(text)))) {
+      this.useDocumentText(text);
+      return undefined;
+    }
+    return this.importFrom(text, undefined, { file });
+  }
+
   async importFrom(text: string, importerId?: string, context: { name?: string; file?: string } = {}): Promise<ImportResult> {
     const { module } = this.state;
     if (!module) throw new Error('No hay ningún módulo activo.');

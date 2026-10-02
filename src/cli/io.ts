@@ -1,5 +1,5 @@
 import { readFileSync, readSync, realpathSync, writeFileSync, mkdirSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import type { IncludeResolver } from '@core/import/structurizr/fromStructurizrDsl';
 import { parseDocument } from '@core/model/schema';
 import { extractJson } from '@iark/kernel';
@@ -101,6 +101,23 @@ export class CliError extends Error {
     super(message);
     this.name = 'CliError';
   }
+}
+
+/** Extensiones que se quitan siempre del nombre del archivo para nombrar el documento (las de los formatos de C4). */
+const COMMON_EXTENSIONS = ['.drawio', '.xml', '.dsl', '.txt', '.mmd', '.mermaid', '.md'];
+
+/**
+ * Nombre de reserva de un documento importado: el del archivo sin la extensión de un formato conocido. Se quitan las de
+ * draw.io, Structurizr y Mermaid y las que declaran los importadores del módulo (también las dobles, como `.tf.json`);
+ * cualquier otra se deja (un `banca.v2` sigue llamándose `banca.v2`).
+ */
+export function fallbackDocumentName(file: string, importerExtensions: string[] = []): string {
+  const name = basename(file);
+  const lower = name.toLowerCase();
+  const longest = [...COMMON_EXTENSIONS, ...importerExtensions.map((e) => e.toLowerCase())]
+    .filter((ext) => lower.endsWith(ext) && lower.length > ext.length)
+    .sort((a, b) => b.length - a.length)[0];
+  return longest ? name.slice(0, name.length - longest.length) : name;
 }
 
 export function info(message: string): void {

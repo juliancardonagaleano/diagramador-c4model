@@ -9,6 +9,7 @@ export { buildMatrix, capabilityRows, cellKey, MATRIX_OVERLAP_MIN, ROW_STATUS_LA
 export { toDrawio } from './export/drawio';
 export { fromMermaid, EnterpriseImportError, type EnterpriseImportOptions, type EnterpriseImportResult } from './import/fromMermaid';
 export { fromIntegrationJson } from './import/fromIntegration';
+export { fromArchimate, looksLikeArchimate, type ArchimateImportOptions } from './import/fromArchimate';
 export { enterpriseAiSpec, generatedEnterpriseSchema, type GeneratedEnterprise } from './ai/generation';
 export { enterpriseCommands } from './commands';
 export { enterpriseEditor } from './editor';

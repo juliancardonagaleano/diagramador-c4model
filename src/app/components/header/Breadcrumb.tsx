@@ -1,10 +1,10 @@
 import { Button, Tooltip } from '@douyinfe/semi-ui';
 import { IconArrowUp } from '@douyinfe/semi-icons';
-import { useReactFlow } from '@xyflow/react';
 import { useMemo } from 'react';
 import { viewBreadcrumb, viewLevel } from '@core/model/factories';
 import { VIEW_TYPE_LABELS } from '@core/model/types';
 import { useDocumentStore } from '../../store/documentStore';
+import { holdCamera, useFitCamera } from '../canvas/camera';
 
 /**
  * Barra de navegación entre niveles C4: C1 Contexto › C2 Contenedores › C3 Componentes.
@@ -15,7 +15,7 @@ export function Breadcrumb() {
   const activeViewId = useDocumentStore((s) => s.activeViewId);
   const setActiveView = useDocumentStore((s) => s.setActiveView);
   const drillUp = useDocumentStore((s) => s.drillUp);
-  const { fitView } = useReactFlow();
+  const { fit } = useFitCamera();
 
   const chain = useMemo(() => (activeViewId ? viewBreadcrumb(doc, activeViewId) : []), [doc, activeViewId]);
   if (chain.length === 0) return null;
@@ -37,8 +37,10 @@ export function Breadcrumb() {
               className={`c4-crumb ${isCurrent ? 'is-current' : 'hover-2'}`}
               onClick={() => {
                 if (!isCurrent) {
+                  // El encuadre se anota antes de cambiar de vista (ver `camera.ts`).
+                  const release = holdCamera();
                   setActiveView(v.id);
-                  setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 80);
+                  fit({ padding: 0.15, duration: 300 }, 80, release);
                 }
               }}
               title={v.title ?? VIEW_TYPE_LABELS[v.type]}
@@ -59,7 +61,9 @@ export function Breadcrumb() {
             icon={<IconArrowUp />}
             aria-label="Subir nivel"
             onClick={() => {
-              if (drillUp()) setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 80);
+              const release = holdCamera();
+              if (drillUp()) fit({ padding: 0.15, duration: 300 }, 80, release);
+              else release();
             }}
           />
         </Tooltip>
