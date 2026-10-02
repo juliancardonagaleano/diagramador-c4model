@@ -1,7 +1,10 @@
 import type { ModuleIssue } from '@iark/kernel';
+import { catalogIssues } from './catalog';
+import { contractEngine } from './contract';
+import { checkType, listEngines, resolveEngine, suggestTypes } from './engines';
 import { inheritance } from './inherit';
 import { findLineageCycles, indexLineage } from './lineage';
-import { CLASSIFICATION_LABELS, CLASSIFICATION_RANK, ENTITY_KINDS, KIND_LABELS, hasPii, type Column, type ColumnRef, type DataAsset, type DataDocument, type Pipeline } from './types';
+import { CLASSIFICATION_LABELS, CLASSIFICATION_RANK, ENTITY_KINDS, KIND_LABELS, hasPii, isCatalogKind, type Column, type ColumnRef, type DataAsset, type DataDocument, type Pipeline } from './types';
 
 const CONFIDENTIAL = CLASSIFICATION_RANK.confidential;
 
@@ -48,6 +51,39 @@ function mappingIssues(p: Pipeline, assets: Map<string, DataAsset>, label: Asset
 }
 
 /**
+ * Motor de base de datos: uno que no está en el registro, columnas con un tipo que el motor no tiene (con el equivalente que sí) y un
+ * contrato que declara otro servidor que el del activo. Solo se evalúa lo que declara un motor (`engine`), así que un documento
+ * sin motores no recibe ningún aviso nuevo.
+ */
+function engineIssues(doc: DataDocument, contracts: Map<string, { name: string; content?: string }>, engineOf: (id: string) => string | undefined, label: AssetLabel): ModuleIssue[] {
+  const issues: ModuleIssue[] = [];
+  for (const a of doc.assets) {
+    if (a.engine && !resolveEngine(a.engine)) {
+      issues.push({ severity: 'warning', elementId: a.id, message: `El motor «${a.engine}» de ${label(a)} no está en el registro (${listEngines().map((e) => e.id).join(', ')}): no se validan los tipos de sus columnas ni se genera su DDL.` });
+    }
+    const engine = resolveEngine(engineOf(a.id));
+    if (!engine) continue;
+    for (const c of a.columns ?? []) {
+      if (!c.type) continue;
+      const result = checkType(engine, c.type);
+      if (result.ok) continue;
+      const alternatives = suggestTypes(engine, c.type);
+      issues.push({
+        severity: engine.lenient ? 'info' : 'warning',
+        elementId: a.id,
+        message: `La columna «${c.name}» de ${label(a)} declara el tipo «${c.type}», que no existe en ${engine.label}${alternatives.length ? `. ¿Quisiste decir ${alternatives.map((t) => `«${t}»`).join(', ')}?` : '.'}`,
+      });
+    }
+    const contract = a.contractId ? contracts.get(a.contractId) : undefined;
+    const declared = contract?.content ? contractEngine(contract.content) : undefined;
+    if (contract && declared && declared.id !== engine.id) {
+      issues.push({ severity: 'warning', elementId: a.id, message: `El contrato «${contract.name}» declara el servidor ${declared.label} pero ${label(a)} está en ${engine.label}.` });
+    }
+  }
+  return issues;
+}
+
+/**
  * Reglas de gobierno y calidad del modelo de datos (avisos que no invalidan el documento pero conviene corregir):
  * datos personales sin clasificar o clasificados a la baja a lo largo del linaje, activos sin responsable, sin origen o
  * sin uso, pipelines sin frecuencia, ciclos de linaje y relaciones N:M sin tabla intermedia.
@@ -61,7 +97,8 @@ export function analyzeData(doc: DataDocument): ModuleIssue[] {
   const children = new Map<string, DataAsset[]>();
   for (const a of doc.assets) if (a.parentId) children.set(a.parentId, [...(children.get(a.parentId) ?? []), a]);
 
-  const { ownerOf, domainOf } = inheritance(doc);
+  const { ownerOf, domainOf, engineOf } = inheritance(doc);
+  const contracts = new Map((doc.contracts ?? []).map((c) => [c.id, c]));
   // Un dato derivado se produce dentro de la plataforma: informes, modelos y lo que vive en un almacén o un lago.
   const isDerived = (a: DataAsset): boolean =>
     a.kind === 'report' || a.kind === 'model' || (['table', 'view', 'file'].includes(a.kind) && ['warehouse', 'lake'].includes(assets.get(a.parentId ?? '')?.kind ?? ''));
@@ -77,7 +114,7 @@ export function analyzeData(doc: DataDocument): ModuleIssue[] {
     }
     if (pii && !a.retention) issues.push({ severity: 'info', elementId: a.id, message: `${label(a)} contiene datos personales y no declara política de retención.` });
 
-    if (!a.external && !ownerOf(a.id)) {
+    if (!a.external && !ownerOf(a.id) && !isCatalogKind(a.kind)) {
       issues.push({
         severity: pii || (rank ?? 0) >= CONFIDENTIAL ? 'warning' : 'info',
         elementId: a.id,
@@ -86,7 +123,7 @@ export function analyzeData(doc: DataDocument): ModuleIssue[] {
     }
 
     if (isDerived(a) && !producers.has(a.id)) issues.push({ severity: 'warning', elementId: a.id, message: `${label(a)} no tiene origen: ningún pipeline lo escribe.` });
-    if (!participates(a) && a.kind !== 'source') {
+    if (!participates(a) && a.kind !== 'source' && !isCatalogKind(a.kind)) {
       issues.push({ severity: 'info', elementId: a.id, message: `${label(a)} no participa en ningún pipeline ni relación.` });
     }
     if (doc.domains.length > 0 && !a.parentId && !domainOf(a.id)) {
@@ -96,6 +133,8 @@ export function analyzeData(doc: DataDocument): ModuleIssue[] {
       issues.push({ severity: 'info', elementId: a.id, message: `${label(a)} no declara clave primaria.` });
     }
   }
+
+  issues.push(...engineIssues(doc, contracts, engineOf, label));
 
   for (const d of doc.domains) {
     if (!doc.assets.some((a) => a.domainId === d.id)) issues.push({ severity: 'info', elementId: d.id, message: `El dominio «${d.name}» no tiene activos.` });
@@ -144,5 +183,6 @@ export function analyzeData(doc: DataDocument): ModuleIssue[] {
     }
   }
 
+  issues.push(...catalogIssues(doc, sensitivity));
   return issues;
 }

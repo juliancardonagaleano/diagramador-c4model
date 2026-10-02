@@ -1,11 +1,14 @@
 import { inheritance } from './inherit';
+import { listLinks } from './links';
 import { columnImpact, formatColumnRef, mappedColumns, parseColumnRef, traceLineage, type LineageDirection } from './lineage';
-import type { ColumnRef, DataDocument } from './types';
+import type { ViewRef } from '@iark/kernel';
+import type { ErdNotation } from './relations';
+import { isCatalogKind, type ColumnRef, type DataAsset, type DataDocument } from './types';
 
 export interface DataView {
-  /** `lineage`, `erd`, `domain:<id>` o, bajo demanda, `lineage:<activo>`, `upstream:<activo>` y `downstream:<activo>`. */
+  /** `lineage`, `erd`, `erd:uml`, `products`, `glossary`, `domain:<id>` o, bajo demanda, `lineage:<activo>`, `upstream:<activo>` y `downstream:<activo>`. */
   id: string;
-  type: 'lineage' | 'erd' | 'domain' | 'trace';
+  type: 'lineage' | 'erd' | 'domain' | 'trace' | 'products' | 'glossary';
   title: string;
   /** Activos dibujados, en el orden del documento: los del foco, los que aparecen solo como contexto y los contenedores. */
   assetIds: string[];
@@ -13,6 +16,12 @@ export interface DataView {
   contextIds: string[];
   pipelineIds: string[];
   relationIds: string[];
+  /** Enlaces del catálogo dibujados (`DataLink.id`): puertos de productos, activos servidos por una API y términos enlazados. */
+  linkIds: string[];
+  /** Términos del glosario dibujados, dentro de su glosario. */
+  termIds: string[];
+  /** Solo en el modelo entidad-relación: pata de gallo (`erd`) o UML con multiplicidades (`erd:uml`). */
+  notation?: ErdNotation;
   /** Solo en las vistas de impacto de columna (`column:<activo>.<columna>`): columna de partida y columnas afectadas de cada activo, de origen a destino. */
   column?: { start: ColumnRef; byAsset: Record<string, string[]> };
 }
@@ -24,8 +33,11 @@ interface Spec {
   focus: Set<string>;
   pipelineIds: string[];
   relationIds?: string[];
+  linkIds?: string[];
+  termIds?: string[];
   /** Arrastrar los contenedores de los activos dibujados (agrupaciones). El ERD dibuja fichas sueltas. */
   withAncestors?: boolean;
+  notation?: ErdNotation;
 }
 
 function build(doc: DataDocument, spec: Spec): DataView {
@@ -36,6 +48,17 @@ function build(doc: DataDocument, spec: Spec): DataView {
   for (const pid of spec.pipelineIds) {
     for (const id of [...pipelines.get(pid)!.inputs, ...pipelines.get(pid)!.outputs]) {
       if (!spec.focus.has(id)) {
+        drawn.add(id);
+        context.add(id);
+      }
+    }
+  }
+  // Los activos del otro extremo de un enlace del catálogo también se dibujan, como contexto (los términos no son activos).
+  const links = new Map(listLinks(doc).map((l) => [l.id, l]));
+  const known = new Set(doc.assets.map((a) => a.id));
+  for (const lid of spec.linkIds ?? []) {
+    for (const id of [links.get(lid)?.source, links.get(lid)?.target]) {
+      if (id !== undefined && known.has(id) && !spec.focus.has(id)) {
         drawn.add(id);
         context.add(id);
       }
@@ -55,27 +78,52 @@ function build(doc: DataDocument, spec: Spec): DataView {
     contextIds: doc.assets.filter((a) => context.has(a.id) && !spec.focus.has(a.id)).map((a) => a.id),
     pipelineIds: spec.pipelineIds,
     relationIds: spec.relationIds ?? [],
+    linkIds: spec.linkIds ?? [],
+    termIds: spec.termIds ?? [],
+    ...(spec.notation ? { notation: spec.notation } : {}),
   };
 }
 
 /**
  * Vistas derivadas del documento: el linaje completo, el modelo entidad-relación y una por dominio. Solo se listan las
- * que tienen contenido. El linaje de un activo concreto se pide por su id (ver `findView`).
+ * que tienen contenido. El linaje de un activo concreto se pide por su id (ver `findView`). El modelo entidad-relación con
+ * notación UML (`erd:uml`) es una variante del `erd` y no se lista aquí: ver `erdUmlView` y `viewRefs`.
  */
 export function listViews(doc: DataDocument): DataView[] {
   const views: DataView[] = [];
   const inPipeline = new Set(doc.pipelines.flatMap((p) => [...p.inputs, ...p.outputs]));
   const inRelation = new Set(doc.relations.flatMap((r) => [r.sourceId, r.targetId]));
 
-  // Un activo que solo se modela como entidad (tiene relaciones y ningún pipeline) se ve en el ERD, no en el linaje.
-  const lineageFocus = new Set(doc.assets.filter((a) => inPipeline.has(a.id) || !inRelation.has(a.id)).map((a) => a.id));
+  // Un activo que solo se modela como entidad (tiene relaciones y ningún pipeline) se ve en el ERD, no en el linaje; un
+  // producto, una API o un glosario con puertos, activos servidos o términos, en el mapa de productos o el glosario.
+  const links = listLinks(doc);
+  const catalogLinked = new Set(links.filter((l) => l.kind !== 'defines').flatMap((l) => [l.source, l.target]));
+  for (const t of doc.terms ?? []) if (t.glossaryId) catalogLinked.add(t.glossaryId);
+  const onlyCatalog = (a: DataAsset): boolean => isCatalogKind(a.kind) && catalogLinked.has(a.id) && !inPipeline.has(a.id);
+  const lineageFocus = new Set(doc.assets.filter((a) => inPipeline.has(a.id) || (!inRelation.has(a.id) && !onlyCatalog(a))).map((a) => a.id));
   if (lineageFocus.size > 0) {
     views.push(build(doc, { id: 'lineage', type: 'lineage', title: `Linaje de datos - ${doc.workspace.name}`, focus: lineageFocus, pipelineIds: doc.pipelines.map((p) => p.id) }));
   }
 
-  const erdFocus = new Set(doc.assets.filter((a) => (a.columns?.length ?? 0) > 0 || inRelation.has(a.id)).map((a) => a.id));
+  // Productos, APIs y glosarios no son entidades: no entran en el modelo entidad-relación aunque declaren columnas.
+  const erdFocus = new Set(doc.assets.filter((a) => !isCatalogKind(a.kind) && ((a.columns?.length ?? 0) > 0 || inRelation.has(a.id))).map((a) => a.id));
   if (erdFocus.size > 0) {
-    views.push(build(doc, { id: 'erd', type: 'erd', title: `Modelo entidad-relación - ${doc.workspace.name}`, focus: erdFocus, pipelineIds: [], relationIds: doc.relations.map((r) => r.id), withAncestors: false }));
+    views.push(build(doc, { id: 'erd', type: 'erd', title: `Modelo entidad-relación - ${doc.workspace.name}`, focus: erdFocus, pipelineIds: [], relationIds: doc.relations.map((r) => r.id), withAncestors: false, notation: 'crowfoot' }));
+  }
+
+  const portLinks = links.filter((l) => l.kind !== 'defines');
+  const publishers = doc.assets.filter((a) => a.kind === 'data-product' || a.kind === 'data-api');
+  if (publishers.length > 0) {
+    const focus = new Set([...publishers.map((a) => a.id), ...portLinks.flatMap((l) => [l.source, l.target])]);
+    views.push(build(doc, { id: 'products', type: 'products', title: `Productos de datos - ${doc.workspace.name}`, focus, pipelineIds: [], linkIds: portLinks.map((l) => l.id), withAncestors: false }));
+  }
+
+  const glossaries = doc.assets.filter((a) => a.kind === 'glossary');
+  if (glossaries.length > 0 || (doc.terms ?? []).length > 0) {
+    const termLinks = links.filter((l) => l.kind === 'defines');
+    views.push(
+      build(doc, { id: 'glossary', type: 'glossary', title: `Glosario - ${doc.workspace.name}`, focus: new Set(glossaries.map((a) => a.id)), pipelineIds: [], linkIds: termLinks.map((l) => l.id), termIds: (doc.terms ?? []).map((t) => t.id), withAncestors: false }),
+    );
   }
 
   const { domainOf } = inheritance(doc);
@@ -83,7 +131,8 @@ export function listViews(doc: DataDocument): DataView[] {
     const focus = new Set(doc.assets.filter((a) => domainOf(a.id) === domain.id).map((a) => a.id));
     if (focus.size === 0) continue;
     const pipelineIds = doc.pipelines.filter((p) => [...p.inputs, ...p.outputs].some((id) => focus.has(id))).map((p) => p.id);
-    views.push(build(doc, { id: `domain:${domain.id}`, type: 'domain', title: `Dominio - ${domain.name}`, focus, pipelineIds }));
+    const linkIds = portLinks.filter((l) => focus.has(l.source) || focus.has(l.target)).map((l) => l.id);
+    views.push(build(doc, { id: `domain:${domain.id}`, type: 'domain', title: `Dominio - ${domain.name}`, focus, pipelineIds, linkIds }));
   }
   return views;
 }
@@ -142,8 +191,47 @@ export function heatViews(doc: DataDocument): Array<{ id: string; title: string 
   return doc.assets.some((a) => a.classification || a.pii || a.columns?.some((c) => c.pii)) ? HEAT_VIEWS.map((v) => ({ ...v })) : [];
 }
 
+/** Variante del modelo entidad-relación con la notación UML: las multiplicidades (`1`, `0..*`) escritas junto a cada extremo. */
+export const ERD_UML_VIEW_ID = 'erd:uml';
+
+/** El modelo entidad-relación en notación UML, o `undefined` si el documento no tiene modelo entidad-relación. */
+export function erdUmlView(doc: DataDocument): DataView | undefined {
+  const erd = listViews(doc).find((v) => v.type === 'erd');
+  return erd && { ...erd, id: ERD_UML_VIEW_ID, title: `Modelo entidad-relación (UML) - ${doc.workspace.name}`, notation: 'uml' };
+}
+
+/** Las vistas que se exportan por lotes (una página por vista en draw.io): las listadas y, tras el modelo entidad-relación, su variante UML. */
+export function exportViews(doc: DataDocument): DataView[] {
+  const uml = erdUmlView(doc);
+  return listViews(doc).flatMap((v) => (v.type === 'erd' && uml ? [v, uml] : [v]));
+}
+
+/** Título del selector de variantes de una vista del lienzo para el modelo entidad-relación. */
+const NOTATION_LABEL = 'Notación';
+
+/**
+ * Vistas que ofrece el módulo en el lienzo: las derivadas y, tras el modelo entidad-relación, su variante UML (el lienzo la
+ * muestra en el selector «Notación», no en «Vista»), los mapas de calor y las vistas de impacto de columna.
+ */
+export function viewRefs(doc: DataDocument): ViewRef[] {
+  const uml = erdUmlView(doc);
+  const derived = listViews(doc).flatMap((v): ViewRef[] =>
+    v.type === 'erd' && uml
+      ? [
+          { id: v.id, title: v.title, variantLabel: 'Pata de gallo', variantsLabel: NOTATION_LABEL },
+          { id: uml.id, title: uml.title, variantOf: v.id, variantLabel: 'UML', variantsLabel: NOTATION_LABEL },
+        ]
+      : [{ id: v.id, title: v.title }],
+  );
+  return [...derived, ...heatViews(doc), ...columnViews(doc)].map((v) => ({ ...v }));
+}
+
 export function findView(doc: DataDocument, viewId?: string): DataView {
   const views = listViews(doc);
+  if (viewId === ERD_UML_VIEW_ID) {
+    const uml = erdUmlView(doc);
+    if (uml) return uml;
+  }
   const heat = HEAT_VIEWS.find((v) => v.id === viewId);
   if (heat) {
     const base = views.find((v) => v.type === 'lineage') ?? views[0];
@@ -166,5 +254,5 @@ export function findView(doc: DataDocument, viewId?: string): DataView {
   if (doc.assets.some((a) => a.id === viewId)) return traceView(doc, viewId);
   const domain = views.find((v) => v.id === `domain:${viewId}`);
   if (domain) return domain;
-  throw new Error(`No existe la vista «${viewId}». Vistas disponibles: ${[...views.map((v) => v.id), 'lineage:<activo>', 'upstream:<activo>', 'downstream:<activo>', 'column:<activo>.<columna>'].join(', ')}.`);
+  throw new Error(`No existe la vista «${viewId}». Vistas disponibles: ${[...exportViews(doc).map((v) => v.id), 'lineage:<activo>', 'upstream:<activo>', 'downstream:<activo>', 'column:<activo>.<columna>'].join(', ')}.`);
 }
