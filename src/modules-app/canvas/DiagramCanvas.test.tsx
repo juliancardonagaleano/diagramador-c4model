@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { pretty, type EditorSpec } from '@iark/kernel';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { pretty, type EditorSpec, type GraphLayout } from '@iark/kernel';
 import { installFlowMocks, pickNode, pressKey } from '../testing-dom';
 import { FAKE_DOC, fakeEditor, type FakeDoc } from '../testing-editor';
 import { DiagramCanvas } from './DiagramCanvas';
@@ -344,6 +344,48 @@ describe('lienzo asentado', () => {
     fireEvent.click(screen.getByTestId('autolayout'));
     expect(canvas()).toHaveAttribute('data-layout', 'pending');
     await waitFor(() => expect(canvas()).toHaveAttribute('data-layout', 'ready'), { timeout: 5000 });
+  });
+});
+
+describe('lienzo asentado: cambio de vista mientras se encuadra', () => {
+  const canvas = (): HTMLElement => screen.getByTestId('module-canvas');
+  const box = (id: string, x: number, y: number) => ({ id, x, y, width: 160, height: 64 });
+  const LAYOUT: GraphLayout = {
+    nodes: [box('api', 20, 40), box('cola', 220, 40), box('worker', 420, 40), box('libre', 20, 240)],
+    groups: [box('zona', 0, 0)],
+    edges: [],
+    width: 600,
+    height: 320,
+  };
+
+  afterEach(() => vi.useRealTimers());
+
+  // El encuadre de una vista se programa 60 ms después de que llegue su autolayout. Si en ese intervalo se cambia de vista,
+  // ese encuadre ya no es de la vista que se ve: antes se daba por hecho (y gastaba el encuadre pendiente de la vista nueva),
+  // así que cuando llegaba el autolayout de la nueva vista nadie la encuadraba y el lienzo se quedaba en «pending» para siempre.
+  it('un encuadre programado para la vista anterior no deja la nueva en «pending»', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let releaseB: (layout: GraphLayout) => void = () => undefined;
+    const slowB = new Promise<GraphLayout>((resolve) => (releaseB = resolve));
+    // La vista «a» se coloca al instante; la «b» tarda más que el encuadre de «a».
+    const withViews = { ...spec, layout: (_doc: unknown, viewId?: string) => (viewId === 'b' ? slowB : LAYOUT) } as EditorSpec<unknown>;
+    const history = new EditHistory();
+    const host = (viewId: string) => (
+      <DiagramCanvas moduleId="fake" spec={withViews} document={FAKE_DOC} text={pretty(FAKE_DOC)} viewId={viewId} views={[]} onView={vi.fn()} readOnly={false} history={history} onText={vi.fn()} notify={vi.fn()} />
+    );
+    const advance = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+
+    const view = render(host('a'));
+    await advance(0); // el autolayout de «a» llega y se programa su encuadre (a los 60 ms)
+    expect(canvas()).toHaveAttribute('data-layout', 'pending');
+    view.rerender(host('b')); // se cambia de vista antes de que dispare
+    await advance(120); // el encuadre programado dispara con «b» pendiente de colocar
+    expect(canvas()).toHaveAttribute('data-layout', 'pending');
+    releaseB(LAYOUT); // llega el autolayout de «b»
+    await advance(0);
+    await advance(2000); // encuadre y cámara asentada
+    expect(canvas()).toHaveAttribute('data-layout', 'ready');
+    expect(canvas()).toHaveAttribute('data-view', 'b');
   });
 });
 
