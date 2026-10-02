@@ -93,7 +93,7 @@ export const enterpriseCommands: CommandSpec[] = [
     name: 'impact',
     description: 'Impacto de un elemento: qué se apoya en él (afectado si cambia o se retira) y/o de qué depende, con los responsables a avisar',
     input: { description: 'documento empresarial en JSON' },
-    args: [{ name: 'elemento', description: 'id de una capacidad, proceso, aplicación o tecnología', required: true }],
+    args: [{ name: 'elemento', description: 'id de una capacidad, etapa, proceso, servicio, aplicación o tecnología', required: true }],
     options: [{ flags: '--direction <sentido>', description: 'dependents (lo que se apoya en él) | dependencies (de lo que depende) | both', default: 'dependents' }],
     run: ({ args, options, input }) => {
       const doc = readEnterprise(input);
@@ -101,8 +101,8 @@ export const enterpriseCommands: CommandSpec[] = [
       if (!direction) throw new EnterpriseImportError(`Sentido inválido «${String(options.direction)}». Use: ${Object.keys(REACH_OPTIONS).join(', ')}.`);
       const elements = indexElements(doc);
       const start = elements.get(args[0]);
-      if (!start || start.kind === 'unit') {
-        const known = [...elements.values()].filter((e) => e.kind !== 'unit').map((e) => e.id);
+      if (!start || start.kind === 'unit' || start.kind === 'stream') {
+        const known = [...elements.values()].filter((e) => e.kind !== 'unit' && e.kind !== 'stream').map((e) => e.id);
         throw new EnterpriseImportError(`No existe el elemento «${args[0]}». Elementos: ${known.join(', ')}.`);
       }
       const graph = dependencyGraph(doc);

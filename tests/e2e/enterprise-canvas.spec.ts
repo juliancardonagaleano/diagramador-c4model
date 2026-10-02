@@ -139,4 +139,60 @@ test.describe('lienzo empresarial: capas, mapa por criterio y relaciones nuevas'
     expect(JSON.parse(text).applications.find((a: { id: string }) => a.id === 'tms').ownerId).toBe('equipo-de-datos');
     expect(errors).toEqual([]);
   });
+  test('los flujos de valor dibujan las etapas como chevrones en cadena con las capacidades que las habilitan', async ({ page }) => {
+    const errors = await open(page);
+    await page.getByRole('tab', { name: 'Vista SVG' }).click();
+    await page.getByLabel('Documento JSON').fill(readFileSync('examples/empresa-flujo-de-valor.json', 'utf8'));
+    await page.getByRole('tab', { name: 'Lienzo' }).click();
+    await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
+    await page.getByTestId('canvas-view').selectOption('value-stream');
+    await expect(page.getByTestId('node-pedir')).toBeVisible();
+    await page.waitForTimeout(600); // el encuadre de la cámara termina de animarse
+    const stages = ['descubrir', 'pedir', 'preparar', 'entregar', 'posventa'];
+    const boxes = [];
+    for (const id of stages) {
+      const node = page.getByTestId(`node-${id}`);
+      await expect(node).toBeVisible();
+      await expect(node).toHaveAttribute('data-kind', 'stage');
+      boxes.push((await node.boundingBox())!);
+    }
+    await expect(page.getByTestId('node-pedir').locator('path').first()).toHaveAttribute('fill', '#ffd43b');
+    for (let i = 1; i < boxes.length; i += 1) {
+      expect(Math.abs(boxes[i].y - boxes[0].y)).toBeLessThan(2);
+      expect(boxes[i].x).toBeGreaterThan(boxes[i - 1].x);
+    }
+    const cobros = (await page.getByTestId('node-cobros').boundingBox())!;
+    expect(cobros.y).toBeGreaterThan(boxes[0].y + boxes[0].height);
+    await expect(page.locator('.react-flow__edge[data-id="cobros--enables--pedir"]')).toBeVisible();
+    await shot(page, 'flujo-de-valor');
+
+    // Editar una etapa y añadir otra detrás de ella.
+    await page.getByTestId('node-pedir').click();
+    await page.getByTestId('inspector').getByLabel('Valor que aporta').fill('pedido pagado');
+    await page.getByTestId('inspector').getByLabel('Valor que aporta').blur();
+    await expect(page.getByTestId('node-pedir')).toContainText('pedido pagado');
+    await page.getByTestId('add-stage').click();
+    await page.getByRole('tab', { name: 'Vista SVG' }).click();
+    const doc = JSON.parse(await page.getByLabel('Documento JSON').inputValue()) as { valueStages: Array<{ id: string; value?: string }> };
+    expect(doc.valueStages.map((x) => x.id).slice(0, 4)).toEqual(['descubrir', 'pedir', 'etapa-nuevo', 'preparar']);
+    expect(doc.valueStages.find((x) => x.id === 'pedir')?.value).toBe('pedido pagado');
+    expect(errors).toEqual([]);
+  });
+
+  test('en el paisaje se puede arrastrar una asignación hacia una unidad que solo era responsable', async ({ page }) => {
+    const errors = await open(page);
+    await page.getByTestId('canvas-view').selectOption('landscape');
+    await expect(page.getByTestId('node-plataforma')).toHaveAttribute('data-kind', 'unit');
+    await page.getByTestId('edge-kind').selectOption('assigned-to');
+    const from = (await page.getByTestId('node-alta-pedido').locator('.react-flow__handle.source').boundingBox())!;
+    const to = (await page.getByTestId('node-plataforma').locator('.react-flow__handle.target').boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
+    await page.mouse.up();
+    await page.getByRole('tab', { name: 'Vista SVG' }).click();
+    const doc = JSON.parse(await page.getByLabel('Documento JSON').inputValue()) as { relations: Array<{ kind: string; sourceId: string; targetId: string }> };
+    expect(doc.relations).toContainEqual(expect.objectContaining({ kind: 'assigned-to', sourceId: 'plataforma', targetId: 'alta-pedido' }));
+    expect(errors).toEqual([]);
+  });
 });

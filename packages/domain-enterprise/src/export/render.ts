@@ -1,5 +1,5 @@
 import { layoutGraph, renderGraphSvg, type Box, type GraphLayout, type GraphLayoutOptions, type ShapeKind, type SvgEdgeStyle, type SvgLegend, type SvgNodeStyle } from '@iark/kernel';
-import { applicationsByCapability, capabilityChildren } from '../graph';
+import { applicationsByCapability, capabilityChildren, stageCapabilities, streamStages } from '../graph';
 import {
   CRITICALITY_LABELS,
   IMPORTANCE_LABELS,
@@ -22,6 +22,9 @@ import {
   type Relation,
   type RelationKind,
   type Technology,
+  type BusinessService,
+  type ValueStage,
+  type ValueStream,
 } from '../types';
 import { CAPABILITY_COLOR_LABELS, findView, roadmapColumns, type CapabilityColorMode, type EnterpriseView } from '../views';
 
@@ -35,6 +38,9 @@ export const KIND_COLORS: Record<ElementKind, string> = {
   process: '#ffe066',
   application: '#74c0fc',
   technology: '#8ce99a',
+  stream: '#fff3bf',
+  stage: '#ffd43b',
+  service: '#ffe8a3',
 };
 export const KIND_STROKES: Record<ElementKind, string> = {
   unit: '#868e96',
@@ -42,6 +48,9 @@ export const KIND_STROKES: Record<ElementKind, string> = {
   process: '#e0a800',
   application: '#1c7ed6',
   technology: '#2f9e44',
+  stream: '#e0a800',
+  stage: '#e0a800',
+  service: '#e0a800',
 };
 export const INK = '#0f172a';
 
@@ -52,6 +61,9 @@ export const ELEMENT_ICONS: Record<ElementKind, string[]> = {
   process: ['M2 5.5h6.5V2.5L14 8l-5.5 5.5v-3H2z'],
   application: ['M2 3h12v10H2z', 'M2 6h12'],
   technology: ['M8 2l6 3v6l-6 3-6-3V5z', 'M2 5l6 3 6-3', 'M8 8v6'],
+  stream: ['M2 3l5 5-5 5', 'M8 3l5 5-5 5'],
+  stage: ['M4 2.5l5.5 5.5L4 13.5'],
+  service: ['M5 4h6a4 4 0 0 1 0 8H5a4 4 0 0 1 0-8z', 'M5 8h6'],
 };
 
 /** Notación de cada tipo de relación: la misma en el lienzo, el SVG y draw.io. */
@@ -74,10 +86,12 @@ export const EDGE_STYLES: Record<RelationKind, EdgeStyle> = {
   'flows-to': { stroke: '#0b7285', dashed: true },
   'assigned-to': { stroke: '#e8590c', tail: 'dot' },
   triggers: { stroke: '#c2255c', width: 2.25, head: 'open' },
+  enables: { stroke: '#a07800' },
+  exposes: { stroke: '#f08c00', head: 'open' },
 };
 
 /** Figura de cada tipo de elemento (notación de capas al estilo ArchiMate): la misma en el lienzo y en el SVG. */
-export const ELEMENT_SHAPES: Record<ElementKind, ShapeKind> = { unit: 'rect', capability: 'rounded', process: 'chevron', application: 'rect', technology: 'bar' };
+export const ELEMENT_SHAPES: Record<ElementKind, ShapeKind> = { unit: 'rect', capability: 'rounded', process: 'chevron', application: 'rect', technology: 'bar', stream: 'rounded', stage: 'chevron', service: 'pill' };
 
 export const CONTEXT_COLOR = '#94a3b8';
 export const LIFECYCLE_STROKE: Partial<Record<Lifecycle, string>> = { sunset: '#e8590c', retired: '#c92a2a' };
@@ -120,6 +134,20 @@ export function elementLines(e: Element, doc?: EnterpriseDocument): string[] {
     case 'technology': {
       const t = e.item as Technology;
       return [t.name, statusLine([TECHNOLOGY_KIND_LABELS[t.kind ?? 'platform'], t.version]), statusLine([lifecycleText(t), t.endOfLife ? `soporte hasta ${t.endOfLife}` : undefined])].filter(Boolean);
+    }
+    case 'stream': {
+      const v = e.item as ValueStream;
+      const stages = doc?.valueStages.filter((x) => x.streamId === v.id).length;
+      return [v.name, v.stakeholder ? `valor para ${v.stakeholder}` : '', stages === undefined ? '' : `${stages} ${stages === 1 ? 'etapa' : 'etapas'}`].filter(Boolean);
+    }
+    case 'stage': {
+      const s = e.item as ValueStage;
+      const count = doc ? (stageCapabilities(doc).get(s.id) ?? []).length : undefined;
+      return [s.name, s.value ?? '', count === undefined ? '' : count === 0 ? 'sin capacidad' : `${count} ${count === 1 ? 'capacidad' : 'capacidades'}`].filter(Boolean);
+    }
+    case 'service': {
+      const b = e.item as BusinessService;
+      return [b.name, b.audience ?? '', owner(b.ownerId) ?? ''].filter(Boolean);
     }
     default:
       return [e.name];
@@ -326,6 +354,91 @@ export function layoutRoadmap(doc: EnterpriseDocument): { layout: GraphLayout; t
   return { layout: { nodes, groups, edges: [], width: Math.max(0, columns.length * (COLUMN_W + GAP) - GAP), height }, titles };
 }
 
+// --- Flujos de valor: etapas en cadena y, debajo, las capacidades que las habilitan -------------------------------------
+
+const STAGE_H = 76;
+const CAPABILITY_H = 72;
+/** Separación entre chevrones: la punta de uno encaja en la muesca del siguiente. */
+const STAGE_GAP = 4;
+
+/**
+ * Flujos de valor: cada flujo es un recuadro con sus etapas como chevrones en cadena, de izquierda a derecha, y debajo, en
+ * una fila, las capacidades que las habilitan (cada una bajo su primera etapa; si ya la dibuja un flujo anterior, se
+ * conserva donde estaba). Un flujo sin etapas es un nodo suelto, para poder rellenarlo.
+ */
+export function layoutValueStreams(doc: EnterpriseDocument): { layout: GraphLayout; titles: Map<string, string>; edges: Map<string, RenderedEdge> } {
+  const stages = streamStages(doc);
+  const enabling = stageCapabilities(doc);
+  const longest = Math.max(0, ...doc.valueStages.map((x) => x.name.length));
+  const stageW = Math.min(260, Math.max(180, Math.ceil(longest * 7.2 + 56)));
+  const step = stageW + STAGE_GAP;
+  const capW = Math.max(160, stageW - 20);
+  const placed = new Set<string>();
+  const nodes: Box[] = [];
+  const groups: Box[] = [];
+  const routes: Array<{ id: string; points: Array<{ x: number; y: number }> }> = [];
+  const titles = new Map<string, string>();
+  const spots = new Map<string, Box>();
+  const edges = new Map<string, RenderedEdge>();
+  let y = 0;
+  let width = 0;
+  for (const stream of doc.valueStreams) {
+    const list = stages.get(stream.id)!;
+    titles.set(stream.id, stream.name);
+    if (list.length === 0) {
+      nodes.push({ id: stream.id, x: 0, y, width: stageW, height: STAGE_H });
+      width = Math.max(width, stageW);
+      y += STAGE_H + GAP * 2;
+      continue;
+    }
+    const stageY = y + TITLE;
+    list.forEach((stage, i) => {
+      const box = { id: stage.id, x: PAD + i * step, y: stageY, width: stageW, height: STAGE_H };
+      nodes.push(box);
+      spots.set(stage.id, box);
+    });
+    // Capacidades de este flujo aún sin colocar, en una fila bajo sus etapas.
+    const capabilities: Array<{ id: string; center: number; stages: string[] }> = [];
+    list.forEach((stage, i) => {
+      for (const c of enabling.get(stage.id) ?? []) {
+        if (placed.has(c.id)) continue;
+        const known = capabilities.find((k) => k.id === c.id);
+        if (known) known.stages.push(stage.id);
+        else capabilities.push({ id: c.id, center: PAD + i * step + stageW / 2, stages: [stage.id] });
+      }
+    });
+    const capY = stageY + STAGE_H + 44;
+    let next = PAD;
+    capabilities.forEach((c) => {
+      const x = Math.max(next, c.center - capW / 2);
+      const box = { id: c.id, x, y: capY, width: capW, height: CAPABILITY_H };
+      nodes.push(box);
+      spots.set(c.id, box);
+      placed.add(c.id);
+      next = x + capW + GAP;
+    });
+    const rowW = Math.max(PAD + list.length * step - STAGE_GAP, next - GAP) + PAD;
+    const h = TITLE + STAGE_H + (capabilities.length > 0 ? 44 + CAPABILITY_H : 0) + PAD;
+    groups.push({ id: stream.id, x: 0, y, width: rowW, height: h });
+    width = Math.max(width, rowW);
+    y += h + GAP * 2;
+  }
+  // Aristas (etapa → capacidad) con un codo bajo la etapa; las de capacidades de otro flujo cruzan en diagonal.
+  let lane = 0;
+  for (const r of doc.relations.filter((x) => x.kind === 'enables')) {
+    const { from, to } = drawnEnds(r);
+    const a = spots.get(from);
+    const b = spots.get(to);
+    if (!a || !b) continue;
+    const ax = a.x + a.width / 2;
+    const bx = b.x + b.width / 2;
+    const mid = a.y + a.height + 8 + (lane++ % 4) * 5;
+    routes.push({ id: r.id, points: b.y > a.y ? [{ x: ax, y: a.y + a.height }, { x: ax, y: mid }, { x: bx, y: mid }, { x: bx, y: b.y }] : [{ x: ax, y: a.y }, { x: bx, y: b.y + b.height }] });
+    edges.set(r.id, { relation: r, source: from, target: to });
+  }
+  return { layout: { nodes, groups, edges: routes, width, height: Math.max(0, y - GAP * 2) }, titles, edges };
+}
+
 // --- Vistas de relaciones: autolayout de izquierda a derecha ----------------------------------------------------------
 
 function nodeSize(e: Element, doc: EnterpriseDocument): { width: number; height: number } {
@@ -333,7 +446,7 @@ function nodeSize(e: Element, doc: EnterpriseDocument): { width: number; height:
   return { width: widthFor(title, rest, 190), height: NODE_HEIGHT };
 }
 
-/** Coloca una vista. El mapa de capacidades es una cuadrícula anidada y la hoja de ruta, columnas; las demás, un grafo capa a capa. */
+/** Coloca una vista. El mapa de capacidades es una cuadrícula anidada, la hoja de ruta, columnas y los flujos de valor, cadenas de etapas; las demás, un grafo capa a capa. */
 export async function layoutView(doc: EnterpriseDocument, viewId?: string, options: GraphLayoutOptions = {}): Promise<RenderedView> {
   const view = findView(doc, viewId);
   const all = indexElements(doc);
@@ -344,6 +457,10 @@ export async function layoutView(doc: EnterpriseDocument, viewId?: string, optio
   if (view.type === 'roadmap') {
     const { layout, titles } = layoutRoadmap(doc);
     return { view, layout, elements, edges: new Map(), contextIds: new Set(), groupLabels: titles };
+  }
+  if (view.type === 'value-stream') {
+    const { layout, titles, edges } = layoutValueStreams(doc);
+    return { view, layout, elements, edges, contextIds: new Set(), groupLabels: titles };
   }
   const edges = new Map<string, RenderedEdge>();
   for (const r of doc.relations.filter((x) => view.relationIds.includes(x.id))) {
@@ -370,7 +487,7 @@ export function graphNodeStyle(e: Element, doc: EnterpriseDocument, context: boo
     lines: elementLines(e, doc),
     shape: ELEMENT_SHAPES[e.kind],
     icon: ELEMENT_ICONS[e.kind],
-    dashed: context || life === 'retired' || (e.kind === 'application' && (e.item as Application).external === true),
+    dashed: context || life === 'retired' || (e.kind === 'application' && (e.item as Application).external === true) || (e.kind === 'stage' && (stageCapabilities(doc).get(e.id) ?? []).length === 0),
   };
 }
 
@@ -407,6 +524,6 @@ export async function toSvg(doc: EnterpriseDocument, viewId?: string): Promise<s
     title: view.title,
     node: (id) => graphNodeStyle(elements.get(id)!, doc, contextIds.has(id)),
     edge: (id) => edgeSvgStyle(edges.get(id)!.relation),
-    ...(groupLabels ? { group: (id: string) => ({ label: groupLabels.get(id) ?? id }) } : {}),
+    ...(groupLabels ? { group: (id: string) => ({ label: groupLabels.get(id) ?? id, ...(view.type === 'value-stream' ? { fill: '#fffbe6', stroke: KIND_STROKES.stream, border: 'solid' as const } : {}) }) } : {}),
   });
 }

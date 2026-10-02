@@ -6,11 +6,15 @@
  */
 export const ENTERPRISE_DOCUMENT_VERSION = '1.0' as const;
 
-/** Tipos de elemento del modelo. Las unidades son la organización: responsables, no se dibujan. */
-export const ELEMENT_KINDS = ['unit', 'capability', 'process', 'application', 'technology'] as const;
+/**
+ * Tipos de elemento del modelo. Las unidades son la organización: responsables, no se dibujan en las vistas de relaciones.
+ * Un flujo de valor (`stream`) es una cadena ordenada de etapas (`stage`) que se dibuja en su propia vista; un servicio de
+ * negocio (`service`) es lo que la empresa ofrece a sus clientes apoyándose en procesos y capacidades.
+ */
+export const ELEMENT_KINDS = ['unit', 'capability', 'process', 'application', 'technology', 'stream', 'stage', 'service'] as const;
 export type ElementKind = (typeof ELEMENT_KINDS)[number];
 /** Los que se dibujan en los diagramas. */
-export type DrawnKind = Exclude<ElementKind, 'unit'>;
+export type DrawnKind = 'capability' | 'process' | 'application' | 'technology';
 export const DRAWN_KINDS: DrawnKind[] = ['capability', 'process', 'application', 'technology'];
 
 export const LIFECYCLES = ['planned', 'active', 'sunset', 'retired'] as const;
@@ -41,8 +45,10 @@ export type TechnologyKind = (typeof TECHNOLOGY_KINDS)[number];
  * - `flows-to`: flujo de información o de trabajo de una aplicación a otra o de un proceso a otro.
  * - `assigned-to`: asignación; una unidad (origen) ejecuta un proceso (destino).
  * - `triggers`: disparo; un proceso (origen) pone en marcha a otro (destino).
+ * - `enables`: una capacidad (origen) habilita una etapa de un flujo de valor (destino).
+ * - `exposes`: un servicio de negocio (origen) expone a sus clientes un proceso o una capacidad (destino).
  */
-export const RELATION_KINDS = ['supports', 'realizes', 'runs-on', 'depends-on', 'composes', 'flows-to', 'assigned-to', 'triggers'] as const;
+export const RELATION_KINDS = ['supports', 'realizes', 'runs-on', 'depends-on', 'composes', 'flows-to', 'assigned-to', 'triggers', 'enables', 'exposes'] as const;
 export type RelationKind = (typeof RELATION_KINDS)[number];
 
 /** Pares (origen, destino) que admite cada tipo de relación. */
@@ -55,6 +61,8 @@ export const RELATION_RULES: Record<RelationKind, Array<[ElementKind, ElementKin
   'flows-to': [['application', 'application'], ['process', 'process']],
   'assigned-to': [['unit', 'process']],
   triggers: [['process', 'process']],
+  enables: [['capability', 'stage']],
+  exposes: [['service', 'process'], ['service', 'capability']],
 };
 
 export const MATURITY_MIN = 1;
@@ -134,6 +142,40 @@ export interface Technology {
   tags?: string[];
 }
 
+/** Cadena de valor de principio a fin, vista desde quien recibe el valor; sus etapas (`ValueStage`) van en el orden del documento. */
+export interface ValueStream {
+  id: string;
+  name: string;
+  description?: string;
+  ownerId?: string;
+  /** Quien recibe el valor (`Cliente de la tienda`). */
+  stakeholder?: string;
+  tags?: string[];
+}
+
+/** Etapa de un flujo de valor. Las capacidades que la habilitan se declaran con la relación `enables`. */
+export interface ValueStage {
+  id: string;
+  name: string;
+  description?: string;
+  /** Flujo al que pertenece; el orden de las etapas de un flujo es el de este arreglo. */
+  streamId: string;
+  /** Valor que aporta la etapa (`pedido confirmado`). */
+  value?: string;
+  tags?: string[];
+}
+
+/** Servicio de negocio: lo que se ofrece a clientes; expone procesos y capacidades (relación `exposes`). */
+export interface BusinessService {
+  id: string;
+  name: string;
+  description?: string;
+  ownerId?: string;
+  /** A quién se ofrece (`Clientes particulares`). */
+  audience?: string;
+  tags?: string[];
+}
+
 export interface Relation {
   id: string;
   kind: RelationKind;
@@ -150,10 +192,14 @@ export interface EnterpriseDocument {
   processes: Process[];
   applications: Application[];
   technologies: Technology[];
+  /** Opcionales (se completan con `[]`): flujos de valor, sus etapas y servicios de negocio. */
+  valueStreams: ValueStream[];
+  valueStages: ValueStage[];
+  businessServices: BusinessService[];
   relations: Relation[];
 }
 
-export type Item = Unit | Capability | Process | Application | Technology;
+export type Item = Unit | Capability | Process | Application | Technology | ValueStream | ValueStage | BusinessService;
 
 /** Elemento del documento con su tipo. */
 export interface Element {
@@ -169,6 +215,9 @@ export const KIND_LABELS: Record<ElementKind, string> = {
   process: 'Proceso',
   application: 'Aplicación',
   technology: 'Tecnología',
+  stream: 'Flujo de valor',
+  stage: 'Etapa',
+  service: 'Servicio de negocio',
 };
 
 export const LIFECYCLE_LABELS: Record<Lifecycle, string> = {
@@ -216,6 +265,8 @@ export const RELATION_LABELS: Record<RelationKind, string> = {
   'flows-to': 'fluye hacia',
   'assigned-to': 'ejecuta',
   triggers: 'dispara a',
+  enables: 'habilita a',
+  exposes: 'expone',
 };
 
 export const lifecycleOf = (x: { lifecycle?: Lifecycle }): Lifecycle => x.lifecycle ?? 'active';
@@ -231,13 +282,16 @@ export function indexElements(doc: EnterpriseDocument): Map<string, Element> {
   add('process', doc.processes);
   add('application', doc.applications);
   add('technology', doc.technologies);
+  add('stream', doc.valueStreams);
+  add('stage', doc.valueStages);
+  add('service', doc.businessServices);
   return map;
 }
 
 /** Tipo de relación que une dos tipos de elemento, si lo hay (en cualquiera de los dos sentidos). */
 export function relationBetween(a: ElementKind, b: ElementKind): { kind: RelationKind; reversed: boolean } | undefined {
   // Solo los tipos estructurales: una flecha entre dos elementos del mismo tipo sigue significando «depende de» al importar.
-  for (const kind of RELATION_KINDS.slice(0, 4)) {
+  for (const kind of [...RELATION_KINDS.slice(0, 4), 'enables', 'exposes'] as const) {
     for (const [from, to] of RELATION_RULES[kind]) {
       if (from === a && to === b) return { kind, reversed: false };
       if (from === b && to === a) return { kind, reversed: true };
@@ -249,10 +303,10 @@ export function relationBetween(a: ElementKind, b: ElementKind): { kind: Relatio
 /**
  * Sentido en que se dibuja una relación: de quien se apoya a aquello en lo que se apoya (capacidad → aplicación que la
  * soporta → tecnología en la que corre). Coincide con la dirección de la dependencia, salvo `supports` y `realizes`,
- * que en el modelo van de la aplicación (o el proceso) a lo que soportan.
+ * que en el modelo van de la aplicación (o el proceso) a lo que soportan, y `enables` (la capacidad habilita a la etapa, que se apoya en ella).
  */
 export function drawnEnds(r: Relation): { from: string; to: string } {
-  return r.kind === 'supports' || r.kind === 'realizes' ? { from: r.targetId, to: r.sourceId } : { from: r.sourceId, to: r.targetId };
+  return r.kind === 'supports' || r.kind === 'realizes' || r.kind === 'enables' ? { from: r.targetId, to: r.sourceId } : { from: r.sourceId, to: r.targetId };
 }
 
 /**

@@ -46,7 +46,8 @@ describe('editor empresarial', () => {
     const g = enterpriseEditor.project(doc, 'landscape');
     const kinds = new Set(g.nodes.map((n) => n.kind));
     expect(kinds.has('application') && kinds.has('technology')).toBe(true);
-    expect(kinds.has('unit')).toBe(false);
+    // El lienzo dibuja todas las unidades en el paisaje (para poder arrastrarles una asignación).
+    expect(g.nodes.filter((n) => n.kind === 'unit')).toHaveLength(doc.units.length);
     expect(g.edges.find((e) => e.id === 'tienda-web--supports--ventas-online')).toMatchObject({ kind: 'supports', source: 'ventas-online', target: 'tienda-web' });
     const app = g.nodes.find((n) => n.id === 'tienda-web');
     expect(app?.sublabel).toBeTruthy();
@@ -164,7 +165,8 @@ describe('editor empresarial', () => {
     const landscape = enterpriseEditor.project(doc, 'landscape');
     expect(landscape.nodes.find((n) => n.id === 'ventas')).toMatchObject({ kind: 'unit' });
     expect(landscape.edges.find((e) => e.id === 'ventas--assigned-to--alta-pedido')).toMatchObject({ kind: 'assigned-to', source: 'ventas', target: 'alta-pedido' });
-    expect(landscape.nodes.some((n) => n.id === 'finanzas')).toBe(false);
+    expect(landscape.nodes.find((n) => n.id === 'finanzas')).toMatchObject({ kind: 'unit' });
+    expect(landscape.edges.some((e) => e.source === 'finanzas' || e.target === 'finanzas')).toBe(false);
     const graph = dependencyGraph(doc);
     expect(reach(graph, 'alta-pedido', 'dependents').map((s) => s.id)).toContain('preparacion-pedido');
 

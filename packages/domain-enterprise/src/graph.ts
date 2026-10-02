@@ -1,4 +1,4 @@
-import { dependencyEnds, type Capability, type EnterpriseDocument } from './types';
+import { dependencyEnds, type Capability, type EnterpriseDocument, type ValueStage } from './types';
 
 export interface DependencyGraph {
   /** Elemento → aquello en lo que se apoya (aplicación → tecnología, capacidad → aplicación que la soporta…). */
@@ -63,7 +63,9 @@ export function reach(graph: DependencyGraph, startId: string, direction: Reach)
 export function ownership(doc: EnterpriseDocument): { ownerOf(id: string): string | undefined } {
   const capabilities = new Map<string, Capability>(doc.capabilities.map((c) => [c.id, c]));
   const direct = new Map<string, string | undefined>();
-  for (const list of [doc.capabilities, doc.processes, doc.applications, doc.technologies]) for (const x of list) direct.set(x.id, x.ownerId);
+  for (const list of [doc.capabilities, doc.processes, doc.applications, doc.technologies, doc.valueStreams, doc.businessServices]) for (const x of list) direct.set(x.id, x.ownerId);
+  // Una etapa es del responsable de su flujo de valor.
+  for (const stage of doc.valueStages) direct.set(stage.id, direct.get(stage.streamId));
   return {
     ownerOf(id) {
       const seen = new Set<string>();
@@ -126,4 +128,21 @@ export function capabilityChildren(doc: EnterpriseDocument): Map<string | undefi
   const children = new Map<string | undefined, Capability[]>();
   for (const c of doc.capabilities) children.set(c.parentId, [...(children.get(c.parentId) ?? []), c]);
   return children;
+}
+
+/** Flujo de valor → sus etapas, en el orden del documento. */
+export function streamStages(doc: EnterpriseDocument): Map<string, ValueStage[]> {
+  const stages = new Map<string, ValueStage[]>(doc.valueStreams.map((s) => [s.id, []]));
+  for (const stage of doc.valueStages) stages.get(stage.streamId)?.push(stage);
+  return stages;
+}
+
+/** Etapa → capacidades que la habilitan, en el orden del documento. */
+export function stageCapabilities(doc: EnterpriseDocument): Map<string, Capability[]> {
+  const byId = new Map(doc.capabilities.map((c) => [c.id, c]));
+  const enabling = new Map<string, Set<string>>();
+  for (const r of doc.relations) if (r.kind === 'enables') enabling.set(r.targetId, (enabling.get(r.targetId) ?? new Set()).add(r.sourceId));
+  return new Map(
+    doc.valueStages.map((stage) => [stage.id, doc.capabilities.filter((c) => enabling.get(stage.id)?.has(c.id) && byId.has(c.id))]),
+  );
 }

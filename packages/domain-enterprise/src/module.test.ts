@@ -598,7 +598,7 @@ describe('generación con IA', () => {
     expect(refine).toContain('"id": "gestion-pedidos"');
     expect(refine).toContain('Añade un CRM');
     const schema = enterpriseAiSpec.generationJsonSchema() as { properties: Record<string, unknown> };
-    expect(Object.keys(schema.properties)).toEqual(['workspace', 'units', 'capabilities', 'processes', 'applications', 'technologies', 'relations']);
+    expect(Object.keys(schema.properties)).toEqual(['workspace', 'units', 'capabilities', 'processes', 'applications', 'technologies', 'valueStreams', 'valueStages', 'businessServices', 'relations']);
   });
 });
 
