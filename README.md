@@ -414,6 +414,31 @@ iark platform from-integration mapa.json                                        
 
 Al importar un `flowchart`, los `subgraph` con el prefijo que pone el exportador se reconocen como `Entorno: …`, `Red pública|privada|aislada: … (cidr)` y `Clúster: …` / `Máquina virtual: …`; un servicio dentro de un clúster queda desplegado en él (con `3 réplicas · v1.4.2` al final del texto) y los servicios con el mismo nombre en varios entornos son uno solo con varios despliegues. El tipo de cada nodo sale de su clase (`:::database`, `:::worker`, `:::external`; también en español) y, si no, de su forma (`[( )]` = base de datos, `([ ])` = cola); `class X planned|decommissioned` da el estado del recurso. Las flechas son dependencias: continua = llama, punteada = mensajes, gruesa = datos, con la etiqueta `protocolo · descripción`. Los pasos de la vista de entrega continua no se importan. La interfaz web todavía no edita este módulo.
 
+### Iconografía de nubes (AWS, Azure y paquetes propios)
+
+Un recurso, un servicio o una red puede decir de qué proveedor es con dos campos opcionales: `provider` (`aws`, `azure`, `gcp`…) y `service` (la clave del servicio en el paquete de iconos de ese proveedor: `rds`, `sql-database`…). Se dibuja entonces con el icono de ese servicio, una **ficha blanca con el color de acento del proveedor** (AWS naranja, Azure azul) sobre la esquina del nodo, y en la esquina superior derecha de las zonas (un clúster que aloja servicios, una VPC). Se ve igual en el lienzo, en el SVG y en el `.drawio` (donde la ficha es una celda de imagen aparte junto a su nodo); Mermaid no tiene imágenes por nodo y no cambia. Si se indica el proveedor y no el servicio, se **sugiere** el que encaje con la clase y la tecnología del recurso, pero solo si es inequívoco (`database` + `PostgreSQL` en AWS → `rds`; una cola de AWS, que puede ser SQS o SNS, no se adivina). Los elementos sin proveedor se dibujan como siempre.
+
+```json
+{ "id": "pedidos-db", "name": "Pedidos DB", "kind": "database", "environmentId": "prod", "technology": "PostgreSQL", "provider": "aws", "service": "rds" }
+```
+
+| Proveedor | Servicios incluidos (clave) |
+|---|---|
+| `aws` | `ec2`, `eks`, `ecs`, `fargate`, `lambda`, `s3`, `rds`, `dynamodb`, `elasticache`, `sqs`, `sns`, `elb`, `alb`, `api-gateway`, `route53`, `cloudfront`, `secrets-manager`, `ecr`, `vpc` |
+| `azure` | `vm`, `aks`, `app-service`, `functions`, `blob-storage`, `sql-database`, `cosmos-db`, `cache-redis`, `service-bus`, `load-balancer`, `application-gateway`, `api-management`, `dns`, `key-vault`, `container-registry`, `virtual-network` |
+
+En el lienzo, el panel de propiedades de un recurso, un servicio o una red trae el selector **Proveedor de nube** y, debajo, **Servicio de nube** con la lista de servicios del paquete (marca el sugerido); elegir un proveedor propone el servicio y cambiarlo quita el que el nuevo no tiene. `iark platform icons plataforma.json` lista los paquetes disponibles y el icono que se dibuja para cada elemento con proveedor, y `validate` avisa de un proveedor sin paquete o de un servicio que su paquete no tiene.
+
+**Los glifos incluidos son dibujos propios, sencillos, hechos para este proyecto: no son los logotipos oficiales de AWS ni de Azure**, que son marcas propietarias y no se redistribuyen aquí. Quien tenga licencia para usar los iconos oficiales (o quiera los de su empresa) puede **sustituirlos** con un paquete propio: los paquetes del mismo `provider` se superponen servicio a servicio y gana el último, de modo que un paquete `provider: "aws"` con solo los `rds` y `s3` oficiales reemplaza esos dos y deja el resto, sin tocar el documento. Lo que el paquete nuevo no diga de para qué clases (`kinds`) y tecnologías (`keywords`) sirve cada servicio lo hereda del que sustituye.
+
+**Extender a otros proveedores (GCP, OCI, on-prem…)**: un paquete es un objeto `{ id, name, provider, color, icons }` donde cada servicio es `{ label, paths, kinds?, keywords? }` y `paths` son trazados SVG (`M`, `L`, `C`, `A`, `Z`…) en una caja de 16 × 16, solo trazos, que se pintan con el color del paquete. Se puede definir de tres formas:
+
+- **En el documento**: el campo opcional `workspace.iconPacks` (lo ve el CLI, el lienzo y cualquier exportador). Ver [`examples/plataforma-nubes.json`](examples/plataforma-nubes.json), que dibuja AWS, Azure y un paquete propio de GCP.
+- **Desde un archivo**: el mismo JSON en un `.json` suelto (su esquema es `schema/platform-icon-pack.schema.json`). `iark platform icons plataforma.json --pack gcp.json` lo valida y lo suma a la lista de esa ejecución; para exportar con él, cópialo a `workspace.iconPacks`. Con `parseIconPack(texto)` se lee desde código.
+- **Desde código**: `registerIconPack(pack)` (de `@iark/domain-platform`) lo registra para todos los documentos de la aplicación; `unregisterIconPack(id)` lo quita.
+
+Un paquete solo admite datos de trazado (comandos SVG y números), colores `#rgb`/`#rrggbb` y claves de letras, números, `.`, `_` y `-`: se rechaza cualquier otra cosa para que un paquete cargado de un archivo no pueda colar marcado en el SVG o el `.drawio`.
+
 ## Módulo de seguridad
 
 Sexta especialidad de la suite (`--module security`; la quinta de las que pidió el plan, tras integraciones, datos, empresarial y plataforma): modela **qué hay que proteger, de quién y con qué**, con el enfoque clásico de un análisis de amenazas sobre un diagrama de flujo de datos. Vive en `packages/domain-security`, sin depender del código de los demás módulos; se enlaza con ellos por URN (`urn:iark:integration:<id>`, `urn:iark:platform:<id>`).

@@ -741,7 +741,7 @@ describe('módulo', () => {
     expect(platformModule.validate(doc)).toEqual([]);
     expect((platformModule.jsonSchema() as { type: string }).type).toBe('object');
     expect(platformModule.importers[0].detect!('flowchart LR\n a --> b')).toBe(true);
-    expect(platformModule.cliCommands!.map((c) => c.name)).toEqual(['deployments', 'compare', 'impact', 'from-integration']);
+    expect(platformModule.cliCommands!.map((c) => c.name)).toEqual(['deployments', 'compare', 'impact', 'from-integration', 'icons']);
   });
 });
 

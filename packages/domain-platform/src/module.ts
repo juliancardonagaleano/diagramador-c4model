@@ -7,6 +7,8 @@ import { toDrawio } from './export/drawio';
 import { toMermaid } from './export/mermaid';
 import { toSvg } from './export/render';
 import { fromMermaid } from './import/fromMermaid';
+import { iconCommands } from './icons/commands';
+import { iconIssues } from './icons/issues';
 import { analyzePlatform } from './issues';
 import { platformDocumentSchema, platformJsonSchema } from './schema';
 import { PLATFORM_DOCUMENT_VERSION, type PlatformDocument } from './types';
@@ -59,7 +61,7 @@ export const platformModule: DomainModule<PlatformDocument> = {
   documentVersion: PLATFORM_DOCUMENT_VERSION,
   schema: platformDocumentSchema as unknown as DomainModule<PlatformDocument>['schema'],
   jsonSchema: platformJsonSchema,
-  validate: (doc): ModuleIssue[] => analyzePlatform(doc),
+  validate: (doc): ModuleIssue[] => [...analyzePlatform(doc), ...iconIssues(doc)],
   importers: [mermaidImporter],
   exporters: [mermaidExporter, svgExporter, drawioExporter],
   ai: platformAiSpec,
@@ -77,6 +79,6 @@ export const platformModule: DomainModule<PlatformDocument> = {
     { prefix: 'focus', label: 'Entorno', applies: (e) => e.kind === 'service' || e.kind === 'resource' },
     { prefix: 'compare', label: 'Comparar con el siguiente entorno', applies: (e) => e.kind === 'environment' },
   ],
-  cliCommands: platformCommands,
+  cliCommands: [...platformCommands, ...iconCommands],
   editor: platformEditor,
 };

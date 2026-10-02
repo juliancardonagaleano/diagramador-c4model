@@ -1,5 +1,6 @@
 import { parseUrn } from '@iark/kernel';
 import { z } from 'zod';
+import { iconPackSchema } from './icons/schema';
 import {
   CRITICALITIES,
   DEPENDENCY_KINDS,
@@ -39,6 +40,8 @@ export const networkSchema = z.object({
   exposure: z.enum(EXPOSURES).optional(),
   cidr: z.string().optional(),
   description: z.string().optional(),
+  provider: z.string().optional(),
+  service: z.string().optional(),
 });
 
 export const resourceSchema = z.object({
@@ -59,6 +62,8 @@ export const resourceSchema = z.object({
   region: z.string().optional(),
   cpuLimit: z.string().optional(),
   memoryLimit: z.string().optional(),
+  provider: z.string().optional(),
+  service: z.string().optional(),
 });
 
 export const serviceSchema = z.object({
@@ -75,6 +80,8 @@ export const serviceSchema = z.object({
   external: z.boolean().optional(),
   ref: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  provider: z.string().optional(),
+  service: z.string().optional(),
 });
 
 export const deploymentSchema = z.object({
@@ -116,7 +123,9 @@ export const pipelineSchema = z.object({
 export const platformDocumentSchema = z
   .object({
     version: z.literal(PLATFORM_DOCUMENT_VERSION).default(PLATFORM_DOCUMENT_VERSION),
-    workspace: z.object({ name: z.string().default('Arquitectura de plataforma'), description: z.string().optional(), currency: z.string().optional() }).default({ name: 'Arquitectura de plataforma' }),
+    workspace: z
+      .object({ name: z.string().default('Arquitectura de plataforma'), description: z.string().optional(), currency: z.string().optional(), iconPacks: z.array(iconPackSchema).optional() })
+      .default({ name: 'Arquitectura de plataforma' }),
     environments: z.array(environmentSchema).default([]),
     networks: z.array(networkSchema).default([]),
     resources: z.array(resourceSchema).default([]),
@@ -146,6 +155,11 @@ export const platformDocumentSchema = z
         else seen.set(item.id, kind);
       });
     }
+    const packIds = new Set<string>();
+    (doc.workspace.iconPacks ?? []).forEach((p, i) => {
+      if (packIds.has(p.id)) issue(['workspace', 'iconPacks', i, 'id'], `Id de paquete de iconos duplicado: "${p.id}"`);
+      packIds.add(p.id);
+    });
     const elements = indexElements(doc);
     const environments = new Set(doc.environments.map((e) => e.id));
     const networks = new Map(doc.networks.map((n) => [n.id, n]));
