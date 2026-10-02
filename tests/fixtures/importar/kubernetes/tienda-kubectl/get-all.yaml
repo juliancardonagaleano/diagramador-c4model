@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: List
+metadata:
+  resourceVersion: ""
+items:
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: blog
+      namespace: contenidos
+      uid: 7a1b2c3d-1111-2222-3333-444455556666
+      resourceVersion: "184233"
+      generation: 4
+      creationTimestamp: "2026-03-02T09:14:07Z"
+      labels:
+        app: blog
+        app.kubernetes.io/name: blog
+      annotations:
+        deployment.kubernetes.io/revision: "4"
+    spec:
+      progressDeadlineSeconds: 600
+      replicas: 2
+      selector:
+        matchLabels:
+          app: blog
+      template:
+        metadata:
+          creationTimestamp: null
+          labels:
+            app: blog
+        spec:
+          containers:
+            - name: blog
+              image: ghost:5.82
+              env:
+                - name: database__client
+                  value: mysql
+                - name: database__connection__host
+                  value: mysql
+                - name: database__connection__password
+                  valueFrom:
+                    secretKeyRef:
+                      name: blog-db
+                      key: password
+              ports:
+                - containerPort: 2368
+                  protocol: TCP
+    status:
+      availableReplicas: 2
+      readyReplicas: 2
+      replicas: 2
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: mysql
+      namespace: contenidos
+      labels:
+        app: mysql
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: mysql
+      template:
+        metadata:
+          labels:
+            app: mysql
+        spec:
+          containers:
+            - name: mysql
+              image: mysql:8.0.36
+              ports:
+                - containerPort: 3306
+    status:
+      readyReplicas: 1
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: mysql
+      namespace: contenidos
+    spec:
+      clusterIP: 10.96.14.20
+      selector:
+        app: mysql
+      ports:
+        - port: 3306
+          protocol: TCP
+    status:
+      loadBalancer: {}
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: blog
+      namespace: contenidos
+    spec:
+      type: LoadBalancer
+      selector:
+        app: blog
+      ports:
+        - port: 80
+          targetPort: 2368
+    status:
+      loadBalancer:
+        ingress:
+          - hostname: a1b2c3.elb.eu-west-1.amazonaws.com
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: blog-db
+      namespace: contenidos
+    type: Opaque
+    data:
+      password: bGlzdGEtZGUtY29udHJhc2VuYXMtZGUtbGEtbnViZQ==

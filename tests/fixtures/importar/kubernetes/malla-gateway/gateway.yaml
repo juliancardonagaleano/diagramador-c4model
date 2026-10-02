@@ -1,0 +1,146 @@
+# Gateway API, un DaemonSet de métricas, un servicio externo y una puerta interna.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: publica
+  namespace: pasarela
+spec:
+  gatewayClassName: istio
+  listeners:
+    - name: https
+      hostname: api.example.org
+      port: 443
+      protocol: HTTPS
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: pedidos
+  namespace: pasarela
+spec:
+  parentRefs:
+    - name: publica
+  hostnames: [api.example.org]
+  rules:
+    - matches:
+        - path:
+            value: /pedidos
+      backendRefs:
+        - name: pedidos
+          port: 9000
+    - matches:
+        - path:
+            value: /facturas
+      backendRefs:
+        - name: facturas
+          port: 9000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pedidos
+  namespace: pasarela
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pedidos
+  template:
+    metadata:
+      labels:
+        app: pedidos
+    spec:
+      containers:
+        - name: pedidos
+          image: registry.example.com/pedidos:1.8.0
+          ports:
+            - containerPort: 9000
+          env:
+            - name: FACTURAS_URL
+              value: http://facturas:9000
+            - name: PAGOS_URL
+              value: http://pasarela-pagos
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: facturas
+  namespace: pasarela
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: facturas
+  template:
+    metadata:
+      labels:
+        app: facturas
+    spec:
+      containers:
+        - name: facturas
+          image: registry.example.com/facturas:1.2.7
+          ports:
+            - containerPort: 9000
+          env:
+            - name: S3_ENDPOINT
+              value: https://s3.eu-west-1.amazonaws.com
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pedidos
+  namespace: pasarela
+spec:
+  selector:
+    app: pedidos
+  ports:
+    - port: 9000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: facturas
+  namespace: pasarela
+spec:
+  selector:
+    app: facturas
+  ports:
+    - port: 9000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pasarela-pagos
+  namespace: pasarela
+spec:
+  type: ExternalName
+  externalName: pagos.proveedor.example.net
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: recolector-logs
+  namespace: pasarela
+spec:
+  selector:
+    matchLabels:
+      app: recolector-logs
+  template:
+    metadata:
+      labels:
+        app: recolector-logs
+    spec:
+      containers:
+        - name: fluent-bit
+          image: fluent/fluent-bit:2.2.2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: huerfano
+  namespace: pasarela
+spec:
+  selector:
+    app: no-existe
+  ports:
+    - port: 80
