@@ -1,8 +1,13 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { buildTraceGraph, traceMermaid, traceReach, traceReachReport, traceReport, traceSvg, type AnyModule } from '@iark/kernel';
 import { dataModule, enterpriseModule, integrationModule, platformModule, securityModule } from '../src/modules-app/testing';
+import { buildCliBundle, BUNDLE_TIMEOUT, PROCESS_TEST_TIMEOUT, type CliBundle } from './helpers/cliBundle';
+
+// Las pruebas de `iark trace (CLI)` lanzan el CLI como proceso: se empaqueta una vez y se ejecuta con `node` (en vez de
+// arrancar `tsx` en cada llamada), con margen de sobra por si la máquina está saturada.
+vi.setConfig({ testTimeout: PROCESS_TEST_TIMEOUT, hookTimeout: BUNDLE_TIMEOUT });
 
 const doc = (file: string): unknown => JSON.parse(readFileSync(`examples/${file}`, 'utf8'));
 const parse = (module: AnyModule, file: string): unknown => module.schema.parse(doc(file));
@@ -124,7 +129,13 @@ describe('dibujo del grafo de trazabilidad (SVG)', () => {
 });
 
 describe('iark trace (CLI)', () => {
-  const run = (args: string[]) => spawnSync('node_modules/.bin/tsx', ['src/cli/index.ts', 'trace', ...args], { encoding: 'utf8' });
+  let bundle: CliBundle;
+  beforeAll(async () => {
+    bundle = await buildCliBundle('trace');
+  });
+  afterAll(() => bundle?.dispose());
+
+  const run = (args: string[]) => spawnSync(process.execPath, [bundle.cli, 'trace', ...args], { encoding: 'utf8' });
   const docs = ['security=examples/seguridad-ejemplo.json', 'platform=examples/plataforma-ejemplo.json', 'integration=examples/pedidos-integracion.json'];
 
   it('informe general, impacto con --from y salida JSON/Mermaid', () => {

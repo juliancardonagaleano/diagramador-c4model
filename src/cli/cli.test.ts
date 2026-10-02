@@ -3,13 +3,26 @@ import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { XMLParser } from 'fast-xml-parser';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { buildCliBundle, BUNDLE_TIMEOUT, PROCESS_TEST_TIMEOUT, type CliBundle } from '../../tests/helpers/cliBundle';
 
-const cli = ['node_modules/.bin/tsx', 'src/cli/index.ts'];
+// Cada prueba lanza el CLI como proceso, a veces varias veces seguidas. Se empaqueta una vez con tsup (como se publica)
+// y se ejecuta con `node`, que arranca en una fracción de lo que tarda `tsx` en transpilar el árbol cada vez; y se da
+// margen de sobra por si la máquina está saturada (con carga 20-28 en 4 núcleos los 30 s por defecto se agotaban).
+vi.setConfig({ testTimeout: PROCESS_TEST_TIMEOUT, hookTimeout: BUNDLE_TIMEOUT });
+
+let bundle: CliBundle;
+let cli: string;
+beforeAll(async () => {
+  bundle = await buildCliBundle('cli');
+  cli = bundle.cli;
+});
+afterAll(() => bundle?.dispose());
+
 const example = 'examples/banca.json';
 
 function run(args: string[], input?: string) {
-  return spawnSync(cli[0], [cli[1], ...args], { input, encoding: 'utf8' });
+  return spawnSync(process.execPath, [cli, ...args], { input, encoding: 'utf8' });
 }
 
 describe('iark (CLI)', () => {
@@ -44,12 +57,12 @@ describe('iark (CLI)', () => {
   });
 
   it('schema, prompt y example imprimen contenido útil', () => {
-    expect(JSON.parse(execFileSync(cli[0], [cli[1], 'schema'], { encoding: 'utf8' })).type).toBe('object');
-    expect(JSON.parse(execFileSync(cli[0], [cli[1], 'schema', '--generation'], { encoding: 'utf8' })).properties.views).toBeDefined();
-    const prompt = execFileSync(cli[0], [cli[1], 'prompt', 'Un sistema de reservas', '--from', example], { encoding: 'utf8' });
+    expect(JSON.parse(execFileSync(process.execPath, [cli, 'schema'], { encoding: 'utf8' })).type).toBe('object');
+    expect(JSON.parse(execFileSync(process.execPath, [cli, 'schema', '--generation'], { encoding: 'utf8' })).properties.views).toBeDefined();
+    const prompt = execFileSync(process.execPath, [cli, 'prompt', 'Un sistema de reservas', '--from', example], { encoding: 'utf8' });
     expect(prompt).toContain('Un sistema de reservas');
     expect(prompt).toContain('"cliente"');
-    expect(JSON.parse(execFileSync(cli[0], [cli[1], 'example'], { encoding: 'utf8' })).views).toHaveLength(3);
+    expect(JSON.parse(execFileSync(process.execPath, [cli, 'example'], { encoding: 'utf8' })).views).toHaveLength(3);
   });
 
   it('errores conocidos (vista inexistente, sin vistas) terminan en un mensaje de una línea, sin stack', () => {
@@ -93,7 +106,7 @@ describe('iark (CLI)', () => {
   });
 
   it('generate falla con un mensaje claro sin credenciales', () => {
-    const r = spawnSync(cli[0], [cli[1], 'generate', 'Una tienda'], {
+    const r = spawnSync(process.execPath, [cli, 'generate', 'Una tienda'], {
       encoding: 'utf8',
       // Se vacían también las variables de Foundry / API compatible con OpenAI: si el entorno
       // que ejecuta las pruebas las define, `generate` haría una llamada real en vez de fallar.
@@ -181,7 +194,7 @@ describe('iark import', () => {
     }
     const xml = `<mxfile><diagram id="p" name="Grande"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel></diagram></mxfile>`;
     expect(xml.length).toBeGreaterThan(200 * 1024); // varios bloques de lectura de 64 KB
-    const child = spawn(cli[0], [cli[1], 'import', '--stdin']);
+    const child = spawn(process.execPath, [cli, 'import', '--stdin']);
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (d) => (stdout += d));
@@ -524,7 +537,7 @@ describe('iark: módulo de integraciones', () => {
   });
 
   it('generate --module integration falla con un mensaje claro sin credenciales', () => {
-    const r = spawnSync(cli[0], [cli[1], 'generate', 'Un sistema de pagos', '--module', 'integration', '--provider', 'anthropic'], {
+    const r = spawnSync(process.execPath, [cli, 'generate', 'Un sistema de pagos', '--module', 'integration', '--provider', 'anthropic'], {
       encoding: 'utf8',
       env: {
         ...process.env,
@@ -658,7 +671,7 @@ describe('iark: módulo de datos', () => {
   });
 
   it('generate --module data falla con un mensaje claro sin credenciales', () => {
-    const r = spawnSync(cli[0], [cli[1], 'generate', 'Un lago de datos', '--module', 'data', '--provider', 'anthropic'], {
+    const r = spawnSync(process.execPath, [cli, 'generate', 'Un lago de datos', '--module', 'data', '--provider', 'anthropic'], {
       encoding: 'utf8',
       env: {
         ...process.env,
@@ -793,7 +806,7 @@ describe('iark: módulo empresarial', () => {
   });
 
   it('generate --module enterprise falla con un mensaje claro sin credenciales', () => {
-    const r = spawnSync(cli[0], [cli[1], 'generate', 'Un banco', '--module', 'enterprise', '--provider', 'anthropic'], {
+    const r = spawnSync(process.execPath, [cli, 'generate', 'Un banco', '--module', 'enterprise', '--provider', 'anthropic'], {
       encoding: 'utf8',
       env: {
         ...process.env,
@@ -934,7 +947,7 @@ describe('iark: módulo de plataforma', () => {
   });
 
   it('generate --module platform falla con un mensaje claro sin credenciales', () => {
-    const r = spawnSync(cli[0], [cli[1], 'generate', 'Una tienda', '--module', 'platform', '--provider', 'anthropic'], {
+    const r = spawnSync(process.execPath, [cli, 'generate', 'Una tienda', '--module', 'platform', '--provider', 'anthropic'], {
       encoding: 'utf8',
       env: {
         ...process.env,
@@ -1095,7 +1108,7 @@ describe('iark: módulo de seguridad', () => {
   });
 
   it('generate --module security falla con un mensaje claro sin credenciales', () => {
-    const r = spawnSync(cli[0], [cli[1], 'generate', 'Una tienda', '--module', 'security', '--provider', 'anthropic'], {
+    const r = spawnSync(process.execPath, [cli, 'generate', 'Una tienda', '--module', 'security', '--provider', 'anthropic'], {
       encoding: 'utf8',
       env: {
         ...process.env,
