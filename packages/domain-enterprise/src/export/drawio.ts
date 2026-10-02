@@ -34,7 +34,7 @@ export async function toDrawio(doc: EnterpriseDocument): Promise<string> {
   const capabilities = new Map<string, Capability>(doc.capabilities.map((c) => [c.id, c]));
   const apps = supportingApplications(doc);
   for (const v of listViews(doc)) {
-    const { view, layout, elements, edges, contextIds, groupLabels } = await layoutView(doc, v.id);
+    const { view, layout, elements, edges, contextIds, groupLabels, matrix } = await layoutView(doc, v.id);
     const cells: string[] = ['<mxCell id="0"/>', '<mxCell id="1" parent="0"/>'];
     for (const g of layout.groups) {
       cells.push(
@@ -44,8 +44,14 @@ export async function toDrawio(doc: EnterpriseDocument): Promise<string> {
     for (const b of layout.nodes) {
       let value: string;
       let style: string;
-      let icon: string[];
-      if (view.type === 'capabilities') {
+      let icon: string[] | undefined;
+      if (matrix) {
+        const m = matrix.nodes.get(b.id)!;
+        const [title, ...rest] = m.lines;
+        value = m.kind === 'cell' ? esc(title) : [`<b>${esc(title)}</b>`, ...rest.map(esc)].join('<br>');
+        style = `${drawioShapeStyle(m.shape)}whiteSpace=wrap;html=1;fillColor=${m.fill};fontColor=${INK};strokeColor=${m.stroke};${m.dashed ? 'dashed=1;' : ''}`;
+        icon = m.kind === 'capability' || m.kind === 'application' ? ELEMENT_ICONS[m.kind] : undefined;
+      } else if (view.type === 'capabilities') {
         const c = capabilities.get(b.id)!;
         const supporting = apps.get(b.id) ?? [];
         const count = supporting.length;
@@ -63,7 +69,7 @@ export async function toDrawio(doc: EnterpriseDocument): Promise<string> {
         icon = ELEMENT_ICONS[e.kind];
       }
       cells.push(`<mxCell id="n-${esc(b.id)}" value="${esc(value)}" style="${style}" vertex="1" parent="1"><mxGeometry x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" as="geometry"/></mxCell>`);
-      cells.push(`<mxCell id="i-${esc(b.id)}" value="" style="${iconImage(icon)}" vertex="1" parent="1"><mxGeometry x="${b.x + 7}" y="${b.y + 5}" width="16" height="16" as="geometry"/></mxCell>`);
+      if (icon) cells.push(`<mxCell id="i-${esc(b.id)}" value="" style="${iconImage(icon)}" vertex="1" parent="1"><mxGeometry x="${b.x + 7}" y="${b.y + 5}" width="16" height="16" as="geometry"/></mxCell>`);
     }
     for (const e of layout.edges) {
       const { relation, source, target } = edges.get(e.id)!;

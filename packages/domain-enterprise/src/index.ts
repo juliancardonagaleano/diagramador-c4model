@@ -4,7 +4,8 @@ export { analyzeEnterprise, REDUNDANCY_THRESHOLD, type AnalyzeOptions } from './
 export { dependencyGraph, reach, ownership, unitTree, applicationsByCapability, capabilityChildren, streamStages, stageCapabilities, type DependencyGraph, type Reach, type ReachStep } from './graph';
 export { listViews, findView, traceView, type EnterpriseView } from './views';
 export { toMermaid } from './export/mermaid';
-export { toSvg, layoutView, layoutCapabilityMap, layoutValueStreams, KIND_COLORS } from './export/render';
+export { toSvg, layoutView, layoutCapabilityMap, layoutValueStreams, layoutMatrix, matrixScene, KIND_COLORS } from './export/render';
+export { buildMatrix, capabilityRows, cellKey, MATRIX_OVERLAP_MIN, ROW_STATUS_LABELS, type Matrix, type MatrixCell, type MatrixColumn, type MatrixRow, type MatrixSummary, type RowStatus, type SupportKind } from './matrix';
 export { toDrawio } from './export/drawio';
 export { fromMermaid, EnterpriseImportError, type EnterpriseImportOptions, type EnterpriseImportResult } from './import/fromMermaid';
 export { fromIntegrationJson } from './import/fromIntegration';

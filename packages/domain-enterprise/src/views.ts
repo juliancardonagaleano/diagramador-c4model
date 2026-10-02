@@ -1,5 +1,6 @@
 import type { ViewRef } from '@iark/kernel';
 import { capabilityChildren, dependencyGraph, ownership, reach, stageCapabilities, streamStages, unitTree, type Reach } from './graph';
+import { capabilityRows } from './matrix';
 import { indexElements, lifecycleOf, type Application, type EnterpriseDocument, type Technology } from './types';
 
 /** Criterio con el que se colorea el mapa de capacidades. */
@@ -13,9 +14,9 @@ export const CAPABILITY_COLOR_LABELS: Record<CapabilityColorMode, string> = {
 };
 
 export interface EnterpriseView {
-  /** `capabilities`, `value-stream`, `landscape`, `roadmap`, `unit:<id>` o, bajo demanda, `impact:<id>`, `depends:<id>`, `focus:<id>` y `capabilities:<criterio>`. */
+  /** `capabilities`, `value-stream`, `landscape`, `matrix`, `roadmap`, `unit:<id>` o, bajo demanda, `impact:<id>`, `depends:<id>`, `focus:<id>` y `capabilities:<criterio>`. */
   id: string;
-  type: 'capabilities' | 'value-stream' | 'landscape' | 'roadmap' | 'unit' | 'impact' | 'depends' | 'focus';
+  type: 'capabilities' | 'value-stream' | 'landscape' | 'matrix' | 'roadmap' | 'unit' | 'impact' | 'depends' | 'focus';
   /** Solo en el mapa de capacidades: con qué se colorea (por defecto, la madurez). */
   colorBy?: CapabilityColorMode;
   title: string;
@@ -95,6 +96,23 @@ function valueStreamView(doc: EnterpriseDocument): EnterpriseView {
   };
 }
 
+/**
+ * Matriz capacidad × aplicación: las capacidades en el orden del árbol (filas) y las aplicaciones (columnas); las relaciones
+ * son las `supports` de una aplicación a una capacidad (las celdas de soporte directo). Ver `buildMatrix` para la regla de soporte.
+ */
+function matrixView(doc: EnterpriseDocument): EnterpriseView {
+  const capabilityIds = new Set(doc.capabilities.map((c) => c.id));
+  const applicationIds = new Set(doc.applications.map((a) => a.id));
+  return {
+    id: 'matrix',
+    type: 'matrix',
+    title: `Matriz capacidad × aplicación - ${doc.workspace.name}`,
+    elementIds: [...capabilityRows(doc).map((r) => r.capability.id), ...doc.applications.map((a) => a.id)],
+    contextIds: [],
+    relationIds: doc.relations.filter((r) => r.kind === 'supports' && applicationIds.has(r.sourceId) && capabilityIds.has(r.targetId)).map((r) => r.id),
+  };
+}
+
 /** Un periodo de la hoja de ruta del ciclo de vida: sus elementos se dibujan en una columna. */
 export interface RoadmapColumn {
   /** `roadmap:retired`, `roadmap:2027`, `roadmap:undated`, `roadmap:planned`. */
@@ -136,9 +154,11 @@ export function roadmapColumns(doc: EnterpriseDocument): RoadmapColumn[] {
 }
 
 /**
- * Vistas derivadas del documento: el mapa de capacidades, el paisaje (capacidad → aplicación → tecnología) y una por
- * unidad con lo que tiene a su cargo. Solo se listan las que tienen contenido. El impacto o las dependencias de un
- * elemento concreto se piden por su id (ver `findView`).
+ * Vistas derivadas del documento: el mapa de capacidades, los flujos de valor, el paisaje (capacidad → aplicación →
+ * tecnología), la matriz capacidad × aplicación, la hoja de ruta del ciclo de vida y una por unidad con lo que tiene a su
+ * cargo. Solo se listan las que tienen contenido: el paisaje, en cuanto hay algo que dibujar (con o sin relaciones, para
+ * poder crearlas, y con las unidades, que el lienzo dibuja todas en él); la matriz, cuando hay capacidades y aplicaciones.
+ * El impacto o las dependencias de un elemento concreto se piden por su id (ver `findView`).
  */
 export function listViews(doc: EnterpriseDocument): EnterpriseView[] {
   const views: EnterpriseView[] = [];
@@ -154,9 +174,12 @@ export function listViews(doc: EnterpriseDocument): EnterpriseView[] {
   }
   if (doc.valueStreams.length > 0) views.push(valueStreamView(doc));
   const shown = drawable(doc);
-  if (doc.relations.length > 0) {
-    views.push(build(doc, { id: 'landscape', type: 'landscape', title: `Paisaje empresarial - ${doc.workspace.name}`, focus: shown }));
+  if (shown.size > 0 || doc.units.length > 0) {
+    // Un documento solo de unidades (sin nada más que relacionar) dibuja las unidades, para que el paisaje no quede vacío.
+    const focus = shown.size > 0 ? shown : new Set(doc.units.map((u) => u.id));
+    views.push(build(doc, { id: 'landscape', type: 'landscape', title: `Paisaje empresarial - ${doc.workspace.name}`, focus }));
   }
+  if (doc.capabilities.length > 0 && doc.applications.length > 0) views.push(matrixView(doc));
   const roadmap = roadmapColumns(doc);
   if (roadmap.length > 0) {
     views.push({

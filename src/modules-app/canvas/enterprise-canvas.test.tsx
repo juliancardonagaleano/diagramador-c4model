@@ -5,7 +5,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EditorSpec } from '@iark/kernel';
 import { enterpriseEditor, enterpriseModule, type EnterpriseDocument } from '@iark/domain-enterprise';
 import example from '../../../examples/empresa-arquitectura.json';
-import { installFlowMocks } from '../testing-dom';
+import { installFlowMocks, pickNode } from '../testing-dom';
 import { DiagramCanvas } from './DiagramCanvas';
 import { EditHistory } from './history';
 
@@ -28,10 +28,18 @@ const doc: EnterpriseDocument = {
 };
 const views = enterpriseModule.views!(doc);
 
-function mount(viewId: string, onView = vi.fn()): void {
+function mount(viewId: string, onView = vi.fn(), options: { readOnly?: boolean } = {}): ReturnType<typeof vi.fn> {
+  const onText = vi.fn();
   render(
-    <DiagramCanvas moduleId="enterprise" spec={spec} document={doc} text="" viewId={viewId} views={views} onView={onView} readOnly={false} history={new EditHistory()} onText={vi.fn()} notify={vi.fn()} />,
+    <DiagramCanvas moduleId="enterprise" spec={spec} document={doc} text="" viewId={viewId} views={views} onView={onView} readOnly={options.readOnly ?? false} history={new EditHistory()} onText={onText} notify={vi.fn()} />,
   );
+  return onText;
+}
+
+/** La relación «soporta» de la aplicación a la capacidad en el último texto que el lienzo ha entregado. */
+function supportIn(onText: ReturnType<typeof vi.fn>, applicationId: string, capabilityId: string): boolean {
+  const text = onText.mock.calls.at(-1)?.[0] as string;
+  return (JSON.parse(text) as EnterpriseDocument).relations.some((r) => r.kind === 'supports' && r.sourceId === applicationId && r.targetId === capabilityId);
 }
 
 describe('lienzo empresarial', () => {
@@ -68,7 +76,7 @@ describe('lienzo empresarial', () => {
     expect([...select.options].map((o) => o.textContent)).toEqual(['Madurez', 'Importancia', 'Criticidad de las aplicaciones', 'Ciclo de vida de las aplicaciones']);
     // Las variantes no ensucian el selector «Vista».
     const viewSelect = screen.getByTestId('canvas-view') as HTMLSelectElement;
-    expect([...viewSelect.options].map((o) => o.value)).toEqual(['capabilities', 'landscape', 'roadmap', ...views.filter((v) => v.id.startsWith('unit:')).map((v) => v.id)]);
+    expect([...viewSelect.options].map((o) => o.value)).toEqual(['capabilities', 'landscape', 'matrix', 'roadmap', ...views.filter((v) => v.id.startsWith('unit:')).map((v) => v.id)]);
     fireEvent.change(select, { target: { value: 'capabilities:criticality' } });
     expect(onView).toHaveBeenCalledWith('capabilities:criticality');
   });
@@ -87,4 +95,68 @@ describe('lienzo empresarial', () => {
     expect(screen.queryByTestId('canvas-variant')).toBeNull();
     expect(screen.queryByTestId('canvas-legend')).toBeNull();
   });
+});
+
+describe('matriz capacidad × aplicación en el lienzo', () => {
+  const ready = async (): Promise<void> => {
+    await waitFor(() => expect(screen.getByTestId('node-cell:ventas-online|tienda-web')).toBeInTheDocument(), { timeout: 20000 });
+  };
+
+  it('dibuja cabeceras, celdas y totales como nodos, sin la etiqueta de tipo en celdas ni totales', async () => {
+    mount('matrix');
+    await ready();
+    expect(screen.getByTestId('node-ventas-online')).toHaveTextContent('Ventas online');
+    expect(screen.getByTestId('node-tienda-web')).toHaveTextContent('Tienda online');
+    expect(screen.getByTestId('node-cell:ventas-online|tienda-web')).toHaveTextContent('●');
+    expect(screen.getByTestId('node-cell:ventas-online|tienda-web').querySelector('.cv-kind')).toBeNull();
+    // Ni las celdas ni los totales se conectan: solo las cabeceras llevan puntos de conexión.
+    expect(screen.getByTestId('node-cell:ventas-online|tienda-web').querySelector('.react-flow__handle')).toBeNull();
+    expect(screen.getByTestId('node-total:all').querySelector('.react-flow__handle')).toBeNull();
+    expect(screen.getByTestId('node-tienda-web').querySelector('.react-flow__handle')).not.toBeNull();
+    expect(screen.getByTestId('node-cell:ventas-online|crm').textContent).toBe('');
+    expect(screen.getByTestId('node-total:row:gestion-pedidos')).toHaveTextContent('solapamiento');
+    expect(screen.getByTestId('node-total:all')).toHaveTextContent('12/12');
+    // Las cabeceras de capacidad y aplicación siguen llevando su tipo.
+    expect(screen.getByTestId('node-tienda-web').querySelector('.cv-kind')).not.toBeNull();
+    expect(screen.queryByTestId('canvas-variant')).toBeNull();
+  }, 60000);
+
+  it('«Soporta ⇄» crea la relación en las celdas seleccionadas y está deshabilitada sin celdas', async () => {
+    const onText = mount('matrix');
+    await ready();
+    const action = screen.getByTestId('action-matrix-support');
+    expect(action).toBeDisabled();
+    await pickNode('tienda-web');
+    expect(action).toBeDisabled();
+    expect(action).toHaveAttribute('title', 'Selecciona una o varias celdas de la matriz capacidad × aplicación.');
+    await pickNode('cell:ventas-online|crm');
+    expect(action).toBeEnabled();
+    fireEvent.click(action);
+    expect(supportIn(onText, 'crm', 'ventas-online')).toBe(true);
+  }, 60000);
+
+  it('«Soporta ⇄» quita el soporte directo cuando todas las celdas elegidas ya lo tienen', async () => {
+    const onText = mount('matrix');
+    await ready();
+    await pickNode('cell:ventas-online|tienda-web');
+    fireEvent.click(screen.getByTestId('action-matrix-support'));
+    expect(supportIn(onText, 'tienda-web', 'ventas-online')).toBe(false);
+  }, 60000);
+
+  it('doble clic en una celda alterna la relación; en una cabecera no cambia el documento', async () => {
+    const onText = mount('matrix');
+    await ready();
+    fireEvent.doubleClick(screen.getByTestId('node-cell:ventas-online|crm').closest('.react-flow__node') as HTMLElement);
+    expect(supportIn(onText, 'crm', 'ventas-online')).toBe(true);
+    const calls = onText.mock.calls.length;
+    fireEvent.doubleClick(screen.getByTestId('node-ventas-online').closest('.react-flow__node') as HTMLElement);
+    expect(onText.mock.calls.length).toBe(calls);
+  }, 60000);
+
+  it('en solo lectura el doble clic no edita', async () => {
+    const onText = mount('matrix', vi.fn(), { readOnly: true });
+    await ready();
+    fireEvent.doubleClick(screen.getByTestId('node-cell:ventas-online|crm').closest('.react-flow__node') as HTMLElement);
+    expect(onText).not.toHaveBeenCalled();
+  }, 60000);
 });

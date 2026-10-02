@@ -15,6 +15,8 @@ import {
   layoutCapabilityMap,
   layoutRoadmap,
   layoutValueStreams,
+  matrixScene,
+  parseMatrixCell,
   supportingApplications,
 } from './export/render';
 import {
@@ -79,6 +81,10 @@ const node = (kind: ElementKind, glyph: string, width: number, height: number): 
 /** Las columnas de la hoja de ruta no se añaden desde la paleta: salen de las fechas y el ciclo de vida. */
 const PERIOD_NOTATION: NodeNotation = { kind: 'period', label: 'Periodo', glyph: '◷', shape: 'rect', fill: '#64748b', width: 232, height: 100, addable: false };
 
+/** Las celdas y los totales de la matriz capacidad × aplicación se derivan del documento: no se añaden desde la paleta. */
+const CELL_NOTATION: NodeNotation = { kind: 'cell', label: 'Celda de la matriz', glyph: '▦', shape: 'rect', fill: '#ffffff', stroke: '#868e96', width: 112, height: 44, addable: false, bare: true };
+const TOTAL_NOTATION: NodeNotation = { kind: 'total', label: 'Total', glyph: 'Σ', shape: 'rect', fill: '#f1f3f5', stroke: '#868e96', width: 104, height: 44, addable: false, bare: true };
+
 const NODE_KIND_NOTATION: NodeNotation[] = [
   node('capability', '◆', 210, 78),
   node('process', '➔', 210, 70),
@@ -89,6 +95,8 @@ const NODE_KIND_NOTATION: NodeNotation[] = [
   node('stage', '❯', 200, 76),
   node('service', '◖', 210, 70),
   PERIOD_NOTATION,
+  CELL_NOTATION,
+  TOTAL_NOTATION,
 ];
 
 const EDGE_KIND_NOTATION: EdgeNotation[] = RELATION_KINDS.map((kind) => {
@@ -174,7 +182,13 @@ function nodeFields(kind: string, doc: EnterpriseDocument): FieldSpec[] {
       ];
     case 'service':
       return [...common, owner, { key: 'audience', label: 'Clientes a quienes se ofrece', type: 'text', hint: 'p. ej. Clientes particulares' }, TAGS_FIELD];
+    case 'cell':
+      return [
+        { key: 'support', label: 'La aplicación soporta la capacidad', type: 'boolean' },
+        { key: 'description', label: 'Criterio (por qué la soporta)', type: 'longtext' },
+      ];
     case 'period':
+    case 'total':
       return [];
     default:
       return common;
@@ -432,6 +446,51 @@ function roadmap(doc: EnterpriseDocument): EditorGraph {
   };
 }
 
+/**
+ * Matriz capacidad × aplicación: las cabeceras son la capacidad y la aplicación reales (se editan como en cualquier vista), las
+ * celdas y los totales se derivan del documento. Todo lo coloca `matrixScene` (cuadrícula propia) y el lienzo lo dibuja como nodos.
+ */
+function matrixGraph(doc: EnterpriseDocument): EditorGraph {
+  const { layout, nodes: styles } = matrixScene(doc);
+  const apps = new Map(doc.applications.map((a) => [a.id, a]));
+  return {
+    nodes: layout.nodes.map((box): EditorNode => {
+      const s = styles.get(box.id)!;
+      return {
+        id: box.id,
+        kind: s.kind,
+        label: s.label,
+        sublabel: s.sublabel,
+        badges: s.badges,
+        ref: s.kind === 'application' ? apps.get(box.id)?.ref : undefined,
+        fill: s.fill,
+        stroke: s.stroke,
+        dashed: s.dashed || undefined,
+      };
+    }),
+    edges: [],
+  };
+}
+
+/** Relación `supports` directa de una aplicación a una capacidad, si la hay. */
+const directSupport = (doc: EnterpriseDocument, capabilityId: string, applicationId: string): Relation | undefined =>
+  doc.relations.find((r) => r.kind === 'supports' && r.sourceId === applicationId && r.targetId === capabilityId);
+
+/** Marca o desmarca el soporte directo de una celda; `support` es lo que debe quedar. */
+function setSupport(doc: EnterpriseDocument, cell: { capabilityId: string; applicationId: string }, support: boolean): EditResult<EnterpriseDocument> {
+  const existing = directSupport(doc, cell.capabilityId, cell.applicationId);
+  if (support === (existing !== undefined)) return { ok: true, document: doc };
+  if (existing) return { ok: true, document: { ...doc, relations: doc.relations.filter((r) => r.id !== existing.id) } };
+  return enterpriseEditor.addEdge(doc, 'supports', cell.applicationId, cell.capabilityId);
+}
+
+/** Celdas de la matriz entre los ids dados. */
+const cellsOf = (doc: EnterpriseDocument, ids: readonly string[]): Array<{ id: string; capabilityId: string; applicationId: string }> =>
+  ids.flatMap((id) => {
+    const cell = parseMatrixCell(doc, id);
+    return cell ? [{ id, ...cell }] : [];
+  });
+
 // --- Acciones ---------------------------------------------------------------------------------------------------------
 
 const trimmed = (value: string | undefined): string => (value ?? '').trim();
@@ -541,6 +600,25 @@ const ACTIONS: Array<EditorAction<EnterpriseDocument>> = [
       };
     },
   },
+  {
+    id: 'matrix-support',
+    label: 'Soporta ⇄',
+    hint: 'Marca o quita el soporte (la relación «soporta») de las celdas seleccionadas de la matriz: si alguna no lo tiene, lo crea en todas; si todas lo tienen, lo quita (también con doble clic en la celda)',
+    needs: 'many',
+    disabled: (doc, ids) => (cellsOf(doc, ids).length === 0 ? 'Selecciona una o varias celdas de la matriz capacidad × aplicación.' : undefined),
+    run(doc, ids) {
+      const cells = cellsOf(doc, ids);
+      if (cells.length === 0) return { ok: false, reason: 'Selecciona una o varias celdas de la matriz capacidad × aplicación.' };
+      const want = cells.some((c) => directSupport(doc, c.capabilityId, c.applicationId) === undefined);
+      let next = doc;
+      for (const c of cells) {
+        const result = setSupport(next, c, want);
+        if (!result.ok) return result;
+        next = result.document;
+      }
+      return { ok: true, id: cells[0].id, document: next };
+    },
+  },
 ];
 
 export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
@@ -554,6 +632,7 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
     if (view.type === 'capabilities') return capabilityMap(doc, view.id);
     if (view.type === 'roadmap') return roadmap(doc);
     if (view.type === 'value-stream') return valueStreamGraph(doc);
+    if (view.type === 'matrix') return matrixGraph(doc);
     const all = indexElements(doc);
     const context = new Set(view.contextIds);
     const nodes = view.elementIds.flatMap((id): EditorNode[] => {
@@ -581,7 +660,13 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
     const view = findView(doc, viewId);
     if (view.type === 'capabilities') return layoutCapabilityMap(doc);
     if (view.type === 'value-stream') return layoutValueStreams(doc).layout;
+    if (view.type === 'matrix') return matrixScene(doc).layout;
     return view.type === 'roadmap' ? layoutRoadmap(doc).layout : undefined;
+  },
+
+  activate(doc, id) {
+    const cell = parseMatrixCell(doc, id);
+    return cell ? setSupport(doc, cell, directSupport(doc, cell.capabilityId, cell.applicationId) === undefined) : undefined;
   },
 
   fields: (target, doc) => (target.type === 'node' ? nodeFields(target.kind, doc) : EDGE_FIELDS),
@@ -597,6 +682,12 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
     if (r) return { type: 'edge', kind: r.kind, values: { ...r } };
     const column = id.startsWith('roadmap:') ? roadmapColumns(doc).find((c) => c.id === id) : undefined;
     if (column) return { type: 'node', kind: 'period', values: { name: column.title } };
+    const cell = parseMatrixCell(doc, id);
+    if (cell) {
+      const relation = directSupport(doc, cell.capabilityId, cell.applicationId);
+      return { type: 'node', kind: 'cell', values: { ...(relation ? { support: true } : {}), description: relation?.description ?? '' } };
+    }
+    if (id.startsWith('total:') && matrixScene(doc).nodes.has(id)) return { type: 'node', kind: 'total', values: {} };
     return undefined;
   },
 
@@ -625,6 +716,22 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
   },
 
   update(doc, id, patch) {
+    const cell = parseMatrixCell(doc, id);
+    if (cell) {
+      let next = doc;
+      if ('support' in patch) {
+        const result = setSupport(next, cell, patch.support === true);
+        if (!result.ok) return result;
+        next = result.document;
+      }
+      if ('description' in patch) {
+        const relation = directSupport(next, cell.capabilityId, cell.applicationId);
+        const description = typeof patch.description === 'string' ? patch.description.trim() : '';
+        if (!relation) return description ? { ok: false, reason: 'Marca primero que la aplicación soporta la capacidad: el criterio es la descripción de esa relación.' } : { ok: true, id, document: next };
+        next = { ...next, relations: next.relations.map((r) => (r.id === relation.id ? patchObject(r, { description }, ['description']) : r)) };
+      }
+      return { ok: true, id, document: next };
+    }
     const all = indexElements(doc);
     const e = all.get(id);
     if (e) {
@@ -658,6 +765,13 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
   },
 
   remove(doc, id) {
+    const cell = parseMatrixCell(doc, id);
+    if (cell) {
+      const relation = directSupport(doc, cell.capabilityId, cell.applicationId);
+      if (!relation) return { ok: false, reason: 'La celda no tiene una relación «soporta» directa que quitar: si la aplicación soporta la capacidad por un proceso, se quita en el paisaje.' };
+      return { ok: true, document: { ...doc, relations: doc.relations.filter((r) => r.id !== relation.id) } };
+    }
+    if (id.startsWith('total:') && matrixScene(doc).nodes.has(id)) return { ok: false, reason: 'Los totales y la clave de colores se derivan de la matriz: no se borran.' };
     const e = indexElements(doc).get(id);
     if (e) {
       const gone = e.kind === 'capability' ? capabilitySubtree(doc, id) : e.kind === 'stream' ? new Set([id, ...doc.valueStages.filter((x) => x.streamId === id).map((x) => x.id)]) : new Set([id]);

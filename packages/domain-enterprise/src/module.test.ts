@@ -273,11 +273,12 @@ describe('reglas de gobierno', () => {
 });
 
 describe('vistas', () => {
-  it('lista el mapa de capacidades, el paisaje y una vista por unidad con contenido', () => {
+  it('lista el mapa de capacidades, el paisaje, la matriz capacidad × aplicación y una vista por unidad con contenido', () => {
     const views = listViews(doc);
     expect(views.map((v) => v.id)).toEqual([
       'capabilities',
       'landscape',
+      'matrix',
       'roadmap',
       'unit:direccion-comercial',
       'unit:ventas',
@@ -325,7 +326,7 @@ describe('vistas', () => {
   });
 
   it('explica las vistas disponibles cuando no existe la pedida', () => {
-    expect(() => findView(doc, 'nada')).toThrow(/No existe la vista «nada»\. Vistas disponibles: capabilities, landscape, roadmap, unit:direccion-comercial.*capabilities:criticality.*impact:<elemento>/);
+    expect(() => findView(doc, 'nada')).toThrow(/No existe la vista «nada»\. Vistas disponibles: capabilities, landscape, matrix, roadmap, unit:direccion-comercial.*capabilities:criticality.*impact:<elemento>/);
     expect(() => findView(doc, 'impact:nada')).toThrow(/No existe la vista/);
     expect(() => findView(parse({}))).toThrow(/no tiene vistas/);
   });
@@ -614,7 +615,7 @@ describe('módulo', () => {
     expect(enterpriseModule.validate(doc)).toEqual([]);
     expect((enterpriseModule.jsonSchema() as { type: string }).type).toBe('object');
     expect(enterpriseModule.importers[0].detect!('flowchart LR\n a --> b')).toBe(true);
-    expect(enterpriseModule.cliCommands!.map((c) => c.name)).toEqual(['coverage', 'impact', 'lifecycle', 'from-integration']);
+    expect(enterpriseModule.cliCommands!.map((c) => c.name)).toEqual(['coverage', 'impact', 'lifecycle', 'matrix', 'from-integration']);
   });
 });
 
