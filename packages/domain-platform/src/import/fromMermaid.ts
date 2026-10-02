@@ -116,7 +116,7 @@ const ENVIRONMENT_WORDS: Array<[EnvironmentKind, RegExp]> = [
   ['dev', /^dev|desarrollo/],
   ['prod', /prod/],
 ];
-const environmentKind = (name: string): EnvironmentKind | undefined => ENVIRONMENT_WORDS.find(([, re]) => re.test(normalize(name)))?.[0];
+export const environmentKind = (name: string): EnvironmentKind | undefined => ENVIRONMENT_WORDS.find(([, re]) => re.test(normalize(name)))?.[0];
 
 /** Descripción de una instancia: la tecnología y, al final, `3 réplicas` y/o `v1.4.2` (así las escribe el exportador). */
 function instanceDetails(description: string | undefined): { technology?: string; replicas?: number; version?: string } {

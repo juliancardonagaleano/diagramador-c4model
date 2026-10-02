@@ -1,0 +1,675 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.7.5",
+  "variables": {
+    "environment": {
+      "value": "dev"
+    },
+    "region": {
+      "value": "eu-west-1"
+    },
+    "vpc_cidr": {
+      "value": "10.40.0.0/16"
+    },
+    "db_password": {
+      "value": "plan-time-password-do-not-leak"
+    }
+  },
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_vpc.main",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "main",
+          "values": {
+            "cidr_block": "10.40.0.0/16",
+            "enable_dns_hostnames": true,
+            "tags": {
+              "Name": "tienda-dev-vpc",
+              "Environment": "dev"
+            },
+            "tags_all": {
+              "Name": "tienda-dev-vpc",
+              "Environment": "dev"
+            }
+          },
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_subnet.private[0]",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private",
+          "index": 0,
+          "values": {
+            "cidr_block": "10.40.10.0/24",
+            "map_public_ip_on_launch": false,
+            "tags": {
+              "Name": "tienda-dev-private-0"
+            }
+          },
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_subnet.private[1]",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private",
+          "index": 1,
+          "values": {
+            "cidr_block": "10.40.11.0/24",
+            "map_public_ip_on_launch": false,
+            "tags": {
+              "Name": "tienda-dev-private-1"
+            }
+          },
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_security_group.db",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "db",
+          "values": {
+            "name": "tienda-dev-db",
+            "ingress": [
+              {
+                "from_port": 5432,
+                "to_port": 5432,
+                "protocol": "tcp"
+              }
+            ]
+          },
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_db_subnet_group.main",
+          "mode": "managed",
+          "type": "aws_db_subnet_group",
+          "name": "main",
+          "values": {
+            "name": "tienda-dev-db"
+          },
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_db_instance.orders",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "orders",
+          "values": {
+            "identifier": "tienda-dev-orders",
+            "engine": "postgres",
+            "engine_version": "15.4",
+            "instance_class": "db.t4g.small",
+            "multi_az": false,
+            "username": "orders",
+            "password": "plan-time-password-do-not-leak",
+            "publicly_accessible": false
+          },
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_eks_cluster.main",
+          "mode": "managed",
+          "type": "aws_eks_cluster",
+          "name": "main",
+          "values": {
+            "name": "tienda-dev-eks",
+            "version": "1.29",
+            "vpc_config": [
+              {
+                "endpoint_private_access": true,
+                "endpoint_public_access": false
+              }
+            ]
+          },
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_s3_bucket.assets",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "assets",
+          "values": {
+            "bucket": "tienda-dev-assets",
+            "id": "tienda-dev-assets",
+            "arn": "arn:aws:s3:::tienda-dev-assets"
+          },
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {}
+        }
+      ],
+      "child_modules": [
+        {
+          "address": "module.colas",
+          "resources": [
+            {
+              "address": "module.colas.aws_sqs_queue.this",
+              "mode": "managed",
+              "type": "aws_sqs_queue",
+              "name": "this",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "schema_version": 0,
+              "values": {
+                "name": "tienda-dev-pedidos",
+                "fifo_queue": false
+              },
+              "sensitive_values": {}
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_vpc.main",
+      "mode": "managed",
+      "type": "aws_vpc",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "cidr_block": "10.40.0.0/16",
+          "enable_dns_hostnames": true,
+          "tags": {
+            "Name": "tienda-dev-vpc",
+            "Environment": "dev"
+          },
+          "tags_all": {
+            "Name": "tienda-dev-vpc",
+            "Environment": "dev"
+          }
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_subnet.private[0]",
+      "index": 0,
+      "mode": "managed",
+      "type": "aws_subnet",
+      "name": "private",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "cidr_block": "10.40.10.0/24",
+          "map_public_ip_on_launch": false,
+          "tags": {
+            "Name": "tienda-dev-private-0"
+          }
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_subnet.private[1]",
+      "index": 1,
+      "mode": "managed",
+      "type": "aws_subnet",
+      "name": "private",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "cidr_block": "10.40.11.0/24",
+          "map_public_ip_on_launch": false,
+          "tags": {
+            "Name": "tienda-dev-private-1"
+          }
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_security_group.db",
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "db",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "tienda-dev-db",
+          "ingress": [
+            {
+              "from_port": 5432,
+              "to_port": 5432,
+              "protocol": "tcp"
+            }
+          ]
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_db_subnet_group.main",
+      "mode": "managed",
+      "type": "aws_db_subnet_group",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "tienda-dev-db"
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_db_instance.orders",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "name": "orders",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "identifier": "tienda-dev-orders",
+          "engine": "postgres",
+          "engine_version": "15.4",
+          "instance_class": "db.t4g.small",
+          "multi_az": false,
+          "username": "orders",
+          "password": "plan-time-password-do-not-leak",
+          "publicly_accessible": false
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_eks_cluster.main",
+      "mode": "managed",
+      "type": "aws_eks_cluster",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "tienda-dev-eks",
+          "version": "1.29",
+          "vpc_config": [
+            {
+              "endpoint_private_access": true,
+              "endpoint_public_access": false
+            }
+          ]
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_s3_bucket.assets",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "assets",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "before": {
+          "bucket": "tienda-dev-assets",
+          "id": "tienda-dev-assets",
+          "arn": "arn:aws:s3:::tienda-dev-assets"
+        },
+        "after": {
+          "bucket": "tienda-dev-assets",
+          "id": "tienda-dev-assets",
+          "arn": "arn:aws:s3:::tienda-dev-assets"
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "module.colas.aws_sqs_queue.this",
+      "module_address": "module.colas",
+      "mode": "managed",
+      "type": "aws_sqs_queue",
+      "name": "this",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "tienda-dev-pedidos",
+          "fifo_queue": false
+        },
+        "after_unknown": {
+          "arn": true,
+          "id": true
+        }
+      }
+    },
+    {
+      "address": "aws_sqs_queue.legacy",
+      "mode": "managed",
+      "type": "aws_sqs_queue",
+      "name": "legacy",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "delete"
+        ],
+        "before": {
+          "name": "tienda-dev-legacy",
+          "fifo_queue": false,
+          "id": "https://sqs.eu-west-1.amazonaws.com/123456789012/tienda-dev-legacy"
+        },
+        "after": null,
+        "after_unknown": {}
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws",
+        "expressions": {
+          "region": {
+            "references": [
+              "var.region"
+            ]
+          }
+        }
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_vpc.main",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "main",
+          "provider_config_key": "aws",
+          "expressions": {
+            "cidr_block": {
+              "references": [
+                "var.vpc_cidr"
+              ]
+            },
+            "tags": {
+              "constant_value": {
+                "Name": "tienda-dev-vpc",
+                "Environment": "dev"
+              }
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_subnet.private",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private",
+          "provider_config_key": "aws",
+          "expressions": {
+            "vpc_id": {
+              "references": [
+                "aws_vpc.main.id",
+                "aws_vpc.main"
+              ]
+            },
+            "cidr_block": {
+              "references": [
+                "count.index"
+              ]
+            },
+            "map_public_ip_on_launch": {
+              "constant_value": false
+            }
+          },
+          "schema_version": 0,
+          "count_expression": {
+            "constant_value": 2
+          }
+        },
+        {
+          "address": "aws_subnet.private",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private",
+          "provider_config_key": "aws",
+          "expressions": {
+            "vpc_id": {
+              "references": [
+                "aws_vpc.main.id",
+                "aws_vpc.main"
+              ]
+            },
+            "cidr_block": {
+              "references": [
+                "count.index"
+              ]
+            },
+            "map_public_ip_on_launch": {
+              "constant_value": false
+            }
+          },
+          "schema_version": 0,
+          "count_expression": {
+            "constant_value": 2
+          }
+        },
+        {
+          "address": "aws_security_group.db",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "db",
+          "provider_config_key": "aws",
+          "expressions": {
+            "vpc_id": {
+              "references": [
+                "aws_vpc.main.id",
+                "aws_vpc.main"
+              ]
+            },
+            "ingress": [
+              {
+                "security_groups": {
+                  "references": [
+                    "aws_eks_cluster.main.vpc_config[0].cluster_security_group_id",
+                    "aws_eks_cluster.main.vpc_config[0]",
+                    "aws_eks_cluster.main"
+                  ]
+                },
+                "from_port": {
+                  "constant_value": 5432
+                },
+                "to_port": {
+                  "constant_value": 5432
+                },
+                "protocol": {
+                  "constant_value": "tcp"
+                }
+              }
+            ]
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_db_subnet_group.main",
+          "mode": "managed",
+          "type": "aws_db_subnet_group",
+          "name": "main",
+          "provider_config_key": "aws",
+          "expressions": {
+            "subnet_ids": {
+              "references": [
+                "aws_subnet.private"
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_db_instance.orders",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "orders",
+          "provider_config_key": "aws",
+          "expressions": {
+            "db_subnet_group_name": {
+              "references": [
+                "aws_db_subnet_group.main.name",
+                "aws_db_subnet_group.main"
+              ]
+            },
+            "vpc_security_group_ids": {
+              "references": [
+                "aws_security_group.db.id",
+                "aws_security_group.db"
+              ]
+            },
+            "password": {
+              "references": [
+                "var.db_password"
+              ]
+            }
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_eks_cluster.main",
+          "mode": "managed",
+          "type": "aws_eks_cluster",
+          "name": "main",
+          "provider_config_key": "aws",
+          "expressions": {
+            "name": {
+              "constant_value": "tienda-dev-eks"
+            },
+            "version": {
+              "constant_value": "1.29"
+            },
+            "vpc_config": [
+              {
+                "subnet_ids": {
+                  "references": [
+                    "aws_subnet.private"
+                  ]
+                },
+                "endpoint_private_access": {
+                  "constant_value": true
+                }
+              }
+            ]
+          },
+          "schema_version": 0
+        },
+        {
+          "address": "aws_s3_bucket.assets",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "assets",
+          "provider_config_key": "aws",
+          "expressions": {
+            "bucket": {
+              "constant_value": "tienda-dev-assets"
+            }
+          },
+          "schema_version": 0
+        }
+      ],
+      "module_calls": {
+        "colas": {
+          "source": "./modules/cola",
+          "module": {
+            "resources": [
+              {
+                "address": "aws_sqs_queue.this",
+                "mode": "managed",
+                "type": "aws_sqs_queue",
+                "name": "this",
+                "expressions": {
+                  "name": {
+                    "references": [
+                      "var.nombre"
+                    ]
+                  }
+                }
+              }
+            ],
+            "variables": {
+              "nombre": {}
+            }
+          }
+        }
+      },
+      "variables": {
+        "environment": {
+          "default": "dev"
+        },
+        "region": {
+          "default": "eu-west-1"
+        },
+        "vpc_cidr": {
+          "default": "10.40.0.0/16"
+        },
+        "db_password": {
+          "sensitive": true
+        }
+      }
+    }
+  }
+}
