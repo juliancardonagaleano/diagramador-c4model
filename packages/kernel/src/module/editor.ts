@@ -75,6 +75,13 @@ export interface EditorNode {
   /** Tamaño que sustituye al de la notación (p. ej. una ficha crece con sus columnas). */
   width?: number;
   height?: number;
+  /**
+   * Icono propio del nodo (trazados de una caja de 16 × 16), en lugar del de su tipo: p. ej. el servicio de una nube. Con
+   * `iconColor` se dibuja como una ficha blanca con ese color de acento que cabalga sobre la esquina del nodo (arriba a la
+   * izquierda; arriba a la derecha en una zona).
+   */
+  icon?: string[];
+  iconColor?: string;
 }
 
 export interface EditorEdge {
@@ -230,8 +237,8 @@ export interface EditorSpec<TDoc> {
   defaultEdgeKind?: string;
   /** Grafo de la vista `viewId` (si no se indica, la primera). */
   project(document: TDoc, viewId?: string): EditorGraph;
-  /** Campos editables de un tipo. */
-  fields(target: EditorTarget, document: TDoc): FieldSpec[];
+  /** Campos editables de un tipo. `values` son los del elemento que se edita, por si las opciones de un campo dependen de otro (el servicio, del proveedor). */
+  fields(target: EditorTarget, document: TDoc, values?: Record<string, unknown>): FieldSpec[];
   /** Valores actuales de un nodo o relación, para el formulario. */
   read(document: TDoc, id: string): { type: 'node' | 'edge'; kind: string; values: Record<string, unknown> } | undefined;
   /** `parentId` es el contenedor seleccionado (si encaja); `viewId`, la vista abierta (p. ej. para crear el recurso en el entorno que se está viendo). */

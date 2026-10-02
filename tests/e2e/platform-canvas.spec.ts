@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { canvasReady, selectView } from './canvas-helpers';
 
@@ -85,5 +86,57 @@ test.describe('lienzo de plataforma: infraestructura, metadatos y acciones', () 
     await expect(page.getByText('emparejado por nombre normalizado')).toHaveCount(3);
     await page.screenshot({ path: 'test-results/platform-compare.png' });
     expect(errors).toEqual([]);
+  });
+});
+
+/** Sustituye el documento por el ejemplo de nubes (AWS, Azure y un paquete propio de GCP) y vuelve al lienzo. */
+async function loadClouds(page: Page): Promise<void> {
+  await page.getByRole('tab', { name: 'Vista SVG' }).click();
+  await page.getByLabel('Documento JSON').fill(readFileSync('examples/plataforma-nubes.json', 'utf8'));
+  await page.getByRole('tab', { name: 'Lienzo' }).click();
+  await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
+}
+
+const icon = (page: Page, id: string) => page.getByTestId(`node-${id}`).getByTestId(`icon-${id}`);
+
+test.describe('lienzo de plataforma: iconos de proveedores de nube', () => {
+  test('cada recurso se dibuja con el icono del servicio de su proveedor, con su color de acento', async ({ page }) => {
+    const errors = await open(page);
+    await loadClouds(page);
+    await selectView(page, 'topology');
+    await expect(icon(page, 'rds-pedidos')).toHaveAttribute('data-provider-icon', '#ec7211');
+    await expect(icon(page, 'sql-dr')).toHaveAttribute('data-provider-icon', '#0078d4');
+    await expect(icon(page, 'sql-analitica')).toHaveAttribute('data-provider-icon', '#1a73e8');
+    await page.screenshot({ path: 'test-results/plataforma-iconos-aws-azure.png' });
+
+    await selectView(page, 'env:aws-prod');
+    for (const id of ['rds-pedidos', 'cache-prod', 'sqs-pedidos', 's3-facturas', 'secretos-prod', 'alb-prod', 'apigw-prod', 'ecr-prod', 'cdn-prod', 'dns-prod']) await expect(icon(page, id), id).toHaveAttribute('data-provider-icon', '#ec7211');
+    // El clúster que aloja servicios y la VPC son zonas: la ficha va en su esquina superior derecha.
+    await expect(icon(page, 'eks-prod')).toHaveClass(/cv-cloud-icon-zone/);
+    await expect(icon(page, 'vpc-prod')).toHaveClass(/cv-cloud-icon-zone/);
+    await expect(page.getByTestId('node-subred-datos').getByTestId('icon-subred-datos')).toHaveCount(0);
+    await page.screenshot({ path: 'test-results/plataforma-iconos-entorno-aws.png' });
+
+    await selectView(page, 'env:azure-dr');
+    for (const id of ['sql-dr', 'bus-dr', 'kv-dr', 'agw-dr', 'apim-dr', 'func-dr', 'blob-dr']) await expect(icon(page, id), id).toHaveAttribute('data-provider-icon', '#0078d4');
+    await page.screenshot({ path: 'test-results/plataforma-iconos-entorno-azure.png' });
+    expect(errors).toEqual([]);
+  });
+
+  test('el panel de propiedades elige el proveedor y el servicio de su paquete, y el icono cambia en el lienzo', async ({ page }) => {
+    await open(page);
+    await loadClouds(page);
+    await selectView(page, 'env:aws-prod');
+    await page.getByTestId('node-s3-facturas').click();
+    const inspector = page.getByTestId('inspector');
+    await expect(inspector.getByLabel('Proveedor de nube')).toHaveValue('aws');
+    await expect(inspector.getByLabel('Servicio de nube').locator('option', { hasText: 'Amazon S3 (sugerido)' })).toHaveCount(1);
+    await inspector.getByLabel('Proveedor de nube').selectOption('azure');
+    await expect(inspector.getByLabel('Servicio de nube')).toHaveValue('blob-storage');
+    await expect(icon(page, 's3-facturas')).toHaveAttribute('data-provider-icon', '#0078d4');
+    await inspector.getByLabel('Proveedor de nube').selectOption('');
+    await expect(page.getByTestId('node-s3-facturas').getByTestId('icon-s3-facturas')).toHaveCount(0);
+    // Sin proveedor tampoco queda servicio en el documento.
+    expect(await docText(page)).not.toContain('blob-storage');
   });
 });

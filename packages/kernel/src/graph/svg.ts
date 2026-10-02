@@ -19,8 +19,25 @@ export interface SvgNodeStyle {
   align?: 'center' | 'left';
   /** Máximo de líneas de texto que se dibujan (por defecto 3). */
   maxLines?: number;
-  /** Icono del tipo en la esquina superior izquierda: trazados de una caja de 16 × 16, con el color del texto. */
+  /**
+   * Icono del tipo en la esquina superior izquierda: trazados de una caja de 16 × 16, con el color del texto. Con `iconColor`
+   * es en cambio una ficha de icono de proveedor (un servicio de una nube): un cuadrado blanco con ese color de acento que
+   * cabalga sobre la esquina superior izquierda del nodo.
+   */
   icon?: string[];
+  /** Color de acento de la ficha del icono (`#rrggbb`); si no se indica, el icono es el pequeño del tipo. */
+  iconColor?: string;
+}
+
+/** Lado de la ficha de un icono de proveedor y lo que sobresale de la esquina del nodo (o del grupo) que decora. */
+export const ICON_TILE = 24;
+export const ICON_TILE_OVERHANG = 8;
+
+/** Ficha de un icono de proveedor en (`x`, `y`): fondo blanco, borde y trazos del color de acento (trazados de una caja de 16 × 16). */
+export function iconTile(paths: string[], color: string, x: number, y: number): string {
+  const c = esc(color);
+  const glyph = paths.map((d) => `<path d="${esc(d)}"/>`).join('');
+  return `<g transform="translate(${x} ${y})"><rect width="${ICON_TILE}" height="${ICON_TILE}" rx="5" fill="#ffffff" stroke="${c}" stroke-width="1.5"/><g transform="translate(4 4)" fill="none" stroke="${c}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${glyph}</g></g>`;
 }
 
 /** Insignia pequeña sobre una línea: un número de paso (`text`) o el icono de un patrón (`icon`: trazados de una caja de 16 × 16). */
@@ -72,7 +89,7 @@ export interface SvgOptions {
   node(id: string): SvgNodeStyle;
   edge(id: string): SvgEdgeStyle;
   /** Etiqueta del grupo y, opcionalmente, su relleno, su borde y el trazo del borde (por defecto gris claro y discontinuo). */
-  group?(id: string): { label: string; fill?: string; stroke?: string; border?: 'solid' | 'dashed' | 'dotted' };
+  group?(id: string): { label: string; fill?: string; stroke?: string; border?: 'solid' | 'dashed' | 'dotted'; /** Ficha de icono de proveedor en la esquina superior derecha (trazados de 16 × 16 y color de acento). */ icon?: string[]; iconColor?: string };
   legend?: SvgLegend;
 }
 
@@ -138,7 +155,8 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
     const style = options.group?.(g.id);
     const label = style?.label ?? g.id;
     out.push(`<rect x="${g.x}" y="${g.y}" width="${g.width}" height="${g.height}" rx="8" fill="${style?.fill ?? '#f8fafc'}" stroke="${style?.stroke ?? '#94a3b8'}"${style?.border === 'solid' ? ' stroke-width="2"' : style?.border === 'dotted' ? ' stroke-width="2" stroke-dasharray="2 4"' : ' stroke-dasharray="6 4"'}/>`);
-    out.push(`<text x="${g.x + 12}" y="${g.y + 22}" font-weight="700" fill="#475569">${esc(fit(label, g.width))}</text>`);
+    out.push(`<text x="${g.x + 12}" y="${g.y + 22}" font-weight="700" fill="#475569">${esc(fit(label, g.width - (style?.icon && style.iconColor ? ICON_TILE : 0)))}</text>`);
+    if (style?.icon && style.icon.length > 0 && style.iconColor) out.push(iconTile(style.icon, style.iconColor, g.x + g.width - ICON_TILE + ICON_TILE_OVERHANG, g.y - ICON_TILE_OVERHANG));
   }
 
   for (const e of layout.edges) {
@@ -181,7 +199,9 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
       else out.push(`<path d="${part.d}" fill="none" stroke="${s.stroke}" stroke-width="1.5"${part.opacity !== undefined ? ` stroke-opacity="${part.opacity}"` : ''}/>`);
     }
     out.push('</g>');
-    if (s.icon && s.icon.length > 0) {
+    if (s.icon && s.icon.length > 0 && s.iconColor) {
+      out.push(iconTile(s.icon, s.iconColor, n.x - ICON_TILE_OVERHANG, n.y - ICON_TILE_OVERHANG));
+    } else if (s.icon && s.icon.length > 0) {
       const paths = s.icon.map((d) => `<path d="${d}" fill="none" stroke="${s.textColor ?? '#ffffff'}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
       out.push(`<g transform="translate(${n.x + 7} ${n.y + 5})" opacity="0.85">${paths}</g>`);
     }
