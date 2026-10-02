@@ -699,7 +699,7 @@ describe('iark: módulo empresarial', () => {
   const dir = mkdtempSync(join(tmpdir(), 'iarkent-'));
 
   it('modules lista el módulo empresarial con sus formatos', () => {
-    expect(run(['modules']).stdout).toMatch(/^enterprise {2}Arquitectura empresarial {2}v0\.1\.0\n {4}importa: mermaid {2}· {2}exporta: mermaid, svg, drawio/m);
+    expect(run(['modules']).stdout).toMatch(/^enterprise {2}Arquitectura empresarial {2}v0\.1\.0\n {4}importa: mermaid, archimate {2}· {2}exporta: mermaid, svg, drawio/m);
   });
 
   it('validate --module enterprise valida el documento y devuelve 2 con errores de estructura', () => {
@@ -765,6 +765,71 @@ describe('iark: módulo empresarial', () => {
     expect(doc.relations).toHaveLength(39);
     expect(doc.applications).toHaveLength(11);
     expect(run(['validate', json, '--module', 'enterprise']).status).toBe(0);
+  });
+
+  describe('import --module enterprise con ArchiMate', () => {
+    const fixtures = 'tests/fixtures/importar/archimate';
+    const comercio = `${fixtures}/comercio-andino.xml`;
+
+    it('--format archimate convierte el modelo, lo valida y resume en avisos lo que no importa', () => {
+      const json = join(dir, 'comercio.json');
+      const r = run(['import', comercio, '--module', 'enterprise', '--format', 'archimate', '--out', json]);
+      expect(r.status).toBe(0);
+      expect(r.stderr).toMatch(/Importado "Comercio Andino - arquitectura empresarial" en el módulo enterprise: 66 elementos, \d+ aviso\(s\)\./);
+      expect(r.stderr).toContain('aviso: 4 elementos de motivación sin equivalente en el módulo, no se importan (Driver, Goal, Requirement, Stakeholder)');
+      expect(r.stderr).toMatch(/aviso: .*(implementación y migración|vistas)/);
+      expect(r.stderr).not.toMatch(/Error inesperado|\n\s+at /);
+      const doc = JSON.parse(readFileSync(json, 'utf8'));
+      expect(doc.applications).toHaveLength(14);
+      expect(doc.capabilities).toHaveLength(16);
+      expect(doc.relations).toHaveLength(61);
+      const valid = run(['validate', json, '--module', 'enterprise']);
+      expect(valid.status).toBe(0);
+      expect(valid.stdout).toMatch(/Documento válido \(módulo enterprise\)\. 0 error\(es\)/);
+    });
+
+    it('sin --format elige ArchiMate por la extensión (.xml y .archimate) y por el contenido (stdin)', () => {
+      const porXml = run(['import', comercio, '--module', 'enterprise']);
+      expect(porXml.status).toBe(0);
+      expect(JSON.parse(porXml.stdout).workspace.name).toBe('Comercio Andino - arquitectura empresarial');
+
+      const archi = run(['import', `${fixtures}/tienda-archi.archimate`, '--module', 'enterprise']);
+      expect(archi.status).toBe(0);
+      expect(archi.stderr).toMatch(/Importado "Tienda de barrio" en el módulo enterprise: \d+ elementos/);
+      expect(JSON.parse(archi.stdout).applications.map((a: { id: string }) => a.id)).toEqual(['tpv', 'hoja-de-existencias', 'inventario']);
+
+      const porContenido = run(['import', '--stdin', '--module', 'enterprise'], readFileSync(`${fixtures}/bizbank-en.xml`, 'utf8'));
+      expect(porContenido.status).toBe(0);
+      expect(JSON.parse(porContenido.stdout).workspace.name).toBe('BizBank - retail banking architecture');
+      // lo mismo con --name: el nombre explícito manda sobre el del modelo
+      expect(JSON.parse(run(['import', comercio, '--module', 'enterprise', '--name', 'Mi empresa']).stdout).workspace.name).toBe('Mi empresa');
+    });
+
+    it('el documento importado se exporta: Mermaid del paisaje, SVG del mapa de capacidades y draw.io', () => {
+      const json = join(dir, 'andino.json');
+      expect(run(['import', comercio, '--module', 'enterprise', '--out', json]).status).toBe(0);
+      const mmd = run(['convert', json, '--module', 'enterprise', '--to', 'mermaid', '--view', 'landscape']);
+      expect(mmd.status).toBe(0);
+      expect(mmd.stdout).toMatch(/\["Tienda online<br\/>React \+ Node\.js"\]:::application/);
+      expect(run(['convert', json, '--module', 'enterprise', '--to', 'mermaid', '--view', 'impact:tienda-web-1-8-2']).stdout).toMatch(/Tienda online/);
+      const svg = join(dir, 'andino.svg');
+      expect(run(['convert', json, '--module', 'enterprise', '--out', svg]).status).toBe(0);
+      expect(readFileSync(svg, 'utf8')).toContain('Mapa de capacidades');
+      const gov = run(['enterprise', 'coverage', json]);
+      expect(gov.status).toBe(0);
+      expect(gov.stdout).toMatch(/Cobertura: 11 de 12 capacidad\(es\) hoja tienen al menos una aplicación\./);
+    });
+
+    it('un XML roto o que no es ArchiMate termina en un mensaje de una línea con código 2, sin stack', () => {
+      const roto = run(['import', `${fixtures}/xml-roto.xml`, '--module', 'enterprise', '--format', 'archimate']);
+      expect(roto.status).toBe(2);
+      expect(roto.stderr).toBe('XML mal formado: se esperaba «</elements>» (abierta en la línea 8, columna 3) y se encontró «</model>» (línea 20, columna 1).\n');
+      const otro = run(['import', '--stdin', '--module', 'enterprise', '--format', 'archimate'], '<?xml version="1.0"?><mxfile><diagram/></mxfile>');
+      expect(otro.status).toBe(2);
+      expect(otro.stderr).toMatch(/^La raíz del XML es «mxfile»: un modelo de ArchiMate empieza por «model»/);
+      expect(otro.stderr).not.toMatch(/Error inesperado|\n\s+at /);
+      expect(run(['import', comercio, '--module', 'enterprise', '--format', 'visio']).stderr).toMatch(/Formato inválido «visio»\. Use: auto, archimate, mermaid\./);
+    });
   });
 
   it('un Mermaid que no se puede importar termina en un mensaje de una línea con código 2, sin stack', () => {
