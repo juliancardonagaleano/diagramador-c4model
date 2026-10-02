@@ -9,6 +9,8 @@ export { toSvg, layoutView, KIND_COLORS } from './export/render';
 export { toDrawio } from './export/drawio';
 export { fromMermaid, DataImportError, type DataImportOptions, type DataImportResult } from './import/fromMermaid';
 export { fromIntegrationJson } from './import/fromIntegration';
+export { fromDdl, looksLikeDdl } from './import/fromDdl';
+export { fromDbt, looksLikeDbtManifest } from './import/fromDbt';
 export { dataAiSpec, generatedDataSchema, type GeneratedData } from './ai/generation';
 export { dataCommands } from './commands';
 export { dataModule } from './module';

@@ -1,0 +1,4951 @@
+{
+ "metadata": {
+  "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json",
+  "dbt_version": "1.8.2",
+  "generated_at": "2024-06-03T10:21:44.318221Z",
+  "invocation_id": "5d2f1c7e-9a53-4b0e-8f0a-3a6a9d1c2b44",
+  "env": {},
+  "project_name": "tienda_analitica",
+  "project_id": "c5ceaaf712c5ceaaf712c5ceaaf712",
+  "user_id": null,
+  "send_anonymous_usage_stats": false,
+  "adapter_type": "snowflake"
+ },
+ "nodes": {
+  "seed.tienda_analitica.paises": {
+   "database": "ANALITICA",
+   "schema": "ANALITICA_SEEDS",
+   "name": "paises",
+   "resource_type": "seed",
+   "package_name": "tienda_analitica",
+   "path": "paises.csv",
+   "original_file_path": "seeds/paises.csv",
+   "unique_id": "seed.tienda_analitica.paises",
+   "fqn": [
+    "tienda_analitica",
+    "paises"
+   ],
+   "alias": "paises",
+   "checksum": {
+    "name": "sha256",
+    "checksum": "d48cec4a13d48cec4a13d48cec4a13d48cec4a13d48cec4a13d48cec4a13"
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "ANALITICA_SEEDS",
+    "database": null,
+    "tags": [],
+    "meta": {
+     "owner": "Equipo Datos"
+    },
+    "group": null,
+    "materialized": "seed",
+    "incremental_strategy": null,
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "column_types": {},
+    "full_refresh": null,
+    "unique_key": null,
+    "on_schema_change": "ignore",
+    "on_configuration_change": "apply",
+    "grants": {},
+    "packages": [],
+    "docs": {
+     "show": true,
+     "node_color": null
+    },
+    "contract": {
+     "enforced": false,
+     "alias_types": true
+    }
+   },
+   "tags": [],
+   "description": "Países admitidos por la tienda",
+   "columns": {
+    "codigo": {
+     "name": "codigo",
+     "description": "Código ISO 3166-1 alfa-2",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "nombre": {
+     "name": "nombre",
+     "description": "Nombre del país",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Datos"
+   },
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": "tienda_analitica://seeds/_seeds.yml",
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410000.9,
+   "relation_name": "ANALITICA.ANALITICA_SEEDS.PAISES",
+   "raw_code": "",
+   "root_path": "/work/tienda_analitica",
+   "depends_on": {
+    "macros": []
+   },
+   "defer_relation": null
+  },
+  "model.tienda_analitica.stg_clientes": {
+   "database": "ANALITICA",
+   "schema": "ANALITICA_STAGING",
+   "name": "stg_clientes",
+   "resource_type": "model",
+   "package_name": "tienda_analitica",
+   "path": "staging/stg_clientes.sql",
+   "original_file_path": "models/staging/stg_clientes.sql",
+   "unique_id": "model.tienda_analitica.stg_clientes",
+   "fqn": [
+    "tienda_analitica",
+    "staging",
+    "stg_clientes"
+   ],
+   "alias": "stg_clientes",
+   "checksum": {
+    "name": "sha256",
+    "checksum": "5c7bb4faa45c7bb4faa45c7bb4faa45c7bb4faa45c7bb4faa45c7bb4faa4"
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "ANALITICA_STAGING",
+    "database": null,
+    "tags": [
+     "staging",
+     "tienda"
+    ],
+    "meta": {
+     "owner": "Equipo Datos",
+     "contains_pii": true,
+     "classification": "confidential",
+     "retention": "5 años tras la baja"
+    },
+    "group": null,
+    "materialized": "view",
+    "incremental_strategy": null,
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "column_types": {},
+    "full_refresh": null,
+    "unique_key": null,
+    "on_schema_change": "ignore",
+    "on_configuration_change": "apply",
+    "grants": {},
+    "packages": [],
+    "docs": {
+     "show": true,
+     "node_color": null
+    },
+    "contract": {
+     "enforced": false,
+     "alias_types": true
+    }
+   },
+   "tags": [
+    "staging",
+    "tienda"
+   ],
+   "description": "Clientes de la tienda, con los nombres de columna normalizados",
+   "columns": {
+    "cliente_id": {
+     "name": "cliente_id",
+     "description": "Identificador del cliente",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "email": {
+     "name": "email",
+     "description": "Correo de acceso",
+     "meta": {
+      "contains_pii": true
+     },
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "nombre": {
+     "name": "nombre",
+     "description": "Nombre completo",
+     "meta": {
+      "contains_pii": true
+     },
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "pais": {
+     "name": "pais",
+     "description": "Código ISO del país",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Datos",
+    "contains_pii": true,
+    "classification": "confidential",
+    "retention": "5 años tras la baja"
+   },
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": "tienda_analitica://models/staging/_staging.yml",
+   "build_path": null,
+   "unrendered_config": {
+    "materialized": "view"
+   },
+   "created_at": 1717410000.5,
+   "relation_name": "ANALITICA.ANALITICA_STAGING.STG_CLIENTES",
+   "raw_code": "select id as cliente_id, email, nombre, pais from {{ source('tienda', 'clientes') }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [
+    [
+     "tienda",
+     "clientes"
+    ]
+   ],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.ref"
+    ],
+    "nodes": [
+     "source.tienda_analitica.tienda.clientes"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "access": "protected",
+   "constraints": [],
+   "version": null,
+   "latest_version": null,
+   "deprecation_date": null,
+   "deferred": false
+  },
+  "model.tienda_analitica.stg_pedidos": {
+   "database": "ANALITICA",
+   "schema": "ANALITICA_STAGING",
+   "name": "stg_pedidos",
+   "resource_type": "model",
+   "package_name": "tienda_analitica",
+   "path": "staging/stg_pedidos.sql",
+   "original_file_path": "models/staging/stg_pedidos.sql",
+   "unique_id": "model.tienda_analitica.stg_pedidos",
+   "fqn": [
+    "tienda_analitica",
+    "staging",
+    "stg_pedidos"
+   ],
+   "alias": "stg_pedidos",
+   "checksum": {
+    "name": "sha256",
+    "checksum": "4c8ed923e44c8ed923e44c8ed923e44c8ed923e44c8ed923e44c8ed923e4"
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "ANALITICA_STAGING",
+    "database": null,
+    "tags": [
+     "staging",
+     "tienda"
+    ],
+    "meta": {
+     "owner": "Equipo Datos",
+     "classification": "internal"
+    },
+    "group": null,
+    "materialized": "view",
+    "incremental_strategy": null,
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "column_types": {},
+    "full_refresh": null,
+    "unique_key": null,
+    "on_schema_change": "ignore",
+    "on_configuration_change": "apply",
+    "grants": {},
+    "packages": [],
+    "docs": {
+     "show": true,
+     "node_color": null
+    },
+    "contract": {
+     "enforced": false,
+     "alias_types": true
+    }
+   },
+   "tags": [
+    "staging",
+    "tienda"
+   ],
+   "description": "Pedidos de la tienda",
+   "columns": {
+    "pedido_id": {
+     "name": "pedido_id",
+     "description": "Identificador del pedido",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "cliente_id": {
+     "name": "cliente_id",
+     "description": "Cliente que compra",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "estado": {
+     "name": "estado",
+     "description": "nuevo, pagado, enviado o cancelado",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "total": {
+     "name": "total",
+     "description": "Importe en euros",
+     "meta": {},
+     "data_type": "NUMBER(12,2)",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "creado_en": {
+     "name": "creado_en",
+     "description": "Alta del pedido",
+     "meta": {},
+     "data_type": "TIMESTAMP_NTZ",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Datos",
+    "classification": "internal"
+   },
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": "tienda_analitica://models/staging/_staging.yml",
+   "build_path": null,
+   "unrendered_config": {
+    "materialized": "view"
+   },
+   "created_at": 1717410000.5,
+   "relation_name": "ANALITICA.ANALITICA_STAGING.STG_PEDIDOS",
+   "raw_code": "select id as pedido_id, cliente_id, estado, total, creado_en from {{ source('tienda', 'pedidos') }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [
+    [
+     "tienda",
+     "pedidos"
+    ]
+   ],
+   "metrics": [],
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "source.tienda_analitica.tienda.pedidos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "access": "protected",
+   "constraints": [],
+   "version": null,
+   "latest_version": null,
+   "deprecation_date": null,
+   "deferred": false
+  },
+  "model.tienda_analitica.stg_lineas_pedido": {
+   "database": "ANALITICA",
+   "schema": "ANALITICA_STAGING",
+   "name": "stg_lineas_pedido",
+   "resource_type": "model",
+   "package_name": "tienda_analitica",
+   "path": "staging/stg_lineas_pedido.sql",
+   "original_file_path": "models/staging/stg_lineas_pedido.sql",
+   "unique_id": "model.tienda_analitica.stg_lineas_pedido",
+   "fqn": [
+    "tienda_analitica",
+    "staging",
+    "stg_lineas_pedido"
+   ],
+   "alias": "stg_lineas_pedido",
+   "checksum": {
+    "name": "sha256",
+    "checksum": "3f202153da3f202153da3f202153da3f202153da3f202153da3f202153da"
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "ANALITICA_STAGING",
+    "database": null,
+    "tags": [
+     "staging",
+     "tienda"
+    ],
+    "meta": {
+     "owner": "Equipo Datos",
+     "classification": "internal"
+    },
+    "group": null,
+    "materialized": "view",
+    "incremental_strategy": null,
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "column_types": {},
+    "full_refresh": null,
+    "unique_key": null,
+    "on_schema_change": "ignore",
+    "on_configuration_change": "apply",
+    "grants": {},
+    "packages": [],
+    "docs": {
+     "show": true,
+     "node_color": null
+    },
+    "contract": {
+     "enforced": false,
+     "alias_types": true
+    }
+   },
+   "tags": [
+    "staging",
+    "tienda"
+   ],
+   "description": "Líneas de pedido",
+   "columns": {
+    "pedido_id": {
+     "name": "pedido_id",
+     "description": "Pedido al que pertenece",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "linea": {
+     "name": "linea",
+     "description": "Posición dentro del pedido",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "producto_id": {
+     "name": "producto_id",
+     "description": "Producto vendido",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "cantidad": {
+     "name": "cantidad",
+     "description": "Unidades",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "precio_unitario": {
+     "name": "precio_unitario",
+     "description": "Precio por unidad",
+     "meta": {},
+     "data_type": "NUMBER(12,2)",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Datos",
+    "classification": "internal"
+   },
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": "tienda_analitica://models/staging/_staging.yml",
+   "build_path": null,
+   "unrendered_config": {
+    "materialized": "view"
+   },
+   "created_at": 1717410000.5,
+   "relation_name": "ANALITICA.ANALITICA_STAGING.STG_LINEAS_PEDIDO",
+   "raw_code": "select * from {{ source('tienda', 'lineas_pedido') }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [
+    [
+     "tienda",
+     "lineas_pedido"
+    ]
+   ],
+   "metrics": [],
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "source.tienda_analitica.tienda.lineas_pedido"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "access": "protected",
+   "constraints": [],
+   "version": null,
+   "latest_version": null,
+   "deprecation_date": null,
+   "deferred": false
+  },
+  "model.tienda_analitica.stg_productos": {
+   "database": "ANALITICA",
+   "schema": "ANALITICA_STAGING",
+   "name": "stg_productos",
+   "resource_type": "model",
+   "package_name": "tienda_analitica",
+   "path": "staging/stg_productos.sql",
+   "original_file_path": "models/staging/stg_productos.sql",
+   "unique_id": "model.tienda_analitica.stg_productos",
+   "fqn": [
+    "tienda_analitica",
+    "staging",
+    "stg_productos"
+   ],
+   "alias": "stg_productos",
+   "checksum": {
+    "name": "sha256",
+    "checksum": "421603ce77421603ce77421603ce77421603ce77421603ce77421603ce77"
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "ANALITICA_STAGING",
+    "database": null,
+    "tags": [
+     "staging",
+     "tienda"
+    ],
+    "meta": {
+     "owner": "Equipo Datos",
+     "classification": "public"
+    },
+    "group": null,
+    "materialized": "view",
+    "incremental_strategy": null,
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "column_types": {},
+    "full_refresh": null,
+    "unique_key": null,
+    "on_schema_change": "ignore",
+    "on_configuration_change": "apply",
+    "grants": {},
+    "packages": [],
+    "docs": {
+     "show": true,
+     "node_color": null
+    },
+    "contract": {
+     "enforced": false,
+     "alias_types": true
+    }
+   },
+   "tags": [
+    "staging",
+    "tienda"
+   ],
+   "description": "Catálogo de productos",
+   "columns": {
+    "producto_id": {
+     "name": "producto_id",
+     "description": "Identificador del producto",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "sku": {
+     "name": "sku",
+     "description": "Código de catálogo",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "nombre": {
+     "name": "nombre",
+     "description": "Nombre comercial",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "precio": {
+     "name": "precio",
+     "description": "Precio de venta",
+     "meta": {},
+     "data_type": "NUMBER(12,2)",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Datos",
+    "classification": "public"
+   },
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": "tienda_analitica://models/staging/_staging.yml",
+   "build_path": null,
+   "unrendered_config": {
+    "materialized": "view"
+   },
+   "created_at": 1717410000.5,
+   "relation_name": "ANALITICA.ANALITICA_STAGING.STG_PRODUCTOS",
+   "raw_code": "select id as producto_id, sku, nombre, precio from {{ source('tienda', 'productos') }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [
+    [
+     "tienda",
+     "productos"
+    ]
+   ],
+   "metrics": [],
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "source.tienda_analitica.tienda.productos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "access": "protected",
+   "constraints": [],
+   "version": null,
+   "latest_version": null,
+   "deprecation_date": null,
+   "deferred": false
+  },
+  "model.tienda_analitica.int_pedidos_enriquecidos": {
+   "database": "ANALITICA",
+   "schema": "ANALITICA_INTERMEDIATE",
+   "name": "int_pedidos_enriquecidos",
+   "resource_type": "model",
+   "package_name": "tienda_analitica",
+   "path": "intermediate/int_pedidos_enriquecidos.sql",
+   "original_file_path": "models/intermediate/int_pedidos_enriquecidos.sql",
+   "unique_id": "model.tienda_analitica.int_pedidos_enriquecidos",
+   "fqn": [
+    "tienda_analitica",
+    "intermediate",
+    "int_pedidos_enriquecidos"
+   ],
+   "alias": "int_pedidos_enriquecidos",
+   "checksum": {
+    "name": "sha256",
+    "checksum": "218bfe5304218bfe5304218bfe5304218bfe5304218bfe5304218bfe5304"
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "ANALITICA_INTERMEDIATE",
+    "database": null,
+    "tags": [
+     "intermediate"
+    ],
+    "meta": {
+     "owner": "Equipo Datos",
+     "classification": "internal"
+    },
+    "group": null,
+    "materialized": "ephemeral",
+    "incremental_strategy": null,
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "column_types": {},
+    "full_refresh": null,
+    "unique_key": null,
+    "on_schema_change": "ignore",
+    "on_configuration_change": "apply",
+    "grants": {},
+    "packages": [],
+    "docs": {
+     "show": true,
+     "node_color": null
+    },
+    "contract": {
+     "enforced": false,
+     "alias_types": true
+    }
+   },
+   "tags": [
+    "intermediate"
+   ],
+   "description": "Pedido con sus líneas agregadas (no se materializa)",
+   "columns": {
+    "pedido_id": {
+     "name": "pedido_id",
+     "description": "Pedido",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "cliente_id": {
+     "name": "cliente_id",
+     "description": "Cliente",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "unidades": {
+     "name": "unidades",
+     "description": "Unidades del pedido",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "importe_lineas": {
+     "name": "importe_lineas",
+     "description": "Importe sumando líneas",
+     "meta": {},
+     "data_type": "NUMBER(12,2)",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Datos",
+    "classification": "internal"
+   },
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": "tienda_analitica://models/intermediate/_intermediate.yml",
+   "build_path": null,
+   "unrendered_config": {
+    "materialized": "ephemeral"
+   },
+   "created_at": 1717410000.5,
+   "relation_name": "ANALITICA.ANALITICA_INTERMEDIATE.INT_PEDIDOS_ENRIQUECIDOS",
+   "raw_code": "select ... from {{ ref('stg_pedidos') }} p join {{ ref('stg_lineas_pedido') }} l using (pedido_id) join {{ ref('stg_productos') }} pr using (producto_id)",
+   "language": "sql",
+   "refs": [
+    {
+     "name": "stg_pedidos",
+     "package": null,
+     "version": null
+    },
+    {
+     "name": "stg_lineas_pedido",
+     "package": null,
+     "version": null
+    },
+    {
+     "name": "stg_productos",
+     "package": null,
+     "version": null
+    }
+   ],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.tienda_analitica.centimos_a_euros"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_pedidos",
+     "model.tienda_analitica.stg_lineas_pedido",
+     "model.tienda_analitica.stg_productos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "access": "protected",
+   "constraints": [],
+   "version": null,
+   "latest_version": null,
+   "deprecation_date": null,
+   "deferred": false
+  },
+  "model.tienda_analitica.dim_clientes": {
+   "database": "ANALITICA",
+   "schema": "ANALITICA_MARTS",
+   "name": "dim_clientes",
+   "resource_type": "model",
+   "package_name": "tienda_analitica",
+   "path": "marts/dim_clientes.sql",
+   "original_file_path": "models/marts/dim_clientes.sql",
+   "unique_id": "model.tienda_analitica.dim_clientes",
+   "fqn": [
+    "tienda_analitica",
+    "marts",
+    "dim_clientes"
+   ],
+   "alias": "dim_clientes",
+   "checksum": {
+    "name": "sha256",
+    "checksum": "729a6fb0ed729a6fb0ed729a6fb0ed729a6fb0ed729a6fb0ed729a6fb0ed"
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "ANALITICA_MARTS",
+    "database": null,
+    "tags": [
+     "marts"
+    ],
+    "meta": {
+     "owner": "Equipo Comercial",
+     "contains_pii": true,
+     "classification": "confidential",
+     "retention": "5 años tras la baja",
+     "domain": "comercial"
+    },
+    "group": "comercial",
+    "materialized": "table",
+    "incremental_strategy": null,
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "column_types": {},
+    "full_refresh": null,
+    "unique_key": null,
+    "on_schema_change": "ignore",
+    "on_configuration_change": "apply",
+    "grants": {},
+    "packages": [],
+    "docs": {
+     "show": true,
+     "node_color": null
+    },
+    "contract": {
+     "enforced": true,
+     "alias_types": true
+    }
+   },
+   "tags": [
+    "marts"
+   ],
+   "description": "Una fila por cliente",
+   "columns": {
+    "cliente_key": {
+     "name": "cliente_key",
+     "description": "Clave sustituta",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [
+      {
+       "type": "primary_key",
+       "name": null,
+       "expression": null,
+       "warn_unenforced": true,
+       "warn_unsupported": true,
+       "to": null,
+       "to_columns": []
+      }
+     ],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "email": {
+     "name": "email",
+     "description": "Correo de acceso",
+     "meta": {
+      "contains_pii": true
+     },
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "nombre": {
+     "name": "nombre",
+     "description": "Nombre completo",
+     "meta": {
+      "contains_pii": true
+     },
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "pais": {
+     "name": "pais",
+     "description": "País",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "pais_nombre": {
+     "name": "pais_nombre",
+     "description": "Nombre del país",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Comercial",
+    "contains_pii": true,
+    "classification": "confidential",
+    "retention": "5 años tras la baja",
+    "domain": "comercial"
+   },
+   "group": "comercial",
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": "tienda_analitica://models/marts/_marts.yml",
+   "build_path": null,
+   "unrendered_config": {
+    "materialized": "table"
+   },
+   "created_at": 1717410000.5,
+   "relation_name": "ANALITICA.ANALITICA_MARTS.DIM_CLIENTES",
+   "raw_code": "select ... from {{ ref('stg_clientes') }} c left join {{ ref('paises') }} p on c.pais = p.codigo",
+   "language": "sql",
+   "refs": [
+    {
+     "name": "stg_clientes",
+     "package": null,
+     "version": null
+    },
+    {
+     "name": "paises",
+     "package": null,
+     "version": null
+    }
+   ],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "model.tienda_analitica.stg_clientes",
+     "seed.tienda_analitica.paises"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": true,
+    "alias_types": true,
+    "checksum": null
+   },
+   "access": "protected",
+   "constraints": [],
+   "version": null,
+   "latest_version": null,
+   "deprecation_date": null,
+   "deferred": false
+  },
+  "model.tienda_analitica.dim_productos": {
+   "database": "ANALITICA",
+   "schema": "ANALITICA_MARTS",
+   "name": "dim_productos",
+   "resource_type": "model",
+   "package_name": "tienda_analitica",
+   "path": "marts/dim_productos.sql",
+   "original_file_path": "models/marts/dim_productos.sql",
+   "unique_id": "model.tienda_analitica.dim_productos",
+   "fqn": [
+    "tienda_analitica",
+    "marts",
+    "dim_productos"
+   ],
+   "alias": "dim_productos",
+   "checksum": {
+    "name": "sha256",
+    "checksum": "8feab1bc708feab1bc708feab1bc708feab1bc708feab1bc708feab1bc70"
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "ANALITICA_MARTS",
+    "database": null,
+    "tags": [
+     "marts"
+    ],
+    "meta": {
+     "owner": "Equipo Catálogo",
+     "classification": "public",
+     "domain": "catalogo"
+    },
+    "group": null,
+    "materialized": "table",
+    "incremental_strategy": null,
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "column_types": {},
+    "full_refresh": null,
+    "unique_key": null,
+    "on_schema_change": "ignore",
+    "on_configuration_change": "apply",
+    "grants": {},
+    "packages": [],
+    "docs": {
+     "show": true,
+     "node_color": null
+    },
+    "contract": {
+     "enforced": false,
+     "alias_types": true
+    }
+   },
+   "tags": [
+    "marts"
+   ],
+   "description": "Una fila por producto",
+   "columns": {
+    "producto_key": {
+     "name": "producto_key",
+     "description": "Clave del producto",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "sku": {
+     "name": "sku",
+     "description": "Código de catálogo",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "nombre": {
+     "name": "nombre",
+     "description": "Nombre comercial",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "precio": {
+     "name": "precio",
+     "description": "Precio de venta",
+     "meta": {},
+     "data_type": "NUMBER(12,2)",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Catálogo",
+    "classification": "public",
+    "domain": "catalogo"
+   },
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": "tienda_analitica://models/marts/_marts.yml",
+   "build_path": null,
+   "unrendered_config": {
+    "materialized": "table"
+   },
+   "created_at": 1717410000.5,
+   "relation_name": "ANALITICA.ANALITICA_MARTS.DIM_PRODUCTOS",
+   "raw_code": "select producto_id as producto_key, sku, nombre, precio from {{ ref('stg_productos') }}",
+   "language": "sql",
+   "refs": [
+    {
+     "name": "stg_productos",
+     "package": null,
+     "version": null
+    }
+   ],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "model.tienda_analitica.stg_productos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "access": "protected",
+   "constraints": [],
+   "version": null,
+   "latest_version": null,
+   "deprecation_date": null,
+   "deferred": false
+  },
+  "model.tienda_analitica.fct_pedidos": {
+   "database": "ANALITICA",
+   "schema": "ANALITICA_MARTS",
+   "name": "fct_pedidos",
+   "resource_type": "model",
+   "package_name": "tienda_analitica",
+   "path": "marts/fct_pedidos.sql",
+   "original_file_path": "models/marts/fct_pedidos.sql",
+   "unique_id": "model.tienda_analitica.fct_pedidos",
+   "fqn": [
+    "tienda_analitica",
+    "marts",
+    "fct_pedidos"
+   ],
+   "alias": "fct_pedidos",
+   "checksum": {
+    "name": "sha256",
+    "checksum": "b7e5de1132b7e5de1132b7e5de1132b7e5de1132b7e5de1132b7e5de1132"
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "ANALITICA_MARTS",
+    "database": null,
+    "tags": [
+     "marts",
+     "diario"
+    ],
+    "meta": {
+     "owner": "Equipo Comercial",
+     "classification": "internal",
+     "domain": "comercial",
+     "schedule": "diaria 05:00"
+    },
+    "group": "comercial",
+    "materialized": "incremental",
+    "incremental_strategy": null,
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "column_types": {},
+    "full_refresh": null,
+    "unique_key": null,
+    "on_schema_change": "ignore",
+    "on_configuration_change": "apply",
+    "grants": {},
+    "packages": [],
+    "docs": {
+     "show": true,
+     "node_color": null
+    },
+    "contract": {
+     "enforced": false,
+     "alias_types": true
+    }
+   },
+   "tags": [
+    "marts",
+    "diario"
+   ],
+   "description": "Un registro por pedido, de forma incremental",
+   "columns": {
+    "pedido_id": {
+     "name": "pedido_id",
+     "description": "Pedido",
+     "meta": {},
+     "data_type": null,
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "cliente_key": {
+     "name": "cliente_key",
+     "description": "Cliente que compra",
+     "meta": {},
+     "data_type": null,
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "estado": {
+     "name": "estado",
+     "description": "Estado del pedido",
+     "meta": {},
+     "data_type": null,
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "total": {
+     "name": "total",
+     "description": "Importe en euros",
+     "meta": {},
+     "data_type": null,
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "unidades": {
+     "name": "unidades",
+     "description": "Unidades",
+     "meta": {},
+     "data_type": null,
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "creado_en": {
+     "name": "creado_en",
+     "description": "Alta del pedido",
+     "meta": {},
+     "data_type": null,
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Comercial",
+    "classification": "internal",
+    "domain": "comercial",
+    "schedule": "diaria 05:00"
+   },
+   "group": "comercial",
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": "tienda_analitica://models/marts/_marts.yml",
+   "build_path": null,
+   "unrendered_config": {
+    "materialized": "incremental"
+   },
+   "created_at": 1717410000.5,
+   "relation_name": "ANALITICA.ANALITICA_MARTS.FCT_PEDIDOS",
+   "raw_code": "select pedido_id, md5(cliente_id) as cliente_key, ... from {{ ref('int_pedidos_enriquecidos') }}",
+   "language": "sql",
+   "refs": [
+    {
+     "name": "int_pedidos_enriquecidos",
+     "package": null,
+     "version": null
+    }
+   ],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.is_incremental"
+    ],
+    "nodes": [
+     "model.tienda_analitica.int_pedidos_enriquecidos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "access": "protected",
+   "constraints": [],
+   "version": null,
+   "latest_version": null,
+   "deprecation_date": null,
+   "deferred": false
+  },
+  "model.tienda_analitica.fct_ventas_diarias": {
+   "database": "ANALITICA",
+   "schema": "ANALITICA_MARTS",
+   "name": "fct_ventas_diarias",
+   "resource_type": "model",
+   "package_name": "tienda_analitica",
+   "path": "marts/fct_ventas_diarias.sql",
+   "original_file_path": "models/marts/fct_ventas_diarias.sql",
+   "unique_id": "model.tienda_analitica.fct_ventas_diarias",
+   "fqn": [
+    "tienda_analitica",
+    "marts",
+    "fct_ventas_diarias"
+   ],
+   "alias": "fct_ventas_diarias",
+   "checksum": {
+    "name": "sha256",
+    "checksum": "16d471dd6116d471dd6116d471dd6116d471dd6116d471dd6116d471dd61"
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "ANALITICA_MARTS",
+    "database": null,
+    "tags": [
+     "marts"
+    ],
+    "meta": {
+     "owner": "Equipo Comercial",
+     "classification": "internal",
+     "domain": "comercial"
+    },
+    "group": "comercial",
+    "materialized": "table",
+    "incremental_strategy": null,
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "column_types": {},
+    "full_refresh": null,
+    "unique_key": null,
+    "on_schema_change": "ignore",
+    "on_configuration_change": "apply",
+    "grants": {},
+    "packages": [],
+    "docs": {
+     "show": true,
+     "node_color": null
+    },
+    "contract": {
+     "enforced": false,
+     "alias_types": true
+    }
+   },
+   "tags": [
+    "marts"
+   ],
+   "description": "Ventas agregadas por día",
+   "columns": {
+    "fecha": {
+     "name": "fecha",
+     "description": "Día",
+     "meta": {},
+     "data_type": "DATE",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "pedidos": {
+     "name": "pedidos",
+     "description": "Pedidos del día",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "importe": {
+     "name": "importe",
+     "description": "Importe del día",
+     "meta": {},
+     "data_type": "NUMBER(14,2)",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Comercial",
+    "classification": "internal",
+    "domain": "comercial"
+   },
+   "group": "comercial",
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": "tienda_analitica://models/marts/_marts.yml",
+   "build_path": null,
+   "unrendered_config": {
+    "materialized": "table"
+   },
+   "created_at": 1717410000.5,
+   "relation_name": "ANALITICA.ANALITICA_MARTS.FCT_VENTAS_DIARIAS",
+   "raw_code": "select date_trunc('day', creado_en) as fecha, count(*) as pedidos, sum(total) as importe from {{ ref('fct_pedidos') }} group by 1",
+   "language": "sql",
+   "refs": [
+    {
+     "name": "fct_pedidos",
+     "package": null,
+     "version": null
+    }
+   ],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "model.tienda_analitica.fct_pedidos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "access": "protected",
+   "constraints": [],
+   "version": null,
+   "latest_version": null,
+   "deprecation_date": null,
+   "deferred": false
+  },
+  "snapshot.tienda_analitica.snap_clientes": {
+   "database": "ANALITICA",
+   "schema": "ANALITICA_SNAPSHOTS",
+   "name": "snap_clientes",
+   "resource_type": "snapshot",
+   "package_name": "tienda_analitica",
+   "path": "snap_clientes.sql",
+   "original_file_path": "snapshots/snap_clientes.sql",
+   "unique_id": "snapshot.tienda_analitica.snap_clientes",
+   "fqn": [
+    "tienda_analitica",
+    "snap_clientes",
+    "snap_clientes"
+   ],
+   "alias": "snap_clientes",
+   "checksum": {
+    "name": "sha256",
+    "checksum": "238f99afd4238f99afd4238f99afd4238f99afd4238f99afd4238f99afd4"
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "ANALITICA_SNAPSHOTS",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "snapshot",
+    "incremental_strategy": null,
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "column_types": {},
+    "full_refresh": null,
+    "unique_key": "id",
+    "on_schema_change": "ignore",
+    "on_configuration_change": "apply",
+    "grants": {},
+    "packages": [],
+    "docs": {
+     "show": true,
+     "node_color": null
+    },
+    "contract": {
+     "enforced": false,
+     "alias_types": true
+    },
+    "strategy": "timestamp",
+    "updated_at": "_fivetran_synced",
+    "target_schema": "ANALITICA_SNAPSHOTS"
+   },
+   "tags": [],
+   "description": "Histórico de cambios de los clientes",
+   "columns": {
+    "id": {
+     "name": "id",
+     "description": "Identificador",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "email": {
+     "name": "email",
+     "description": "Correo de acceso",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "dbt_valid_from": {
+     "name": "dbt_valid_from",
+     "description": "Inicio de vigencia",
+     "meta": {},
+     "data_type": "TIMESTAMP_TZ",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "dbt_valid_to": {
+     "name": "dbt_valid_to",
+     "description": "Fin de vigencia",
+     "meta": {},
+     "data_type": "TIMESTAMP_TZ",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Datos",
+    "contains_pii": true,
+    "classification": "confidential",
+    "retention": "5 años tras la baja"
+   },
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {
+    "strategy": "timestamp"
+   },
+   "created_at": 1717410001.1,
+   "relation_name": "ANALITICA.ANALITICA_SNAPSHOTS.SNAP_CLIENTES",
+   "raw_code": "{% snapshot snap_clientes %}\n{{ config(unique_key='id', strategy='timestamp', updated_at='_fivetran_synced') }}\nselect * from {{ source('tienda', 'clientes') }}\n{% endsnapshot %}",
+   "language": "sql",
+   "refs": [],
+   "sources": [
+    [
+     "tienda",
+     "clientes"
+    ]
+   ],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.snapshot_timestamp_strategy"
+    ],
+    "nodes": [
+     "source.tienda_analitica.tienda.clientes"
+    ]
+   },
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   }
+  },
+  "test.tienda_analitica.unique_stg_clientes_cliente_id.076823dda3": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "unique_stg_clientes_cliente_id",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "unique_stg_clientes_cliente_id.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.unique_stg_clientes_cliente_id.076823dda3",
+   "fqn": [
+    "tienda_analitica",
+    "unique_stg_clientes_cliente_id"
+   ],
+   "alias": "unique_stg_clientes_cliente_id",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_unique(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_unique",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_clientes"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "cliente_id",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.stg_clientes",
+   "test_metadata": {
+    "name": "unique",
+    "kwargs": {
+     "column_name": "cliente_id",
+     "model": "{{ get_where_subquery(ref('stg_clientes')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.not_null_stg_clientes_cliente_id.a3a04408f2": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "not_null_stg_clientes_cliente_id",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "not_null_stg_clientes_cliente_id.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.not_null_stg_clientes_cliente_id.a3a04408f2",
+   "fqn": [
+    "tienda_analitica",
+    "not_null_stg_clientes_cliente_id"
+   ],
+   "alias": "not_null_stg_clientes_cliente_id",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_not_null(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_not_null",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_clientes"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "cliente_id",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.stg_clientes",
+   "test_metadata": {
+    "name": "not_null",
+    "kwargs": {
+     "column_name": "cliente_id",
+     "model": "{{ get_where_subquery(ref('stg_clientes')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.unique_stg_clientes_email.fda99a0f68": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "unique_stg_clientes_email",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "unique_stg_clientes_email.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.unique_stg_clientes_email.fda99a0f68",
+   "fqn": [
+    "tienda_analitica",
+    "unique_stg_clientes_email"
+   ],
+   "alias": "unique_stg_clientes_email",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_unique(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_unique",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_clientes"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "email",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.stg_clientes",
+   "test_metadata": {
+    "name": "unique",
+    "kwargs": {
+     "column_name": "email",
+     "model": "{{ get_where_subquery(ref('stg_clientes')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.unique_stg_pedidos_pedido_id.2dbffae423": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "unique_stg_pedidos_pedido_id",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "unique_stg_pedidos_pedido_id.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.unique_stg_pedidos_pedido_id.2dbffae423",
+   "fqn": [
+    "tienda_analitica",
+    "unique_stg_pedidos_pedido_id"
+   ],
+   "alias": "unique_stg_pedidos_pedido_id",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_unique(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_unique",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_pedidos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "pedido_id",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.stg_pedidos",
+   "test_metadata": {
+    "name": "unique",
+    "kwargs": {
+     "column_name": "pedido_id",
+     "model": "{{ get_where_subquery(ref('stg_pedidos')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.not_null_stg_pedidos_pedido_id.62b3bc2809": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "not_null_stg_pedidos_pedido_id",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "not_null_stg_pedidos_pedido_id.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.not_null_stg_pedidos_pedido_id.62b3bc2809",
+   "fqn": [
+    "tienda_analitica",
+    "not_null_stg_pedidos_pedido_id"
+   ],
+   "alias": "not_null_stg_pedidos_pedido_id",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_not_null(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_not_null",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_pedidos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "pedido_id",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.stg_pedidos",
+   "test_metadata": {
+    "name": "not_null",
+    "kwargs": {
+     "column_name": "pedido_id",
+     "model": "{{ get_where_subquery(ref('stg_pedidos')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.not_null_stg_pedidos_cliente_id.83162aa687": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "not_null_stg_pedidos_cliente_id",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "not_null_stg_pedidos_cliente_id.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.not_null_stg_pedidos_cliente_id.83162aa687",
+   "fqn": [
+    "tienda_analitica",
+    "not_null_stg_pedidos_cliente_id"
+   ],
+   "alias": "not_null_stg_pedidos_cliente_id",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_not_null(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_not_null",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_pedidos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "cliente_id",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.stg_pedidos",
+   "test_metadata": {
+    "name": "not_null",
+    "kwargs": {
+     "column_name": "cliente_id",
+     "model": "{{ get_where_subquery(ref('stg_pedidos')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.relationships_stg_pedidos_cliente_id__cliente_id__ref_stg_clientes_.268014fd77": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "relationships_stg_pedidos_cliente_id__cliente_id__ref_stg_clientes_",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "relationships_stg_pedidos_cliente_id__cliente_id__ref_stg_clientes_.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.relationships_stg_pedidos_cliente_id__cliente_id__ref_stg_clientes_.268014fd77",
+   "fqn": [
+    "tienda_analitica",
+    "relationships_stg_pedidos_cliente_id__cliente_id__ref_stg_clientes_"
+   ],
+   "alias": "relationships_stg_pedidos_cliente_id__cliente_id__ref_stg_clientes_",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_relationships(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_relationships",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_clientes",
+     "model.tienda_analitica.stg_pedidos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "cliente_id",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.stg_pedidos",
+   "test_metadata": {
+    "name": "relationships",
+    "kwargs": {
+     "to": "ref('stg_clientes')",
+     "field": "cliente_id",
+     "column_name": "cliente_id",
+     "model": "{{ get_where_subquery(ref('stg_pedidos')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.accepted_values_stg_pedidos_estado__nuevo__pagado__enviado__cancelado.b248a137dd": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "accepted_values_stg_pedidos_estado__nuevo__pagado__enviado__cancelado",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "accepted_values_stg_pedidos_estado__nuevo__pagado__enviado__cancelado.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.accepted_values_stg_pedidos_estado__nuevo__pagado__enviado__cancelado.b248a137dd",
+   "fqn": [
+    "tienda_analitica",
+    "accepted_values_stg_pedidos_estado__nuevo__pagado__enviado__cancelado"
+   ],
+   "alias": "accepted_values_stg_pedidos_estado__nuevo__pagado__enviado__cancelado",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_accepted_values(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_accepted_values",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_pedidos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "estado",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.stg_pedidos",
+   "test_metadata": {
+    "name": "accepted_values",
+    "kwargs": {
+     "values": [
+      "nuevo",
+      "pagado",
+      "enviado",
+      "cancelado"
+     ],
+     "column_name": "estado",
+     "model": "{{ get_where_subquery(ref('stg_pedidos')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.not_null_stg_lineas_pedido_pedido_id.02fdcd463d": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "not_null_stg_lineas_pedido_pedido_id",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "not_null_stg_lineas_pedido_pedido_id.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.not_null_stg_lineas_pedido_pedido_id.02fdcd463d",
+   "fqn": [
+    "tienda_analitica",
+    "not_null_stg_lineas_pedido_pedido_id"
+   ],
+   "alias": "not_null_stg_lineas_pedido_pedido_id",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_not_null(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_not_null",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_lineas_pedido"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "pedido_id",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.stg_lineas_pedido",
+   "test_metadata": {
+    "name": "not_null",
+    "kwargs": {
+     "column_name": "pedido_id",
+     "model": "{{ get_where_subquery(ref('stg_lineas_pedido')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.relationships_stg_lineas_pedido_pedido_id__pedido_id__ref_stg_pedidos_.5ec4b88050": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "relationships_stg_lineas_pedido_pedido_id__pedido_id__ref_stg_pedidos_",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "relationships_stg_lineas_pedido_pedido_id__pedido_id__ref_stg_pedidos_.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.relationships_stg_lineas_pedido_pedido_id__pedido_id__ref_stg_pedidos_.5ec4b88050",
+   "fqn": [
+    "tienda_analitica",
+    "relationships_stg_lineas_pedido_pedido_id__pedido_id__ref_stg_pedidos_"
+   ],
+   "alias": "relationships_stg_lineas_pedido_pedido_id__pedido_id__ref_stg_pedidos_",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_relationships(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_relationships",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_pedidos",
+     "model.tienda_analitica.stg_lineas_pedido"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "pedido_id",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.stg_lineas_pedido",
+   "test_metadata": {
+    "name": "relationships",
+    "kwargs": {
+     "to": "ref('stg_pedidos')",
+     "field": "pedido_id",
+     "column_name": "pedido_id",
+     "model": "{{ get_where_subquery(ref('stg_lineas_pedido')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.relationships_stg_lineas_pedido_producto_id__producto_id__ref_stg_productos_.716a980721": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "relationships_stg_lineas_pedido_producto_id__producto_id__ref_stg_productos_",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "relationships_stg_lineas_pedido_producto_id__producto_id__ref_stg_productos_.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.relationships_stg_lineas_pedido_producto_id__producto_id__ref_stg_productos_.716a980721",
+   "fqn": [
+    "tienda_analitica",
+    "relationships_stg_lineas_pedido_producto_id__producto_id__ref_stg_productos_"
+   ],
+   "alias": "relationships_stg_lineas_pedido_producto_id__producto_id__ref_stg_productos_",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_relationships(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_relationships",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_productos",
+     "model.tienda_analitica.stg_lineas_pedido"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "producto_id",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.stg_lineas_pedido",
+   "test_metadata": {
+    "name": "relationships",
+    "kwargs": {
+     "to": "ref('stg_productos')",
+     "field": "producto_id",
+     "column_name": "producto_id",
+     "model": "{{ get_where_subquery(ref('stg_lineas_pedido')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.dbt_utils_unique_combination_of_columns_stg_lineas_pedido_pedido_id__linea.5715d34521": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "dbt_utils_unique_combination_of_columns_stg_lineas_pedido_pedido_id__linea",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "dbt_utils_unique_combination_of_columns_stg_lineas_pedido_pedido_id__linea.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.dbt_utils_unique_combination_of_columns_stg_lineas_pedido_pedido_id__linea.5715d34521",
+   "fqn": [
+    "tienda_analitica",
+    "dbt_utils_unique_combination_of_columns_stg_lineas_pedido_pedido_id__linea"
+   ],
+   "alias": "dbt_utils_unique_combination_of_columns_stg_lineas_pedido_pedido_id__linea",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_unique_combination_of_columns(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt_utils.test_unique_combination_of_columns",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_lineas_pedido"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": null,
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.stg_lineas_pedido",
+   "test_metadata": {
+    "name": "unique_combination_of_columns",
+    "kwargs": {
+     "combination_of_columns": [
+      "pedido_id",
+      "linea"
+     ],
+     "model": "{{ get_where_subquery(ref('stg_lineas_pedido')) }}"
+    },
+    "namespace": "dbt_utils"
+   }
+  },
+  "test.tienda_analitica.unique_stg_productos_producto_id.9f9a511bc8": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "unique_stg_productos_producto_id",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "unique_stg_productos_producto_id.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.unique_stg_productos_producto_id.9f9a511bc8",
+   "fqn": [
+    "tienda_analitica",
+    "unique_stg_productos_producto_id"
+   ],
+   "alias": "unique_stg_productos_producto_id",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_unique(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_unique",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_productos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "producto_id",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.stg_productos",
+   "test_metadata": {
+    "name": "unique",
+    "kwargs": {
+     "column_name": "producto_id",
+     "model": "{{ get_where_subquery(ref('stg_productos')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.not_null_stg_productos_producto_id.d6b67dfc31": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "not_null_stg_productos_producto_id",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "not_null_stg_productos_producto_id.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.not_null_stg_productos_producto_id.d6b67dfc31",
+   "fqn": [
+    "tienda_analitica",
+    "not_null_stg_productos_producto_id"
+   ],
+   "alias": "not_null_stg_productos_producto_id",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_not_null(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_not_null",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.stg_productos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "producto_id",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.stg_productos",
+   "test_metadata": {
+    "name": "not_null",
+    "kwargs": {
+     "column_name": "producto_id",
+     "model": "{{ get_where_subquery(ref('stg_productos')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.unique_dim_clientes_cliente_key.c1488abc7d": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "unique_dim_clientes_cliente_key",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "unique_dim_clientes_cliente_key.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.unique_dim_clientes_cliente_key.c1488abc7d",
+   "fqn": [
+    "tienda_analitica",
+    "unique_dim_clientes_cliente_key"
+   ],
+   "alias": "unique_dim_clientes_cliente_key",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_unique(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_unique",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.dim_clientes"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "cliente_key",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.dim_clientes",
+   "test_metadata": {
+    "name": "unique",
+    "kwargs": {
+     "column_name": "cliente_key",
+     "model": "{{ get_where_subquery(ref('dim_clientes')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.not_null_dim_clientes_cliente_key.074dcfa263": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "not_null_dim_clientes_cliente_key",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "not_null_dim_clientes_cliente_key.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.not_null_dim_clientes_cliente_key.074dcfa263",
+   "fqn": [
+    "tienda_analitica",
+    "not_null_dim_clientes_cliente_key"
+   ],
+   "alias": "not_null_dim_clientes_cliente_key",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_not_null(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_not_null",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.dim_clientes"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "cliente_key",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.dim_clientes",
+   "test_metadata": {
+    "name": "not_null",
+    "kwargs": {
+     "column_name": "cliente_key",
+     "model": "{{ get_where_subquery(ref('dim_clientes')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.unique_dim_productos_producto_key.def380d347": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "unique_dim_productos_producto_key",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "unique_dim_productos_producto_key.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.unique_dim_productos_producto_key.def380d347",
+   "fqn": [
+    "tienda_analitica",
+    "unique_dim_productos_producto_key"
+   ],
+   "alias": "unique_dim_productos_producto_key",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_unique(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_unique",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.dim_productos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "producto_key",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.dim_productos",
+   "test_metadata": {
+    "name": "unique",
+    "kwargs": {
+     "column_name": "producto_key",
+     "model": "{{ get_where_subquery(ref('dim_productos')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.not_null_dim_productos_producto_key.113d7a40d1": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "not_null_dim_productos_producto_key",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "not_null_dim_productos_producto_key.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.not_null_dim_productos_producto_key.113d7a40d1",
+   "fqn": [
+    "tienda_analitica",
+    "not_null_dim_productos_producto_key"
+   ],
+   "alias": "not_null_dim_productos_producto_key",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_not_null(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_not_null",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.dim_productos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "producto_key",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.dim_productos",
+   "test_metadata": {
+    "name": "not_null",
+    "kwargs": {
+     "column_name": "producto_key",
+     "model": "{{ get_where_subquery(ref('dim_productos')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.unique_fct_pedidos_pedido_id.7d6e40e2d2": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "unique_fct_pedidos_pedido_id",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "unique_fct_pedidos_pedido_id.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.unique_fct_pedidos_pedido_id.7d6e40e2d2",
+   "fqn": [
+    "tienda_analitica",
+    "unique_fct_pedidos_pedido_id"
+   ],
+   "alias": "unique_fct_pedidos_pedido_id",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_unique(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_unique",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.fct_pedidos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "pedido_id",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.fct_pedidos",
+   "test_metadata": {
+    "name": "unique",
+    "kwargs": {
+     "column_name": "pedido_id",
+     "model": "{{ get_where_subquery(ref('fct_pedidos')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.not_null_fct_pedidos_pedido_id.6eda96b443": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "not_null_fct_pedidos_pedido_id",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "not_null_fct_pedidos_pedido_id.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.not_null_fct_pedidos_pedido_id.6eda96b443",
+   "fqn": [
+    "tienda_analitica",
+    "not_null_fct_pedidos_pedido_id"
+   ],
+   "alias": "not_null_fct_pedidos_pedido_id",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_not_null(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_not_null",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.fct_pedidos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "pedido_id",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.fct_pedidos",
+   "test_metadata": {
+    "name": "not_null",
+    "kwargs": {
+     "column_name": "pedido_id",
+     "model": "{{ get_where_subquery(ref('fct_pedidos')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.not_null_fct_pedidos_cliente_key.5955ceb8b9": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "not_null_fct_pedidos_cliente_key",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "not_null_fct_pedidos_cliente_key.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.not_null_fct_pedidos_cliente_key.5955ceb8b9",
+   "fqn": [
+    "tienda_analitica",
+    "not_null_fct_pedidos_cliente_key"
+   ],
+   "alias": "not_null_fct_pedidos_cliente_key",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_not_null(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_not_null",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.fct_pedidos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "cliente_key",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.fct_pedidos",
+   "test_metadata": {
+    "name": "not_null",
+    "kwargs": {
+     "column_name": "cliente_key",
+     "model": "{{ get_where_subquery(ref('fct_pedidos')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.relationships_fct_pedidos_cliente_key__cliente_key__ref_dim_clientes_.c904064c10": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "relationships_fct_pedidos_cliente_key__cliente_key__ref_dim_clientes_",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "relationships_fct_pedidos_cliente_key__cliente_key__ref_dim_clientes_.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.relationships_fct_pedidos_cliente_key__cliente_key__ref_dim_clientes_.c904064c10",
+   "fqn": [
+    "tienda_analitica",
+    "relationships_fct_pedidos_cliente_key__cliente_key__ref_dim_clientes_"
+   ],
+   "alias": "relationships_fct_pedidos_cliente_key__cliente_key__ref_dim_clientes_",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_relationships(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_relationships",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.dim_clientes",
+     "model.tienda_analitica.fct_pedidos"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "cliente_key",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.fct_pedidos",
+   "test_metadata": {
+    "name": "relationships",
+    "kwargs": {
+     "to": "ref('dim_clientes')",
+     "field": "cliente_key",
+     "column_name": "cliente_key",
+     "model": "{{ get_where_subquery(ref('fct_pedidos')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.unique_fct_ventas_diarias_fecha.5415827c03": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "unique_fct_ventas_diarias_fecha",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "unique_fct_ventas_diarias_fecha.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.unique_fct_ventas_diarias_fecha.5415827c03",
+   "fqn": [
+    "tienda_analitica",
+    "unique_fct_ventas_diarias_fecha"
+   ],
+   "alias": "unique_fct_ventas_diarias_fecha",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": "fecha >= '2024-01-01'",
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_unique(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_unique",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "model.tienda_analitica.fct_ventas_diarias"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "fecha",
+   "file_key_name": "models.x",
+   "attached_node": "model.tienda_analitica.fct_ventas_diarias",
+   "test_metadata": {
+    "name": "unique",
+    "kwargs": {
+     "column_name": "fecha",
+     "model": "{{ get_where_subquery(ref('fct_ventas_diarias')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.unique_tienda_clientes_id.b5f0129b52": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "unique_tienda_clientes_id",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "unique_tienda_clientes_id.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.unique_tienda_clientes_id.b5f0129b52",
+   "fqn": [
+    "tienda_analitica",
+    "unique_tienda_clientes_id"
+   ],
+   "alias": "unique_tienda_clientes_id",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_unique(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_unique",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "source.tienda_analitica.tienda.clientes"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "id",
+   "file_key_name": "models.x",
+   "attached_node": "source.tienda_analitica.tienda.clientes",
+   "test_metadata": {
+    "name": "unique",
+    "kwargs": {
+     "column_name": "id",
+     "model": "{{ get_where_subquery(source('tienda', 'clientes')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.not_null_tienda_clientes_id.21677cc332": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "not_null_tienda_clientes_id",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "not_null_tienda_clientes_id.sql",
+   "original_file_path": "models/_tests.yml",
+   "unique_id": "test.tienda_analitica.not_null_tienda_clientes_id.21677cc332",
+   "fqn": [
+    "tienda_analitica",
+    "not_null_tienda_clientes_id"
+   ],
+   "alias": "not_null_tienda_clientes_id",
+   "checksum": {
+    "name": "none",
+    "checksum": ""
+   },
+   "config": {
+    "enabled": true,
+    "alias": null,
+    "schema": "dbt_test__audit",
+    "database": null,
+    "tags": [],
+    "meta": {},
+    "group": null,
+    "materialized": "test",
+    "severity": "ERROR",
+    "store_failures": null,
+    "where": null,
+    "limit": null,
+    "fail_calc": "count(*)",
+    "warn_if": "!= 0",
+    "error_if": "!= 0"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "build_path": null,
+   "unrendered_config": {},
+   "created_at": 1717410002.2,
+   "relation_name": null,
+   "raw_code": "{{ test_not_null(**_dbt_generic_test_kwargs) }}",
+   "language": "sql",
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_not_null",
+     "macro.dbt.get_where_subquery"
+    ],
+    "nodes": [
+     "source.tienda_analitica.tienda.clientes"
+    ]
+   },
+   "compiled_path": null,
+   "contract": {
+    "enforced": false,
+    "alias_types": true,
+    "checksum": null
+   },
+   "column_name": "id",
+   "file_key_name": "models.x",
+   "attached_node": "source.tienda_analitica.tienda.clientes",
+   "test_metadata": {
+    "name": "not_null",
+    "kwargs": {
+     "column_name": "id",
+     "model": "{{ get_where_subquery(source('tienda', 'clientes')) }}"
+    },
+    "namespace": null
+   }
+  },
+  "test.tienda_analitica.assert_total_pedidos_positivo": {
+   "database": "ANALITICA",
+   "schema": "dbt_test__audit",
+   "name": "assert_total_pedidos_positivo",
+   "resource_type": "test",
+   "package_name": "tienda_analitica",
+   "path": "assert_total_pedidos_positivo.sql",
+   "original_file_path": "tests/assert_total_pedidos_positivo.sql",
+   "unique_id": "test.tienda_analitica.assert_total_pedidos_positivo",
+   "fqn": [
+    "tienda_analitica",
+    "assert_total_pedidos_positivo"
+   ],
+   "alias": "assert_total_pedidos_positivo",
+   "checksum": {
+    "name": "sha256",
+    "checksum": "3b7fd36b8c3b7fd36b8c3b7fd36b8c3b7fd36b8c3b7fd36b8c3b7fd36b8c"
+   },
+   "config": {
+    "enabled": true,
+    "severity": "ERROR",
+    "materialized": "test"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "group": null,
+   "raw_code": "select * from {{ ref('fct_pedidos') }} where total < 0",
+   "language": "sql",
+   "refs": [
+    {
+     "name": "fct_pedidos",
+     "package": null,
+     "version": null
+    }
+   ],
+   "sources": [],
+   "metrics": [],
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "model.tienda_analitica.fct_pedidos"
+    ]
+   }
+  },
+  "analysis.tienda_analitica.exploracion_cohortes": {
+   "database": "ANALITICA",
+   "schema": "ANALITICA",
+   "name": "exploracion_cohortes",
+   "resource_type": "analysis",
+   "package_name": "tienda_analitica",
+   "path": "analysis/exploracion_cohortes.sql",
+   "original_file_path": "analyses/exploracion_cohortes.sql",
+   "unique_id": "analysis.tienda_analitica.exploracion_cohortes",
+   "fqn": [
+    "tienda_analitica",
+    "analysis",
+    "exploracion_cohortes"
+   ],
+   "alias": "exploracion_cohortes",
+   "config": {
+    "enabled": true,
+    "materialized": "view"
+   },
+   "tags": [],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "raw_code": "select * from {{ ref('dim_clientes') }}",
+   "language": "sql",
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "model.tienda_analitica.dim_clientes"
+    ]
+   }
+  },
+  "operation.tienda_analitica.tienda_analitica-on-run-end-0": {
+   "database": "ANALITICA",
+   "schema": "ANALITICA",
+   "name": "tienda_analitica-on-run-end-0",
+   "resource_type": "operation",
+   "package_name": "tienda_analitica",
+   "path": "hooks/tienda_analitica-on-run-end-0.sql",
+   "original_file_path": "dbt_project.yml",
+   "unique_id": "operation.tienda_analitica.tienda_analitica-on-run-end-0",
+   "fqn": [
+    "tienda_analitica",
+    "hooks",
+    "tienda_analitica-on-run-end-0"
+   ],
+   "alias": "tienda_analitica-on-run-end-0",
+   "config": {
+    "enabled": true,
+    "materialized": "view"
+   },
+   "tags": [
+    "on-run-end"
+   ],
+   "description": "",
+   "columns": {},
+   "meta": {},
+   "raw_code": "grant select on all tables in schema {{ target.schema }} to role lectura_bi",
+   "language": "sql",
+   "depends_on": {
+    "macros": [],
+    "nodes": []
+   },
+   "index": 0
+  }
+ },
+ "sources": {
+  "source.tienda_analitica.tienda.clientes": {
+   "database": "ANALITICA",
+   "schema": "TIENDA_RAW",
+   "name": "clientes",
+   "resource_type": "source",
+   "package_name": "tienda_analitica",
+   "path": "models/staging/_sources.yml",
+   "original_file_path": "models/staging/_sources.yml",
+   "unique_id": "source.tienda_analitica.tienda.clientes",
+   "fqn": [
+    "tienda_analitica",
+    "tienda",
+    "clientes"
+   ],
+   "source_name": "tienda",
+   "source_description": "Réplica de la base de datos operacional de la tienda en línea",
+   "loader": "fivetran",
+   "identifier": "clientes",
+   "quoting": {
+    "database": null,
+    "schema": null,
+    "identifier": null,
+    "column": null
+   },
+   "loaded_at_field": "_fivetran_synced",
+   "freshness": {
+    "warn_after": {
+     "count": 12,
+     "period": "hour"
+    },
+    "error_after": {
+     "count": 24,
+     "period": "hour"
+    },
+    "filter": null
+   },
+   "external": null,
+   "description": "Personas que compran en la tienda",
+   "columns": {
+    "id": {
+     "name": "id",
+     "description": "Identificador del cliente en la tienda",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "email": {
+     "name": "email",
+     "description": "Correo de acceso",
+     "meta": {
+      "contains_pii": true
+     },
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "nombre": {
+     "name": "nombre",
+     "description": "Nombre completo",
+     "meta": {
+      "contains_pii": true
+     },
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "pais": {
+     "name": "pais",
+     "description": "Código ISO del país",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "_fivetran_synced": {
+     "name": "_fivetran_synced",
+     "description": "Instante de la última réplica",
+     "meta": {},
+     "data_type": "TIMESTAMP_TZ",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Tienda",
+    "contains_pii": true,
+    "classification": "confidential",
+    "retention": "5 años tras la baja"
+   },
+   "source_meta": {
+    "owner": "Equipo Datos"
+   },
+   "tags": [
+    "tienda"
+   ],
+   "config": {
+    "enabled": true
+   },
+   "patch_path": null,
+   "unrendered_config": {},
+   "relation_name": "ANALITICA.TIENDA_RAW.CLIENTES",
+   "created_at": 1717410000.7
+  },
+  "source.tienda_analitica.tienda.pedidos": {
+   "database": "ANALITICA",
+   "schema": "TIENDA_RAW",
+   "name": "pedidos",
+   "resource_type": "source",
+   "package_name": "tienda_analitica",
+   "path": "models/staging/_sources.yml",
+   "original_file_path": "models/staging/_sources.yml",
+   "unique_id": "source.tienda_analitica.tienda.pedidos",
+   "fqn": [
+    "tienda_analitica",
+    "tienda",
+    "pedidos"
+   ],
+   "source_name": "tienda",
+   "source_description": "Réplica de la base de datos operacional de la tienda en línea",
+   "loader": "fivetran",
+   "identifier": "pedidos",
+   "quoting": {
+    "database": null,
+    "schema": null,
+    "identifier": null,
+    "column": null
+   },
+   "loaded_at_field": "_fivetran_synced",
+   "freshness": {
+    "warn_after": {
+     "count": 12,
+     "period": "hour"
+    },
+    "error_after": {
+     "count": 24,
+     "period": "hour"
+    },
+    "filter": null
+   },
+   "external": null,
+   "description": "Un pedido por compra",
+   "columns": {
+    "id": {
+     "name": "id",
+     "description": "Identificador del pedido",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "cliente_id": {
+     "name": "cliente_id",
+     "description": "Cliente que compra",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "estado": {
+     "name": "estado",
+     "description": "nuevo, pagado, enviado o cancelado",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "total": {
+     "name": "total",
+     "description": "Importe en euros",
+     "meta": {},
+     "data_type": "NUMBER(12,2)",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "creado_en": {
+     "name": "creado_en",
+     "description": "Alta del pedido",
+     "meta": {},
+     "data_type": "TIMESTAMP_NTZ",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Tienda",
+    "classification": "internal"
+   },
+   "source_meta": {
+    "owner": "Equipo Datos"
+   },
+   "tags": [
+    "tienda"
+   ],
+   "config": {
+    "enabled": true
+   },
+   "patch_path": null,
+   "unrendered_config": {},
+   "relation_name": "ANALITICA.TIENDA_RAW.PEDIDOS",
+   "created_at": 1717410000.7
+  },
+  "source.tienda_analitica.tienda.lineas_pedido": {
+   "database": "ANALITICA",
+   "schema": "TIENDA_RAW",
+   "name": "lineas_pedido",
+   "resource_type": "source",
+   "package_name": "tienda_analitica",
+   "path": "models/staging/_sources.yml",
+   "original_file_path": "models/staging/_sources.yml",
+   "unique_id": "source.tienda_analitica.tienda.lineas_pedido",
+   "fqn": [
+    "tienda_analitica",
+    "tienda",
+    "lineas_pedido"
+   ],
+   "source_name": "tienda",
+   "source_description": "Réplica de la base de datos operacional de la tienda en línea",
+   "loader": "fivetran",
+   "identifier": "lineas_pedido",
+   "quoting": {
+    "database": null,
+    "schema": null,
+    "identifier": null,
+    "column": null
+   },
+   "loaded_at_field": "_fivetran_synced",
+   "freshness": {
+    "warn_after": {
+     "count": 12,
+     "period": "hour"
+    },
+    "error_after": {
+     "count": 24,
+     "period": "hour"
+    },
+    "filter": null
+   },
+   "external": null,
+   "description": "Líneas de cada pedido",
+   "columns": {
+    "pedido_id": {
+     "name": "pedido_id",
+     "description": "Pedido al que pertenece",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "linea": {
+     "name": "linea",
+     "description": "Posición dentro del pedido",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "producto_id": {
+     "name": "producto_id",
+     "description": "Producto vendido",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "cantidad": {
+     "name": "cantidad",
+     "description": "Unidades",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "precio_unitario": {
+     "name": "precio_unitario",
+     "description": "Precio por unidad",
+     "meta": {},
+     "data_type": "NUMBER(12,2)",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Tienda",
+    "classification": "internal"
+   },
+   "source_meta": {
+    "owner": "Equipo Datos"
+   },
+   "tags": [
+    "tienda"
+   ],
+   "config": {
+    "enabled": true
+   },
+   "patch_path": null,
+   "unrendered_config": {},
+   "relation_name": "ANALITICA.TIENDA_RAW.LINEAS_PEDIDO",
+   "created_at": 1717410000.7
+  },
+  "source.tienda_analitica.tienda.productos": {
+   "database": "ANALITICA",
+   "schema": "TIENDA_RAW",
+   "name": "productos",
+   "resource_type": "source",
+   "package_name": "tienda_analitica",
+   "path": "models/staging/_sources.yml",
+   "original_file_path": "models/staging/_sources.yml",
+   "unique_id": "source.tienda_analitica.tienda.productos",
+   "fqn": [
+    "tienda_analitica",
+    "tienda",
+    "productos"
+   ],
+   "source_name": "tienda",
+   "source_description": "Réplica de la base de datos operacional de la tienda en línea",
+   "loader": "fivetran",
+   "identifier": "productos",
+   "quoting": {
+    "database": null,
+    "schema": null,
+    "identifier": null,
+    "column": null
+   },
+   "loaded_at_field": "_fivetran_synced",
+   "freshness": {
+    "warn_after": {
+     "count": 12,
+     "period": "hour"
+    },
+    "error_after": {
+     "count": 24,
+     "period": "hour"
+    },
+    "filter": null
+   },
+   "external": null,
+   "description": "Catálogo de productos",
+   "columns": {
+    "id": {
+     "name": "id",
+     "description": "Identificador del producto",
+     "meta": {},
+     "data_type": "NUMBER",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "sku": {
+     "name": "sku",
+     "description": "Código de catálogo",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "nombre": {
+     "name": "nombre",
+     "description": "Nombre comercial",
+     "meta": {},
+     "data_type": "VARCHAR",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    },
+    "precio": {
+     "name": "precio",
+     "description": "Precio de venta",
+     "meta": {},
+     "data_type": "NUMBER(12,2)",
+     "constraints": [],
+     "quote": null,
+     "tags": [],
+     "granularity": null
+    }
+   },
+   "meta": {
+    "owner": "Equipo Catálogo",
+    "classification": "public"
+   },
+   "source_meta": {
+    "owner": "Equipo Datos"
+   },
+   "tags": [
+    "tienda"
+   ],
+   "config": {
+    "enabled": true
+   },
+   "patch_path": null,
+   "unrendered_config": {},
+   "relation_name": "ANALITICA.TIENDA_RAW.PRODUCTOS",
+   "created_at": 1717410000.7
+  }
+ },
+ "macros": {
+  "macro.tienda_analitica.centimos_a_euros": {
+   "name": "centimos_a_euros",
+   "resource_type": "macro",
+   "package_name": "tienda_analitica",
+   "path": "macros/centimos_a_euros.sql",
+   "original_file_path": "macros/centimos_a_euros.sql",
+   "unique_id": "macro.tienda_analitica.centimos_a_euros",
+   "macro_sql": "{% macro centimos_a_euros() %}...{% endmacro %}",
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "meta": {},
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "arguments": [],
+   "created_at": 1717410000.0,
+   "supported_languages": null
+  },
+  "macro.tienda_analitica.generate_schema_name": {
+   "name": "generate_schema_name",
+   "resource_type": "macro",
+   "package_name": "tienda_analitica",
+   "path": "macros/generate_schema_name.sql",
+   "original_file_path": "macros/generate_schema_name.sql",
+   "unique_id": "macro.tienda_analitica.generate_schema_name",
+   "macro_sql": "{% macro generate_schema_name() %}...{% endmacro %}",
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "meta": {},
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "arguments": [],
+   "created_at": 1717410000.0,
+   "supported_languages": null
+  },
+  "macro.dbt.test_unique": {
+   "name": "test_unique",
+   "resource_type": "macro",
+   "package_name": "dbt",
+   "path": "macros/test_unique.sql",
+   "original_file_path": "macros/test_unique.sql",
+   "unique_id": "macro.dbt.test_unique",
+   "macro_sql": "{% macro test_unique() %}...{% endmacro %}",
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "meta": {},
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "arguments": [],
+   "created_at": 1717410000.0,
+   "supported_languages": null
+  },
+  "macro.dbt.test_not_null": {
+   "name": "test_not_null",
+   "resource_type": "macro",
+   "package_name": "dbt",
+   "path": "macros/test_not_null.sql",
+   "original_file_path": "macros/test_not_null.sql",
+   "unique_id": "macro.dbt.test_not_null",
+   "macro_sql": "{% macro test_not_null() %}...{% endmacro %}",
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "meta": {},
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "arguments": [],
+   "created_at": 1717410000.0,
+   "supported_languages": null
+  },
+  "macro.dbt.ref": {
+   "name": "ref",
+   "resource_type": "macro",
+   "package_name": "dbt",
+   "path": "macros/ref.sql",
+   "original_file_path": "macros/ref.sql",
+   "unique_id": "macro.dbt.ref",
+   "macro_sql": "{% macro ref() %}...{% endmacro %}",
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "meta": {},
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "arguments": [],
+   "created_at": 1717410000.0,
+   "supported_languages": null
+  },
+  "macro.dbt.get_where_subquery": {
+   "name": "get_where_subquery",
+   "resource_type": "macro",
+   "package_name": "dbt",
+   "path": "macros/get_where_subquery.sql",
+   "original_file_path": "macros/get_where_subquery.sql",
+   "unique_id": "macro.dbt.get_where_subquery",
+   "macro_sql": "{% macro get_where_subquery() %}...{% endmacro %}",
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "meta": {},
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "arguments": [],
+   "created_at": 1717410000.0,
+   "supported_languages": null
+  },
+  "macro.dbt.snapshot_timestamp_strategy": {
+   "name": "snapshot_timestamp_strategy",
+   "resource_type": "macro",
+   "package_name": "dbt",
+   "path": "macros/snapshot_timestamp_strategy.sql",
+   "original_file_path": "macros/snapshot_timestamp_strategy.sql",
+   "unique_id": "macro.dbt.snapshot_timestamp_strategy",
+   "macro_sql": "{% macro snapshot_timestamp_strategy() %}...{% endmacro %}",
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "meta": {},
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "arguments": [],
+   "created_at": 1717410000.0,
+   "supported_languages": null
+  },
+  "macro.dbt.is_incremental": {
+   "name": "is_incremental",
+   "resource_type": "macro",
+   "package_name": "dbt",
+   "path": "macros/is_incremental.sql",
+   "original_file_path": "macros/is_incremental.sql",
+   "unique_id": "macro.dbt.is_incremental",
+   "macro_sql": "{% macro is_incremental() %}...{% endmacro %}",
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "meta": {},
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "arguments": [],
+   "created_at": 1717410000.0,
+   "supported_languages": null
+  },
+  "macro.dbt.test_relationships": {
+   "name": "test_relationships",
+   "resource_type": "macro",
+   "package_name": "dbt",
+   "path": "macros/test_relationships.sql",
+   "original_file_path": "macros/test_relationships.sql",
+   "unique_id": "macro.dbt.test_relationships",
+   "macro_sql": "{% macro test_relationships() %}...{% endmacro %}",
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "meta": {},
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "arguments": [],
+   "created_at": 1717410000.0,
+   "supported_languages": null
+  },
+  "macro.dbt.test_accepted_values": {
+   "name": "test_accepted_values",
+   "resource_type": "macro",
+   "package_name": "dbt",
+   "path": "macros/test_accepted_values.sql",
+   "original_file_path": "macros/test_accepted_values.sql",
+   "unique_id": "macro.dbt.test_accepted_values",
+   "macro_sql": "{% macro test_accepted_values() %}...{% endmacro %}",
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "meta": {},
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "arguments": [],
+   "created_at": 1717410000.0,
+   "supported_languages": null
+  },
+  "macro.dbt_snowflake.snowflake__create_table_as": {
+   "name": "snowflake__create_table_as",
+   "resource_type": "macro",
+   "package_name": "dbt_snowflake",
+   "path": "macros/snowflake__create_table_as.sql",
+   "original_file_path": "macros/snowflake__create_table_as.sql",
+   "unique_id": "macro.dbt_snowflake.snowflake__create_table_as",
+   "macro_sql": "{% macro snowflake__create_table_as() %}...{% endmacro %}",
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "meta": {},
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "arguments": [],
+   "created_at": 1717410000.0,
+   "supported_languages": null
+  },
+  "macro.dbt_utils.test_unique_combination_of_columns": {
+   "name": "test_unique_combination_of_columns",
+   "resource_type": "macro",
+   "package_name": "dbt_utils",
+   "path": "macros/test_unique_combination_of_columns.sql",
+   "original_file_path": "macros/test_unique_combination_of_columns.sql",
+   "unique_id": "macro.dbt_utils.test_unique_combination_of_columns",
+   "macro_sql": "{% macro test_unique_combination_of_columns() %}...{% endmacro %}",
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "meta": {},
+   "docs": {
+    "show": true,
+    "node_color": null
+   },
+   "patch_path": null,
+   "arguments": [],
+   "created_at": 1717410000.0,
+   "supported_languages": null
+  }
+ },
+ "docs": {
+  "doc.tienda_analitica.__overview__": {
+   "name": "__overview__",
+   "resource_type": "doc",
+   "package_name": "tienda_analitica",
+   "path": "overview.md",
+   "original_file_path": "models/overview.md",
+   "unique_id": "doc.tienda_analitica.__overview__",
+   "block_contents": "Analítica de la tienda en línea."
+  }
+ },
+ "exposures": {
+  "exposure.tienda_analitica.panel_ventas": {
+   "name": "panel_ventas",
+   "resource_type": "exposure",
+   "package_name": "tienda_analitica",
+   "path": "exposures.yml",
+   "original_file_path": "models/exposures.yml",
+   "unique_id": "exposure.tienda_analitica.panel_ventas",
+   "fqn": [
+    "tienda_analitica",
+    "panel_ventas"
+   ],
+   "type": "dashboard",
+   "owner": {
+    "name": "Equipo BI",
+    "email": "bi@tienda.example"
+   },
+   "description": "Ventas por día y por producto para dirección",
+   "label": "Panel de ventas",
+   "maturity": "high",
+   "meta": {
+    "classification": "internal"
+   },
+   "tags": [
+    "bi"
+   ],
+   "config": {
+    "enabled": true
+   },
+   "unrendered_config": {},
+   "url": "https://bi.tienda.example/paneles/ventas",
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "model.tienda_analitica.fct_pedidos",
+     "model.tienda_analitica.fct_ventas_diarias",
+     "model.tienda_analitica.dim_productos"
+    ]
+   },
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "created_at": 1717410003.0
+  },
+  "exposure.tienda_analitica.modelo_fuga": {
+   "name": "modelo_fuga",
+   "resource_type": "exposure",
+   "package_name": "tienda_analitica",
+   "path": "exposures.yml",
+   "original_file_path": "models/exposures.yml",
+   "unique_id": "exposure.tienda_analitica.modelo_fuga",
+   "fqn": [
+    "tienda_analitica",
+    "modelo_fuga"
+   ],
+   "type": "ml",
+   "owner": {
+    "name": "Ciencia de datos",
+    "email": "ds@tienda.example"
+   },
+   "description": "Probabilidad de que un cliente deje de comprar",
+   "label": "Modelo de fuga de clientes",
+   "maturity": "medium",
+   "meta": {
+    "contains_pii": true,
+    "classification": "confidential",
+    "retention": "2 años"
+   },
+   "tags": [],
+   "config": {
+    "enabled": true
+   },
+   "unrendered_config": {},
+   "url": null,
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "model.tienda_analitica.dim_clientes",
+     "model.tienda_analitica.fct_pedidos"
+    ]
+   },
+   "refs": [],
+   "sources": [],
+   "metrics": [],
+   "created_at": 1717410003.0
+  }
+ },
+ "metrics": {
+  "metric.tienda_analitica.ventas_totales": {
+   "name": "ventas_totales",
+   "resource_type": "metric",
+   "package_name": "tienda_analitica",
+   "unique_id": "metric.tienda_analitica.ventas_totales",
+   "label": "Ventas totales",
+   "type": "simple",
+   "description": "Suma del importe de los pedidos",
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "semantic_model.tienda_analitica.pedidos"
+    ]
+   }
+  }
+ },
+ "groups": {
+  "group.tienda_analitica.comercial": {
+   "name": "comercial",
+   "resource_type": "group",
+   "package_name": "tienda_analitica",
+   "path": "models/marts/_marts.yml",
+   "original_file_path": "models/marts/_marts.yml",
+   "unique_id": "group.tienda_analitica.comercial",
+   "owner": {
+    "name": "Equipo Comercial",
+    "email": "comercial@tienda.example"
+   }
+  }
+ },
+ "selectors": {},
+ "disabled": {
+  "model.tienda_analitica.stg_pedidos_historicos": [
+   {
+    "database": "ANALITICA",
+    "schema": "ANALITICA_STAGING",
+    "name": "stg_pedidos_historicos",
+    "resource_type": "model",
+    "package_name": "tienda_analitica",
+    "unique_id": "model.tienda_analitica.stg_pedidos_historicos",
+    "config": {
+     "enabled": false,
+     "materialized": "view"
+    }
+   }
+  ]
+ },
+ "parent_map": {
+  "source.tienda_analitica.tienda.clientes": [],
+  "source.tienda_analitica.tienda.pedidos": [],
+  "source.tienda_analitica.tienda.lineas_pedido": [],
+  "source.tienda_analitica.tienda.productos": [],
+  "seed.tienda_analitica.paises": [],
+  "model.tienda_analitica.stg_clientes": [
+   "source.tienda_analitica.tienda.clientes"
+  ],
+  "model.tienda_analitica.stg_pedidos": [
+   "source.tienda_analitica.tienda.pedidos"
+  ],
+  "model.tienda_analitica.stg_lineas_pedido": [
+   "source.tienda_analitica.tienda.lineas_pedido"
+  ],
+  "model.tienda_analitica.stg_productos": [
+   "source.tienda_analitica.tienda.productos"
+  ],
+  "model.tienda_analitica.int_pedidos_enriquecidos": [
+   "model.tienda_analitica.stg_pedidos",
+   "model.tienda_analitica.stg_lineas_pedido",
+   "model.tienda_analitica.stg_productos"
+  ],
+  "model.tienda_analitica.dim_clientes": [
+   "model.tienda_analitica.stg_clientes",
+   "seed.tienda_analitica.paises"
+  ],
+  "model.tienda_analitica.dim_productos": [
+   "model.tienda_analitica.stg_productos"
+  ],
+  "model.tienda_analitica.fct_pedidos": [
+   "model.tienda_analitica.int_pedidos_enriquecidos"
+  ],
+  "model.tienda_analitica.fct_ventas_diarias": [
+   "model.tienda_analitica.fct_pedidos"
+  ],
+  "snapshot.tienda_analitica.snap_clientes": [
+   "source.tienda_analitica.tienda.clientes"
+  ],
+  "test.tienda_analitica.unique_stg_clientes_cliente_id.076823dda3": [
+   "model.tienda_analitica.stg_clientes"
+  ],
+  "test.tienda_analitica.not_null_stg_clientes_cliente_id.a3a04408f2": [
+   "model.tienda_analitica.stg_clientes"
+  ],
+  "test.tienda_analitica.unique_stg_clientes_email.fda99a0f68": [
+   "model.tienda_analitica.stg_clientes"
+  ],
+  "test.tienda_analitica.unique_stg_pedidos_pedido_id.2dbffae423": [
+   "model.tienda_analitica.stg_pedidos"
+  ],
+  "test.tienda_analitica.not_null_stg_pedidos_pedido_id.62b3bc2809": [
+   "model.tienda_analitica.stg_pedidos"
+  ],
+  "test.tienda_analitica.not_null_stg_pedidos_cliente_id.83162aa687": [
+   "model.tienda_analitica.stg_pedidos"
+  ],
+  "test.tienda_analitica.relationships_stg_pedidos_cliente_id__cliente_id__ref_stg_clientes_.268014fd77": [
+   "model.tienda_analitica.stg_clientes",
+   "model.tienda_analitica.stg_pedidos"
+  ],
+  "test.tienda_analitica.accepted_values_stg_pedidos_estado__nuevo__pagado__enviado__cancelado.b248a137dd": [
+   "model.tienda_analitica.stg_pedidos"
+  ],
+  "test.tienda_analitica.not_null_stg_lineas_pedido_pedido_id.02fdcd463d": [
+   "model.tienda_analitica.stg_lineas_pedido"
+  ],
+  "test.tienda_analitica.relationships_stg_lineas_pedido_pedido_id__pedido_id__ref_stg_pedidos_.5ec4b88050": [
+   "model.tienda_analitica.stg_pedidos",
+   "model.tienda_analitica.stg_lineas_pedido"
+  ],
+  "test.tienda_analitica.relationships_stg_lineas_pedido_producto_id__producto_id__ref_stg_productos_.716a980721": [
+   "model.tienda_analitica.stg_productos",
+   "model.tienda_analitica.stg_lineas_pedido"
+  ],
+  "test.tienda_analitica.dbt_utils_unique_combination_of_columns_stg_lineas_pedido_pedido_id__linea.5715d34521": [
+   "model.tienda_analitica.stg_lineas_pedido"
+  ],
+  "test.tienda_analitica.unique_stg_productos_producto_id.9f9a511bc8": [
+   "model.tienda_analitica.stg_productos"
+  ],
+  "test.tienda_analitica.not_null_stg_productos_producto_id.d6b67dfc31": [
+   "model.tienda_analitica.stg_productos"
+  ],
+  "test.tienda_analitica.unique_dim_clientes_cliente_key.c1488abc7d": [
+   "model.tienda_analitica.dim_clientes"
+  ],
+  "test.tienda_analitica.not_null_dim_clientes_cliente_key.074dcfa263": [
+   "model.tienda_analitica.dim_clientes"
+  ],
+  "test.tienda_analitica.unique_dim_productos_producto_key.def380d347": [
+   "model.tienda_analitica.dim_productos"
+  ],
+  "test.tienda_analitica.not_null_dim_productos_producto_key.113d7a40d1": [
+   "model.tienda_analitica.dim_productos"
+  ],
+  "test.tienda_analitica.unique_fct_pedidos_pedido_id.7d6e40e2d2": [
+   "model.tienda_analitica.fct_pedidos"
+  ],
+  "test.tienda_analitica.not_null_fct_pedidos_pedido_id.6eda96b443": [
+   "model.tienda_analitica.fct_pedidos"
+  ],
+  "test.tienda_analitica.not_null_fct_pedidos_cliente_key.5955ceb8b9": [
+   "model.tienda_analitica.fct_pedidos"
+  ],
+  "test.tienda_analitica.relationships_fct_pedidos_cliente_key__cliente_key__ref_dim_clientes_.c904064c10": [
+   "model.tienda_analitica.dim_clientes",
+   "model.tienda_analitica.fct_pedidos"
+  ],
+  "test.tienda_analitica.unique_fct_ventas_diarias_fecha.5415827c03": [
+   "model.tienda_analitica.fct_ventas_diarias"
+  ],
+  "test.tienda_analitica.unique_tienda_clientes_id.b5f0129b52": [
+   "source.tienda_analitica.tienda.clientes"
+  ],
+  "test.tienda_analitica.not_null_tienda_clientes_id.21677cc332": [
+   "source.tienda_analitica.tienda.clientes"
+  ],
+  "test.tienda_analitica.assert_total_pedidos_positivo": [
+   "model.tienda_analitica.fct_pedidos"
+  ],
+  "analysis.tienda_analitica.exploracion_cohortes": [
+   "model.tienda_analitica.dim_clientes"
+  ],
+  "operation.tienda_analitica.tienda_analitica-on-run-end-0": [],
+  "exposure.tienda_analitica.panel_ventas": [
+   "model.tienda_analitica.fct_pedidos",
+   "model.tienda_analitica.fct_ventas_diarias",
+   "model.tienda_analitica.dim_productos"
+  ],
+  "exposure.tienda_analitica.modelo_fuga": [
+   "model.tienda_analitica.dim_clientes",
+   "model.tienda_analitica.fct_pedidos"
+  ]
+ },
+ "child_map": {
+  "source.tienda_analitica.tienda.clientes": [
+   "model.tienda_analitica.stg_clientes",
+   "snapshot.tienda_analitica.snap_clientes",
+   "test.tienda_analitica.not_null_tienda_clientes_id.21677cc332",
+   "test.tienda_analitica.unique_tienda_clientes_id.b5f0129b52"
+  ],
+  "source.tienda_analitica.tienda.pedidos": [
+   "model.tienda_analitica.stg_pedidos"
+  ],
+  "source.tienda_analitica.tienda.lineas_pedido": [
+   "model.tienda_analitica.stg_lineas_pedido"
+  ],
+  "source.tienda_analitica.tienda.productos": [
+   "model.tienda_analitica.stg_productos"
+  ],
+  "seed.tienda_analitica.paises": [
+   "model.tienda_analitica.dim_clientes"
+  ],
+  "model.tienda_analitica.stg_clientes": [
+   "model.tienda_analitica.dim_clientes",
+   "test.tienda_analitica.not_null_stg_clientes_cliente_id.a3a04408f2",
+   "test.tienda_analitica.relationships_stg_pedidos_cliente_id__cliente_id__ref_stg_clientes_.268014fd77",
+   "test.tienda_analitica.unique_stg_clientes_cliente_id.076823dda3",
+   "test.tienda_analitica.unique_stg_clientes_email.fda99a0f68"
+  ],
+  "model.tienda_analitica.stg_pedidos": [
+   "model.tienda_analitica.int_pedidos_enriquecidos",
+   "test.tienda_analitica.accepted_values_stg_pedidos_estado__nuevo__pagado__enviado__cancelado.b248a137dd",
+   "test.tienda_analitica.not_null_stg_pedidos_cliente_id.83162aa687",
+   "test.tienda_analitica.not_null_stg_pedidos_pedido_id.62b3bc2809",
+   "test.tienda_analitica.relationships_stg_lineas_pedido_pedido_id__pedido_id__ref_stg_pedidos_.5ec4b88050",
+   "test.tienda_analitica.relationships_stg_pedidos_cliente_id__cliente_id__ref_stg_clientes_.268014fd77",
+   "test.tienda_analitica.unique_stg_pedidos_pedido_id.2dbffae423"
+  ],
+  "model.tienda_analitica.stg_lineas_pedido": [
+   "model.tienda_analitica.int_pedidos_enriquecidos",
+   "test.tienda_analitica.dbt_utils_unique_combination_of_columns_stg_lineas_pedido_pedido_id__linea.5715d34521",
+   "test.tienda_analitica.not_null_stg_lineas_pedido_pedido_id.02fdcd463d",
+   "test.tienda_analitica.relationships_stg_lineas_pedido_pedido_id__pedido_id__ref_stg_pedidos_.5ec4b88050",
+   "test.tienda_analitica.relationships_stg_lineas_pedido_producto_id__producto_id__ref_stg_productos_.716a980721"
+  ],
+  "model.tienda_analitica.stg_productos": [
+   "model.tienda_analitica.dim_productos",
+   "model.tienda_analitica.int_pedidos_enriquecidos",
+   "test.tienda_analitica.not_null_stg_productos_producto_id.d6b67dfc31",
+   "test.tienda_analitica.relationships_stg_lineas_pedido_producto_id__producto_id__ref_stg_productos_.716a980721",
+   "test.tienda_analitica.unique_stg_productos_producto_id.9f9a511bc8"
+  ],
+  "model.tienda_analitica.int_pedidos_enriquecidos": [
+   "model.tienda_analitica.fct_pedidos"
+  ],
+  "model.tienda_analitica.dim_clientes": [
+   "analysis.tienda_analitica.exploracion_cohortes",
+   "exposure.tienda_analitica.modelo_fuga",
+   "test.tienda_analitica.not_null_dim_clientes_cliente_key.074dcfa263",
+   "test.tienda_analitica.relationships_fct_pedidos_cliente_key__cliente_key__ref_dim_clientes_.c904064c10",
+   "test.tienda_analitica.unique_dim_clientes_cliente_key.c1488abc7d"
+  ],
+  "model.tienda_analitica.dim_productos": [
+   "exposure.tienda_analitica.panel_ventas",
+   "test.tienda_analitica.not_null_dim_productos_producto_key.113d7a40d1",
+   "test.tienda_analitica.unique_dim_productos_producto_key.def380d347"
+  ],
+  "model.tienda_analitica.fct_pedidos": [
+   "exposure.tienda_analitica.modelo_fuga",
+   "exposure.tienda_analitica.panel_ventas",
+   "model.tienda_analitica.fct_ventas_diarias",
+   "test.tienda_analitica.assert_total_pedidos_positivo",
+   "test.tienda_analitica.not_null_fct_pedidos_cliente_key.5955ceb8b9",
+   "test.tienda_analitica.not_null_fct_pedidos_pedido_id.6eda96b443",
+   "test.tienda_analitica.relationships_fct_pedidos_cliente_key__cliente_key__ref_dim_clientes_.c904064c10",
+   "test.tienda_analitica.unique_fct_pedidos_pedido_id.7d6e40e2d2"
+  ],
+  "model.tienda_analitica.fct_ventas_diarias": [
+   "exposure.tienda_analitica.panel_ventas",
+   "test.tienda_analitica.unique_fct_ventas_diarias_fecha.5415827c03"
+  ],
+  "snapshot.tienda_analitica.snap_clientes": [],
+  "test.tienda_analitica.unique_stg_clientes_cliente_id.076823dda3": [],
+  "test.tienda_analitica.not_null_stg_clientes_cliente_id.a3a04408f2": [],
+  "test.tienda_analitica.unique_stg_clientes_email.fda99a0f68": [],
+  "test.tienda_analitica.unique_stg_pedidos_pedido_id.2dbffae423": [],
+  "test.tienda_analitica.not_null_stg_pedidos_pedido_id.62b3bc2809": [],
+  "test.tienda_analitica.not_null_stg_pedidos_cliente_id.83162aa687": [],
+  "test.tienda_analitica.relationships_stg_pedidos_cliente_id__cliente_id__ref_stg_clientes_.268014fd77": [],
+  "test.tienda_analitica.accepted_values_stg_pedidos_estado__nuevo__pagado__enviado__cancelado.b248a137dd": [],
+  "test.tienda_analitica.not_null_stg_lineas_pedido_pedido_id.02fdcd463d": [],
+  "test.tienda_analitica.relationships_stg_lineas_pedido_pedido_id__pedido_id__ref_stg_pedidos_.5ec4b88050": [],
+  "test.tienda_analitica.relationships_stg_lineas_pedido_producto_id__producto_id__ref_stg_productos_.716a980721": [],
+  "test.tienda_analitica.dbt_utils_unique_combination_of_columns_stg_lineas_pedido_pedido_id__linea.5715d34521": [],
+  "test.tienda_analitica.unique_stg_productos_producto_id.9f9a511bc8": [],
+  "test.tienda_analitica.not_null_stg_productos_producto_id.d6b67dfc31": [],
+  "test.tienda_analitica.unique_dim_clientes_cliente_key.c1488abc7d": [],
+  "test.tienda_analitica.not_null_dim_clientes_cliente_key.074dcfa263": [],
+  "test.tienda_analitica.unique_dim_productos_producto_key.def380d347": [],
+  "test.tienda_analitica.not_null_dim_productos_producto_key.113d7a40d1": [],
+  "test.tienda_analitica.unique_fct_pedidos_pedido_id.7d6e40e2d2": [],
+  "test.tienda_analitica.not_null_fct_pedidos_pedido_id.6eda96b443": [],
+  "test.tienda_analitica.not_null_fct_pedidos_cliente_key.5955ceb8b9": [],
+  "test.tienda_analitica.relationships_fct_pedidos_cliente_key__cliente_key__ref_dim_clientes_.c904064c10": [],
+  "test.tienda_analitica.unique_fct_ventas_diarias_fecha.5415827c03": [],
+  "test.tienda_analitica.unique_tienda_clientes_id.b5f0129b52": [],
+  "test.tienda_analitica.not_null_tienda_clientes_id.21677cc332": [],
+  "test.tienda_analitica.assert_total_pedidos_positivo": [],
+  "analysis.tienda_analitica.exploracion_cohortes": [],
+  "operation.tienda_analitica.tienda_analitica-on-run-end-0": [],
+  "exposure.tienda_analitica.panel_ventas": [],
+  "exposure.tienda_analitica.modelo_fuga": []
+ },
+ "group_map": {
+  "group.tienda_analitica.comercial": [
+   "model.tienda_analitica.dim_clientes",
+   "model.tienda_analitica.fct_pedidos",
+   "model.tienda_analitica.fct_ventas_diarias"
+  ]
+ },
+ "saved_queries": {},
+ "semantic_models": {
+  "semantic_model.tienda_analitica.pedidos": {
+   "name": "pedidos",
+   "resource_type": "semantic_model",
+   "package_name": "tienda_analitica",
+   "unique_id": "semantic_model.tienda_analitica.pedidos",
+   "model": "ref('fct_pedidos')",
+   "description": "Pedidos como medidas y dimensiones",
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "model.tienda_analitica.fct_pedidos"
+    ]
+   }
+  }
+ },
+ "unit_tests": {
+  "unit_test.tienda_analitica.fct_pedidos.suma_unidades": {
+   "name": "suma_unidades",
+   "resource_type": "unit_test",
+   "package_name": "tienda_analitica",
+   "unique_id": "unit_test.tienda_analitica.fct_pedidos.suma_unidades",
+   "model": "fct_pedidos",
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "model.tienda_analitica.fct_pedidos"
+    ]
+   }
+  }
+ }
+}

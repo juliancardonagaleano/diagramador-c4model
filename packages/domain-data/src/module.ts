@@ -5,6 +5,8 @@ import { dataCommands } from './commands';
 import { toDrawio } from './export/drawio';
 import { toMermaid } from './export/mermaid';
 import { toSvg } from './export/render';
+import { fromDbt, looksLikeDbtManifest } from './import/fromDbt';
+import { fromDdl, looksLikeDdl } from './import/fromDdl';
 import { fromMermaid } from './import/fromMermaid';
 import { analyzeData } from './issues';
 import { dataDocumentSchema, dataJsonSchema } from './schema';
@@ -18,6 +20,23 @@ const mermaidImporter: Importer<DataDocument> = {
   extensions: ['.mmd', '.mermaid', '.md'],
   detect: looksLikeMermaid,
   import: (text, ctx) => fromMermaid(text, { name: ctx.name, fallbackName: ctx.fallbackName }),
+};
+
+const ddlImporter: Importer<DataDocument> = {
+  id: 'ddl',
+  label: 'SQL (DDL)',
+  extensions: ['.sql', '.ddl'],
+  detect: looksLikeDdl,
+  import: (text, ctx) => fromDdl(text, { name: ctx.name, fallbackName: ctx.fallbackName }),
+};
+
+/** El `manifest.json` de dbt (`target/manifest.json`); cualquier otro JSON se rechaza con el motivo. */
+const dbtImporter: Importer<DataDocument> = {
+  id: 'dbt',
+  label: 'dbt (manifest.json)',
+  extensions: ['.json'],
+  detect: looksLikeDbtManifest,
+  import: (text, ctx) => fromDbt(text, { name: ctx.name, fallbackName: ctx.fallbackName }),
 };
 
 const mermaidExporter: Exporter<DataDocument> = {
@@ -59,7 +78,7 @@ export const dataModule: DomainModule<DataDocument> = {
   schema: dataDocumentSchema as unknown as DomainModule<DataDocument>['schema'],
   jsonSchema: dataJsonSchema,
   validate: (doc): ModuleIssue[] => analyzeData(doc),
-  importers: [mermaidImporter],
+  importers: [mermaidImporter, ddlImporter, dbtImporter],
   exporters: [mermaidExporter, svgExporter, drawioExporter],
   ai: dataAiSpec,
   entities: (doc): EntityRef[] => [
