@@ -1,9 +1,17 @@
 import { uniqueId, type AttachmentSpec, type EditResult } from '@iark/kernel';
-import { checkContract, contractFromAsset, contractTemplate, contractToJson, reformatContract, summarizeContract } from './contract';
+import { checkContract, contractEngine, contractFromAsset, contractTemplate, contractToJson, reformatContract, summarizeContract } from './contract';
+import { resolveEngine } from './engines';
+import { inheritance } from './inherit';
 import { KIND_LABELS, type DataContract, type DataDocument } from './types';
 
 const fail = <T>(reason: string): EditResult<T> => ({ ok: false, reason });
 const contractsOf = (doc: DataDocument): DataContract[] => doc.contracts ?? [];
+
+/** Motor de la base de datos del primer activo que usa el contrato (el suyo o el de su contenedor). */
+const engineOfUser = (doc: DataDocument, contractId: string): string | undefined => {
+  const user = doc.assets.find((a) => a.contractId === contractId);
+  return user ? inheritance(doc).engineOf(user.id) : undefined;
+};
 
 const withoutKey = <T extends object>(value: T, key: string): T => {
   const { [key]: _removed, ...rest } = value as Record<string, unknown>;
@@ -35,7 +43,12 @@ export const contractAttachments: AttachmentSpec<DataDocument> = {
     };
   },
 
-  check: (_format, text) => checkContract(text),
+  // Los tipos físicos se validan contra el servidor del contrato (`servers[].type`) o, si no lo declara, el motor del activo que lo usa.
+  check: (_format, text, context) => checkContract(text, { engine: context ? engineOfUser(context.document, context.id) : undefined }),
+  suggestions(doc, id, text) {
+    const engine = contractEngine(text) ?? resolveEngine(engineOfUser(doc, id));
+    return engine ? { title: `Tipos de ${engine.label}`, items: [...engine.types] } : undefined;
+  },
   reformat: (_format, text) => reformatContract(text),
   template: (_format, name) => contractTemplate(name),
   summary: (_format, text) => summarizeContract(text),

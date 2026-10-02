@@ -483,4 +483,6 @@ pre.wb-out {
 .at-section .at-muted { padding: 0 10px 6px; }
 .at-section ul.at-used { padding-left: 10px; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
 .at-used button { padding: 3px 8px; font-size: 12px; }
+.at-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px 8px; }
+.at-chip { padding: 2px 8px; font-size: 12px; font-family: var(--wb-mono); border-radius: 10px; }
 .at-used small { color: var(--wb-text-2); }

@@ -1,16 +1,20 @@
 import { uniqueId, type EdgeNotation, type EditResult, type EditorGraph, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
 import { DATA_ACTIONS } from './actions';
+import { CATALOG_EDGE_KINDS, CATALOG_NODE_KINDS, addCatalogEdge, addCatalogNode, catalogConnection, catalogFields, projectCatalog, readCatalog, removeCatalog, updateCatalog } from './catalog-editor';
 import { contractAttachments } from './contract-editor';
 import { inheritance } from './inherit';
 import { containerViolation, readViolation, writeViolation } from './rules';
-import { ASSET_SHAPES, KIND_COLORS, MAX_COLUMNS as MAX_COLUMN_LINES, PIPELINE_SHAPE, columnLine, entityLines, governanceLine, impactColumnLines, pipelineLine, pipelineNodeId, relationEnds } from './export/render';
+import { ASSET_SHAPES, KIND_COLORS, MAX_COLUMNS as MAX_COLUMN_LINES, PIPELINE_SHAPE, columnLine, entityLines, governanceLine, impactColumnLines, pipelineLine, pipelineNodeId, relationEnds, relationMultiplicities } from './export/render';
+import { listEngines } from './engines';
 import { formatColumnRef, parseColumnRef } from './lineage';
+import { pruneCatalog } from './links';
 import {
   ASSET_KINDS,
   CARDINALITIES,
   CLASSIFICATIONS,
   CLASSIFICATION_LABELS,
   COLUMN_KEYS,
+  ENGINE_KINDS,
   ENTITY_KINDS,
   KIND_LABELS,
   PARENT_KINDS,
@@ -61,6 +65,7 @@ const NODE_KIND_NOTATION: NodeNotation[] = [
   asset('file', '▯', 180, 68),
   asset('report', '▦', 180, 68),
   asset('model', '⬡', 180, 68),
+  ...CATALOG_NODE_KINDS,
   { kind: PIPELINE_KIND, label: 'Pipeline', glyph: '➤', shape: PIPELINE_SHAPE, fill: PIPELINE_COLOR, width: 180, height: 52, addable: false },
 ];
 
@@ -68,6 +73,7 @@ const NODE_KIND_NOTATION: NodeNotation[] = [
 const EDGE_KIND_NOTATION: EdgeNotation[] = [
   { kind: 'pipeline', label: 'Pipeline (flujo de datos)', stroke: '#475569', line: 'solid', width: 1.5 },
   ...CARDINALITIES.map((c): EdgeNotation => ({ kind: c, label: `Relación ${c}`, stroke: '#475569', line: 'solid', width: 1.5, arrowEnd: false })),
+  ...CATALOG_EDGE_KINDS,
 ];
 
 const options = (values: readonly string[], labels?: Record<string, string>): Array<{ value: string; label: string }> => values.map((value) => ({ value, label: labels?.[value] ?? value }));
@@ -76,6 +82,9 @@ const assetFields = (doc: DataDocument, kind: string): FieldSpec[] => [
   { key: 'name', label: 'Nombre', type: 'text' },
   { key: 'description', label: 'Descripción', type: 'longtext' },
   { key: 'technology', label: 'Tecnología', type: 'text' },
+  ...(ENGINE_KINDS.includes(kind as AssetKind)
+    ? ([{ key: 'engine', label: 'Motor de base de datos', type: 'select', options: listEngines().map((e) => ({ value: e.id, label: e.label })), allowEmpty: true, hint: 'Valida los tipos de las columnas y de los contratos y fija el dialecto del DDL; lo heredan sus tablas' }] as FieldSpec[])
+    : []),
   { key: 'owner', label: 'Responsable', type: 'text' },
   { key: 'steward', label: 'Custodio', type: 'text' },
   { key: 'domainId', label: 'Dominio', type: 'select', options: doc.domains.map((d) => ({ value: d.id, label: d.name })), allowEmpty: true },
@@ -105,8 +114,15 @@ const PIPELINE_FIELDS: FieldSpec[] = [
   { key: 'mappingsText', label: 'Linaje de columnas (una por línea)', type: 'longtext', hint: 'crm-clientes.email -> bronze-clientes.email : copia' },
 ];
 
+const MIN_OPTIONS = [
+  { value: '0', label: '0 · opcional' },
+  { value: '1', label: '1 · obligatorio' },
+];
+
 const RELATION_FIELDS: FieldSpec[] = [
   { key: 'cardinality', label: 'Cardinalidad', type: 'select', options: options(CARDINALITIES) },
+  { key: 'sourceMin', label: 'Mínimo en el origen', type: 'select', options: MIN_OPTIONS, allowEmpty: true, hint: 'Sin indicar: 1 si el origen es «uno» (1) y 0 si es «varios» (0..*). Se ve en la notación UML' },
+  { key: 'targetMin', label: 'Mínimo en el destino', type: 'select', options: MIN_OPTIONS, allowEmpty: true, hint: 'Sin indicar: 1 si el destino es «uno» (1) y 0 si es «varios» (0..*). Se ve en la notación UML' },
   { key: 'description', label: 'Descripción', type: 'longtext' },
 ];
 
@@ -230,6 +246,8 @@ function project(doc: DataDocument, viewId?: string): EditorGraph {
   const context = new Set(view.contextIds);
   const assets = new Map(doc.assets.map((a) => [a.id, a]));
   const erd = view.type === 'erd';
+  // El ERD, el mapa de productos y el glosario dibujan fichas sueltas, sin agrupar los activos en sus contenedores.
+  const flat = erd || view.type === 'products' || view.type === 'glossary';
   const { ownerOf } = inheritance(doc);
   const heat = HEAT_VIEWS.some((v) => v.id === view.id);
 
@@ -245,7 +263,7 @@ function project(doc: DataDocument, viewId?: string): EditorGraph {
         kind: a.kind as string,
         label: a.name,
         sublabel: card ? undefined : [a.technology, governanceLine(a)].filter(Boolean).join(' · ') || undefined,
-        parentId: !erd && a.parentId && shown.has(a.parentId) ? a.parentId : undefined,
+        parentId: !flat && a.parentId && shown.has(a.parentId) ? a.parentId : undefined,
         ref: a.ref,
         dashed: a.external || context.has(a.id),
         fill: heat ? heatFill(a, view.id) : context.has(a.id) ? CONTEXT_COLOR : undefined,
@@ -270,9 +288,11 @@ function project(doc: DataDocument, viewId?: string): EditorGraph {
     for (const id of p.outputs) if (assets.has(id) && shown.has(id)) edges.push({ id: flowEdgeId(p.id, 'out', id), kind: 'pipeline', source: pipelineNodeId(p.id), target: id });
   }
   for (const r of doc.relations.filter((r) => view.relationIds.includes(r.id))) {
-    edges.push({ id: r.id, kind: r.cardinality, source: r.sourceId, target: r.targetId, label: r.description || undefined, ends: relationEnds(r) });
+    // Pata de gallo en los extremos o, en la notación UML, las multiplicidades escritas junto a cada uno.
+    const notation = view.notation === 'uml' ? { endLabels: relationMultiplicities(r) } : { ends: relationEnds(r) };
+    edges.push({ id: r.id, kind: r.cardinality, source: r.sourceId, target: r.targetId, label: r.description || undefined, ...notation });
   }
-  return { nodes, edges };
+  return projectCatalog(doc, view, { nodes, edges });
 }
 
 /** Quita de un pipeline los mapeos de columnas que tocan los activos indicados (ya no son entrada ni salida suya). */
@@ -291,9 +311,13 @@ export const dataEditor: EditorSpec<DataDocument> = {
   defaultEdgeKind: 'pipeline',
   project,
 
-  fields: (target, doc) => (target.type === 'edge' ? (target.kind === 'pipeline' ? [] : RELATION_FIELDS) : target.kind === PIPELINE_KIND ? PIPELINE_FIELDS : assetFields(doc, target.kind)),
+  fields: (target, doc) =>
+    catalogFields(target, doc, () => assetFields(doc, target.kind)) ??
+    (target.type === 'edge' ? (target.kind === 'pipeline' ? [] : RELATION_FIELDS) : target.kind === PIPELINE_KIND ? PIPELINE_FIELDS : assetFields(doc, target.kind)),
 
   read(doc, id) {
+    const catalog = readCatalog(doc, id);
+    if (catalog) return catalog;
     const pid = parsePipelineNode(id);
     if (pid) {
       const p = doc.pipelines.find((x) => x.id === pid);
@@ -309,11 +333,13 @@ export const dataEditor: EditorSpec<DataDocument> = {
   },
 
   addNode(doc, kind, name, parentId) {
+    const term = addCatalogNode(doc, kind, name, parentId);
+    if (term) return term;
     if (kind === PIPELINE_KIND) return fail('Un pipeline se crea conectando dos activos con la relación «Pipeline».');
     if (!(ASSET_KINDS as readonly string[]).includes(kind)) return fail(`Tipo de activo desconocido: ${kind}`);
     const k = kind as AssetKind;
     const parent = parentId ? doc.assets.find((a) => a.id === parentId) : undefined;
-    const id = uniqueId(name, [...doc.assets.map((a) => a.id), ...doc.pipelines.map((p) => p.id), ...doc.domains.map((d) => d.id), ...(doc.contracts ?? []).map((c) => c.id)]);
+    const id = uniqueId(name, [...doc.assets.map((a) => a.id), ...doc.pipelines.map((p) => p.id), ...doc.domains.map((d) => d.id), ...(doc.contracts ?? []).map((c) => c.id), ...(doc.terms ?? []).map((t) => t.id)]);
     const created: DataAsset = { id, kind: k, name };
     // Si el elegido no puede contener el tipo (una tabla dentro de una tabla), cuelga del contenedor del elegido, como hermana.
     const container = parent && !containerViolation(k, parent) ? parent : parent?.parentId ? doc.assets.find((a) => a.id === parent.parentId && !containerViolation(k, a)) : undefined;
@@ -323,6 +349,8 @@ export const dataEditor: EditorSpec<DataDocument> = {
   },
 
   addEdge(doc, kind, sourceId, targetId) {
+    const catalog = addCatalogEdge(doc, kind, sourceId, targetId);
+    if (catalog) return catalog;
     const reason = dataEditor.canConnect?.(doc, kind, sourceId, targetId);
     if (reason) return fail(reason);
     const sourcePipeline = parsePipelineNode(sourceId);
@@ -345,6 +373,8 @@ export const dataEditor: EditorSpec<DataDocument> = {
   },
 
   update(doc, id, patch) {
+    const catalog = updateCatalog(doc, id, patch);
+    if (catalog) return catalog;
     const pid = parsePipelineNode(id);
     if (pid) {
       if (!doc.pipelines.some((p) => p.id === pid)) return fail(`No existe «${id}».`);
@@ -382,18 +412,28 @@ export const dataEditor: EditorSpec<DataDocument> = {
         id,
         document: {
           ...doc,
-          assets: doc.assets.map((a) => (a.id === id ? patchObject(a, withColumns, ['name', 'description', 'technology', 'owner', 'steward', 'domainId', 'classification', 'pii', 'retention', 'external', 'ref', 'tags', 'columns', 'parentId', 'contractId']) : a)),
+          assets: doc.assets.map((a) => (a.id === id ? patchObject(a, withColumns, ['name', 'description', 'technology', 'engine', 'owner', 'steward', 'domainId', 'classification', 'pii', 'retention', 'external', 'ref', 'tags', 'columns', 'parentId', 'contractId']) : a)),
         },
       };
     }
     if (doc.relations.some((r) => r.id === id)) {
       if (patch.cardinality !== undefined && !(CARDINALITIES as readonly string[]).includes(patch.cardinality as string)) return fail(`Cardinalidad desconocida: ${String(patch.cardinality)}`);
-      return { ok: true, id, document: { ...doc, relations: doc.relations.map((r) => (r.id === id ? patchObject(r, patch, ['cardinality', 'description']) : r)) } };
+      const minimum = { ...patch };
+      for (const key of ['sourceMin', 'targetMin'] as const) {
+        if (!(key in minimum)) continue;
+        const value = clean(minimum[key]);
+        if (value === undefined) continue;
+        if (value !== 0 && value !== 1 && value !== '0' && value !== '1') return fail(`El mínimo debe ser 0 (opcional) o 1 (obligatorio), no «${String(value)}».`);
+        minimum[key] = Number(value);
+      }
+      return { ok: true, id, document: { ...doc, relations: doc.relations.map((r) => (r.id === id ? patchObject(r, minimum, ['cardinality', 'description', 'sourceMin', 'targetMin']) : r)) } };
     }
     return fail(`No existe «${id}».`);
   },
 
   remove(doc, id) {
+    const catalog = removeCatalog(doc, id);
+    if (catalog) return catalog;
     const pid = parsePipelineNode(id);
     if (pid) return { ok: true, document: { ...doc, pipelines: doc.pipelines.filter((p) => p.id !== pid) } };
     const flow = parseFlowEdge(id);
@@ -417,7 +457,7 @@ export const dataEditor: EditorSpec<DataDocument> = {
         .filter((p) => p.inputs.length > 0 && p.outputs.length > 0);
       return {
         ok: true,
-        document: { ...doc, assets: doc.assets.filter((a) => !gone.has(a.id)), pipelines, relations: doc.relations.filter((r) => !gone.has(r.sourceId) && !gone.has(r.targetId)) },
+        document: pruneCatalog({ ...doc, assets: doc.assets.filter((a) => !gone.has(a.id)), pipelines, relations: doc.relations.filter((r) => !gone.has(r.sourceId) && !gone.has(r.targetId)) }, gone),
       };
     }
     if (doc.relations.some((r) => r.id === id)) return { ok: true, document: { ...doc, relations: doc.relations.filter((r) => r.id !== id) } };
@@ -425,6 +465,8 @@ export const dataEditor: EditorSpec<DataDocument> = {
   },
 
   canConnect(doc, kind, sourceId, targetId) {
+    const catalog = catalogConnection(doc, kind, sourceId, targetId);
+    if (catalog) return catalog.reason;
     if (sourceId === targetId) return 'Un activo no puede conectarse consigo mismo.';
     const sp = parsePipelineNode(sourceId);
     const tp = parsePipelineNode(targetId);
