@@ -257,6 +257,12 @@
               "string",
               "null"
             ]
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -274,7 +280,8 @@
           "monthlyCost",
           "region",
           "cpuLimit",
-          "memoryLimit"
+          "memoryLimit",
+          "expiresAt"
         ],
         "additionalProperties": false
       }

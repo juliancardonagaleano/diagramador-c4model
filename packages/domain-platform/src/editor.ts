@@ -4,6 +4,7 @@ import { formatCost } from './costs';
 import { drawMatrix, matrixIsDrawn } from './export/matrix';
 import { DEPENDENCY_STYLES, EXPOSURE_ZONES, EXTERNAL_COLOR, RESOURCE_COLORS, RESOURCE_SHAPES, SERVICE_COLORS, SERVICE_SHAPES, buildScene } from './export/render';
 import { dependencyEnvironmentViolation, exposureViolation, hostViolation, placementViolation } from './rules';
+import { resourceSchema } from './schema';
 import {
   CRITICALITIES,
   CRITICALITY_LABELS,
@@ -99,6 +100,7 @@ const INSTANCE_FIELDS: FieldSpec[] = [
 const COST: FieldSpec = { key: 'monthlyCost', label: 'Coste mensual', type: 'number', min: 0, step: 1, hint: 'En la moneda del espacio de trabajo (USD si no se indica); alimenta la vista de costes' };
 const CPU: FieldSpec = { key: 'cpuLimit', label: 'Límite de CPU', type: 'text', hint: 'p. ej. 2 (vCPU) o 500m' };
 const MEMORY: FieldSpec = { key: 'memoryLimit', label: 'Límite de memoria', type: 'text', hint: 'p. ej. 4 GiB' };
+const EXPIRES: FieldSpec = { key: 'expiresAt', label: 'Caduca el', type: 'text', hint: 'AAAA-MM-DD; con ella el análisis avisa cuando está cerca' };
 const DEPLOYMENT_FIELDS: FieldSpec[] = [...INSTANCE_FIELDS, COST, CPU, MEMORY];
 
 function nodeFields(kind: string, doc: PlatformDocument): FieldSpec[] {
@@ -136,6 +138,7 @@ function nodeFields(kind: string, doc: PlatformDocument): FieldSpec[] {
       { key: 'region', label: 'Región', type: 'text' },
       CPU,
       MEMORY,
+      ...(kind === 'certificate' ? [EXPIRES] : []),
       REF,
       TAGS,
     ];
@@ -305,7 +308,7 @@ function metadataBadges(doc: PlatformDocument, nodeId: string, includeCost: bool
   }
   if (target?.type === 'element') {
     const r = doc.resources.find((x) => x.id === target.id);
-    if (r) return [...cost(r), ...(r.region ? [`región ${r.region}`] : []), ...limits(r)];
+    if (r) return [...cost(r), ...(r.region ? [`región ${r.region}`] : []), ...(r.expiresAt ? [`caduca ${r.expiresAt}`] : []), ...limits(r)];
     const s = doc.services.find((x) => x.id === target.id);
     if (s) return objectives(s);
   }
@@ -594,7 +597,8 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
         }
         if (e.kind === 'resource') {
           const current = e.item as Resource;
-          const next = patchObject(current, patch, ['name', 'description', 'kind', 'environmentId', 'networkId', 'technology', 'version', 'status', 'iac', 'owner', 'ref', 'tags', 'monthlyCost', 'region', 'cpuLimit', 'memoryLimit']);
+          const next = patchObject(current, patch, ['name', 'description', 'kind', 'environmentId', 'networkId', 'technology', 'version', 'status', 'iac', 'owner', 'ref', 'tags', 'monthlyCost', 'region', 'cpuLimit', 'memoryLimit', 'expiresAt']);
+          if (next.expiresAt !== undefined && !resourceSchema.shape.expiresAt.safeParse(next.expiresAt).success) return fail('La fecha de caducidad debe tener la forma AAAA-MM-DD (p. ej. 2026-12-31).');
           if (next.monthlyCost !== undefined && (!Number.isFinite(next.monthlyCost) || next.monthlyCost < 0)) return fail('El coste mensual es un número igual o mayor que cero.');
           // Solo se comprueba lo que cambia: un documento que ya incumple la regla sigue editándose.
           const misplaced = next.kind !== current.kind || next.networkId !== current.networkId ? placementViolation(doc, next.kind, next.networkId) : undefined;

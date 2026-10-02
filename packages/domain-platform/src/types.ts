@@ -82,6 +82,8 @@ export interface Resource {
   /** Límite de CPU (vCPU, p. ej. «8») y de memoria (p. ej. «32 GiB»). */
   cpuLimit?: string;
   memoryLimit?: string;
+  /** Fecha de caducidad (AAAA-MM-DD), p. ej. la de un certificado: con ella el análisis avisa cuando está cerca. */
+  expiresAt?: string;
 }
 
 export interface Service {
