@@ -6,7 +6,7 @@ import {
   MiniMap,
   ReactFlow,
   applyNodeChanges,
-  useReactFlow,
+  useStore as useFlowStore,
   type Connection,
   type Edge,
   type Node,
@@ -23,6 +23,7 @@ import { routeMatchesNodes } from '@core/layout/quality';
 import { routeEdges } from '@core/layout/router';
 import { useDocumentStore } from '../../store/documentStore';
 import { BoundaryNode, type BoundaryNodeType } from './BoundaryNode';
+import { holdCamera, useCameraPending, useFitCamera } from './camera';
 import { ElementNode, elementColor, type ElementNodeType } from './ElementNode';
 import { RelationshipEdge, type RelationshipEdgeType } from './RelationshipEdge';
 
@@ -42,7 +43,7 @@ export function Canvas() {
   const nodeStyle = useDocumentStore((s) => s.ui.nodeStyle);
   const layoutBusy = useDocumentStore((s) => s.layoutBusy);
   const { moveElements, addRelationship, select, runAutoLayout, drillDown } = useDocumentStore.getState();
-  const { fitView } = useReactFlow();
+  const { fit, fitAfter } = useFitCamera();
 
   const derived = useMemo(() => (activeViewId && doc.views.some((v) => v.id === activeViewId) ? deriveView(doc, activeViewId) : null), [doc, activeViewId]);
 
@@ -60,8 +61,9 @@ export function Canvas() {
       const temporal = useDocumentStore.temporal.getState();
       const wasModified = useDocumentStore.getState().modified;
       temporal.pause();
-      void runAutoLayout(derived.view.id, { force: false })
-        .then(() => setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 50))
+      const layout = runAutoLayout(derived.view.id, { force: false });
+      fitAfter(layout, { padding: 0.15, duration: 300 }, 50);
+      void layout
         .catch((error) => Toast.error(`Autolayout automático falló: ${(error as Error).message}`))
         .finally(() => {
           temporal.resume();
@@ -69,7 +71,7 @@ export function Canvas() {
           useDocumentStore.setState({ modified: wasModified });
         });
     }
-  }, [derived, layoutBusy, runAutoLayout, fitView]);
+  }, [derived, layoutBusy, runAutoLayout, fitAfter]);
 
   const derivedNodes = useMemo<CanvasNode[]>(() => {
     if (!derived) return [];
@@ -108,15 +110,34 @@ export function Canvas() {
   const onNodeDoubleClick = useCallback(
     (_: unknown, node: Node) => {
       if (node.type !== 'element') return;
+      // El encuadre se anota antes de cambiar de vista: el render que ya muestra la vista nueva ya cuenta como pendiente.
+      const release = holdCamera();
       const target = drillDown(node.id);
-      if (target) setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 80);
+      if (target) fit({ padding: 0.15, duration: 300 }, 80, release);
+      else release();
     },
-    [drillDown, fitView],
+    [drillDown, fit],
   );
 
   // Estado local para arrastre fluido; se sincroniza con el store al terminar.
   const [nodes, setNodes] = useState<CanvasNode[]>(derivedNodes);
   useEffect(() => setNodes(derivedNodes), [derivedNodes]);
+
+  // Señal de «asentado» para las pruebas y para quien integre el editor (`data-layout` en el lienzo): «ready» cuando la vista
+  // activa ya tiene todos sus nodos colocados (ELK no está trabajando), lo dibujado corresponde a esa vista y la cámara ha
+  // terminado de encuadrar. Se deriva al renderizar, no en un efecto, así que pasa a «pending» en el mismo render en que
+  // cambia la vista o la estructura, sin esperar a ELK. `fitViewQueued` cubre el encuadre inicial de React Flow (prop `fitView`).
+  const flowFitQueued = useFlowStore((s) => s.fitViewQueued);
+  // React Flow encola su encuadre inicial en un efecto al montarse; hasta que ese efecto ha corrido no se puede saber si lo hay.
+  const hasView = derived !== null;
+  const [flowMounted, setFlowMounted] = useState(false);
+  useEffect(() => setFlowMounted(hasView), [hasView]);
+  const cameraPending = useCameraPending();
+  const placed = derived !== null && derived.nodes.every((n) => n.positioned);
+  // Lo dibujado se mira en el estado interno de React Flow, que va un efecto por detrás del estado local `nodes`.
+  const drawn = useFlowStore((s) => s.nodes.length === derivedNodes.length && s.nodes.every((n, i) => n.id === derivedNodes[i].id));
+  // Con la vista vacía React Flow deja su encuadre inicial encolado hasta que aparezca el primer nodo: no hay nada que encuadrar.
+  const settled = flowMounted && placed && drawn && !layoutBusy && !cameraPending && !(flowFitQueued && derivedNodes.length > 0);
 
   // Aristas: ruta del autolayout si sigue siendo válida para las posiciones actuales
   // (incluido el arrastre en curso); si no, anclajes repartidos por lado (puertos virtuales).
@@ -250,7 +271,7 @@ export function Canvas() {
 
   if (!derived) {
     return (
-      <div className="c4-canvas flex h-full w-full items-center justify-center text-color-2">
+      <div className="c4-canvas flex h-full w-full items-center justify-center text-color-2" data-testid="c4-canvas" data-view="" data-layout="ready">
         <div className="text-center">
           <div className="text-lg font-semibold">No hay ninguna vista</div>
           <div className="text-sm">Crea una vista en la pestaña "Vistas" o carga un documento.</div>
@@ -262,6 +283,9 @@ export function Canvas() {
   return (
     <ReactFlow
       className="c4-canvas"
+      data-testid="c4-canvas"
+      data-view={derived.view.id}
+      data-layout={settled ? 'ready' : 'pending'}
       colorMode={theme}
       nodes={nodes}
       edges={derivedEdges}
