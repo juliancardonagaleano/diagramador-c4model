@@ -10,9 +10,11 @@ import {
   ENTITY_KINDS,
   KIND_LABELS,
   PARENT_KINDS,
+  PARTICIPATIONS,
   PIPELINE_KINDS,
   type DataDocument,
 } from './types';
+import { BUILTIN_ENGINE_IDS } from './engines';
 
 const idSchema = z.string().min(1, 'El id no puede estar vacío').max(120);
 
@@ -38,6 +40,10 @@ export const assetSchema = z.object({
   name: z.string().min(1, 'El nombre no puede estar vacío'),
   description: z.string().optional(),
   technology: z.string().optional(),
+  engine: z
+    .string()
+    .optional()
+    .describe(`Motor de base de datos (${BUILTIN_ENGINE_IDS.join(', ')}; el registro de motores es extensible). Lo heredan las tablas, vistas y archivos del activo.`),
   owner: z.string().optional(),
   steward: z.string().optional(),
   domainId: idSchema.optional(),
@@ -77,12 +83,16 @@ export const pipelineSchema = z.object({
   mappings: z.array(mappingSchema).optional(),
 });
 
+export const participationSchema = z.literal([...PARTICIPATIONS]);
+
 export const relationSchema = z.object({
   id: idSchema,
   sourceId: idSchema,
   targetId: idSchema,
   cardinality: z.enum(CARDINALITIES),
   description: z.string().optional(),
+  sourceMin: participationSchema.optional().describe('Mínimo del origen: 0 = opcional, 1 = obligatorio (por defecto, 1 si la cardinalidad dice «uno» y 0 si dice «varios»).'),
+  targetMin: participationSchema.optional().describe('Mínimo del destino: 0 = opcional, 1 = obligatorio (mismos valores por defecto que sourceMin).'),
 });
 
 export const contractSchema = z.object({

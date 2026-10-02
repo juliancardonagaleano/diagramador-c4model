@@ -1,6 +1,6 @@
 import { BaseEdge, EdgeLabelRenderer, Position, getSmoothStepPath, type Edge, type EdgeProps } from '@xyflow/react';
 import { memo } from 'react';
-import { edgeEndPaths, polylineMidpoint, routePath, type EdgeEnd, type EdgeMark } from '@iark/kernel';
+import { edgeEndLabelPoint, edgeEndPaths, polylineMidpoint, routePath, type EdgeEnd, type EdgeMark } from '@iark/kernel';
 import { edgeLabelText, followRoute, type FlowEdgeData } from './flow';
 
 export type NotationEdgeType = Edge<FlowEdgeData, 'notation'>;
@@ -51,6 +51,16 @@ function EdgeEndGlyph({ end, at, position, id, side }: { end: EdgeEnd; at: { x: 
   );
 }
 
+/** Texto junto a un extremo de la relación (la multiplicidad UML `0..*`), a la vista como el remate de pata de gallo: pegado al nodo. */
+function EdgeEndText({ text, at, position, id, side }: { text: string; at: { x: number; y: number }; position: Position; id: string; side: 'source' | 'target' }) {
+  const p = edgeEndLabelPoint(at, OUTWARD[position]);
+  return (
+    <text x={p.x} y={p.y} textAnchor={p.anchor} className="cv-edge-end-text" data-testid={`edge-multiplicity-${id}-${side}`}>
+      {text}
+    </text>
+  );
+}
+
 /** Relación del lienzo: línea con ángulos rectos, estilo de la notación y, sobre ella, las insignias gráficas y la etiqueta. */
 /** Adorno en el origen de la línea (rombo de la composición, punto de la asignación): sale por la derecha del nodo de origen. */
 function Tail({ kind, x, y, color }: { kind: 'diamond' | 'dot'; x: number; y: number; color: string }) {
@@ -83,6 +93,8 @@ function NotationEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePositi
       {data?.notation.tail && <Tail kind={data.notation.tail} x={sourceX} y={sourceY} color={String(style?.stroke ?? '#475569')} />}
       {data?.edge.ends?.source && <EdgeEndGlyph end={data.edge.ends.source} at={{ x: sourceX, y: sourceY }} position={sourcePosition} id={id} side="source" />}
       {data?.edge.ends?.target && <EdgeEndGlyph end={data.edge.ends.target} at={{ x: targetX, y: targetY }} position={targetPosition} id={id} side="target" />}
+      {data?.edge.endLabels?.source && <EdgeEndText text={data.edge.endLabels.source} at={{ x: sourceX, y: sourceY }} position={sourcePosition} id={id} side="source" />}
+      {data?.edge.endLabels?.target && <EdgeEndText text={data.edge.endLabels.target} at={{ x: targetX, y: targetY }} position={targetPosition} id={id} side="target" />}
       {(marks.length > 0 || text) && (
         <EdgeLabelRenderer>
           <div

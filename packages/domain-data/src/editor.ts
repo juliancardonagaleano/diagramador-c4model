@@ -3,7 +3,8 @@ import { DATA_ACTIONS } from './actions';
 import { contractAttachments } from './contract-editor';
 import { inheritance } from './inherit';
 import { containerViolation, readViolation, writeViolation } from './rules';
-import { ASSET_SHAPES, KIND_COLORS, MAX_COLUMNS as MAX_COLUMN_LINES, PIPELINE_SHAPE, columnLine, entityLines, governanceLine, impactColumnLines, pipelineLine, pipelineNodeId, relationEnds } from './export/render';
+import { ASSET_SHAPES, KIND_COLORS, MAX_COLUMNS as MAX_COLUMN_LINES, PIPELINE_SHAPE, columnLine, entityLines, governanceLine, impactColumnLines, pipelineLine, pipelineNodeId, relationEnds, relationMultiplicities } from './export/render';
+import { listEngines } from './engines';
 import { formatColumnRef, parseColumnRef } from './lineage';
 import {
   ASSET_KINDS,
@@ -11,6 +12,7 @@ import {
   CLASSIFICATIONS,
   CLASSIFICATION_LABELS,
   COLUMN_KEYS,
+  ENGINE_KINDS,
   ENTITY_KINDS,
   KIND_LABELS,
   PARENT_KINDS,
@@ -76,6 +78,9 @@ const assetFields = (doc: DataDocument, kind: string): FieldSpec[] => [
   { key: 'name', label: 'Nombre', type: 'text' },
   { key: 'description', label: 'Descripción', type: 'longtext' },
   { key: 'technology', label: 'Tecnología', type: 'text' },
+  ...(ENGINE_KINDS.includes(kind as AssetKind)
+    ? ([{ key: 'engine', label: 'Motor de base de datos', type: 'select', options: listEngines().map((e) => ({ value: e.id, label: e.label })), allowEmpty: true, hint: 'Valida los tipos de las columnas y de los contratos y fija el dialecto del DDL; lo heredan sus tablas' }] as FieldSpec[])
+    : []),
   { key: 'owner', label: 'Responsable', type: 'text' },
   { key: 'steward', label: 'Custodio', type: 'text' },
   { key: 'domainId', label: 'Dominio', type: 'select', options: doc.domains.map((d) => ({ value: d.id, label: d.name })), allowEmpty: true },
@@ -105,8 +110,15 @@ const PIPELINE_FIELDS: FieldSpec[] = [
   { key: 'mappingsText', label: 'Linaje de columnas (una por línea)', type: 'longtext', hint: 'crm-clientes.email -> bronze-clientes.email : copia' },
 ];
 
+const MIN_OPTIONS = [
+  { value: '0', label: '0 · opcional' },
+  { value: '1', label: '1 · obligatorio' },
+];
+
 const RELATION_FIELDS: FieldSpec[] = [
   { key: 'cardinality', label: 'Cardinalidad', type: 'select', options: options(CARDINALITIES) },
+  { key: 'sourceMin', label: 'Mínimo en el origen', type: 'select', options: MIN_OPTIONS, allowEmpty: true, hint: 'Sin indicar: 1 si el origen es «uno» (1) y 0 si es «varios» (0..*). Se ve en la notación UML' },
+  { key: 'targetMin', label: 'Mínimo en el destino', type: 'select', options: MIN_OPTIONS, allowEmpty: true, hint: 'Sin indicar: 1 si el destino es «uno» (1) y 0 si es «varios» (0..*). Se ve en la notación UML' },
   { key: 'description', label: 'Descripción', type: 'longtext' },
 ];
 
@@ -270,7 +282,9 @@ function project(doc: DataDocument, viewId?: string): EditorGraph {
     for (const id of p.outputs) if (assets.has(id) && shown.has(id)) edges.push({ id: flowEdgeId(p.id, 'out', id), kind: 'pipeline', source: pipelineNodeId(p.id), target: id });
   }
   for (const r of doc.relations.filter((r) => view.relationIds.includes(r.id))) {
-    edges.push({ id: r.id, kind: r.cardinality, source: r.sourceId, target: r.targetId, label: r.description || undefined, ends: relationEnds(r) });
+    // Pata de gallo en los extremos o, en la notación UML, las multiplicidades escritas junto a cada uno.
+    const notation = view.notation === 'uml' ? { endLabels: relationMultiplicities(r) } : { ends: relationEnds(r) };
+    edges.push({ id: r.id, kind: r.cardinality, source: r.sourceId, target: r.targetId, label: r.description || undefined, ...notation });
   }
   return { nodes, edges };
 }
@@ -382,13 +396,21 @@ export const dataEditor: EditorSpec<DataDocument> = {
         id,
         document: {
           ...doc,
-          assets: doc.assets.map((a) => (a.id === id ? patchObject(a, withColumns, ['name', 'description', 'technology', 'owner', 'steward', 'domainId', 'classification', 'pii', 'retention', 'external', 'ref', 'tags', 'columns', 'parentId', 'contractId']) : a)),
+          assets: doc.assets.map((a) => (a.id === id ? patchObject(a, withColumns, ['name', 'description', 'technology', 'engine', 'owner', 'steward', 'domainId', 'classification', 'pii', 'retention', 'external', 'ref', 'tags', 'columns', 'parentId', 'contractId']) : a)),
         },
       };
     }
     if (doc.relations.some((r) => r.id === id)) {
       if (patch.cardinality !== undefined && !(CARDINALITIES as readonly string[]).includes(patch.cardinality as string)) return fail(`Cardinalidad desconocida: ${String(patch.cardinality)}`);
-      return { ok: true, id, document: { ...doc, relations: doc.relations.map((r) => (r.id === id ? patchObject(r, patch, ['cardinality', 'description']) : r)) } };
+      const minimum = { ...patch };
+      for (const key of ['sourceMin', 'targetMin'] as const) {
+        if (!(key in minimum)) continue;
+        const value = clean(minimum[key]);
+        if (value === undefined) continue;
+        if (value !== 0 && value !== 1 && value !== '0' && value !== '1') return fail(`El mínimo debe ser 0 (opcional) o 1 (obligatorio), no «${String(value)}».`);
+        minimum[key] = Number(value);
+      }
+      return { ok: true, id, document: { ...doc, relations: doc.relations.map((r) => (r.id === id ? patchObject(r, minimum, ['cardinality', 'description', 'sourceMin', 'targetMin']) : r)) } };
     }
     return fail(`No existe «${id}».`);
   },

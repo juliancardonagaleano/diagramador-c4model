@@ -104,6 +104,8 @@ export interface ViewRef {
   variantOf?: string;
   /** Nombre corto de la variante en ese selector («Criticidad»). */
   variantLabel?: string;
+  /** Título del selector de variantes de esta vista y las suyas («Notación»); por defecto, «Colorear por». */
+  variantsLabel?: string;
 }
 
 /** Vista bajo demanda de un elemento del documento (`<prefix>:<id>`), como el impacto, el linaje o el alcance. */

@@ -1,14 +1,14 @@
 import { drawioShapeStyle } from '@iark/kernel';
 import { KIND_LABELS, type DataDocument } from '../types';
-import { listViews } from '../views';
-import { ASSET_SHAPES, KIND_COLORS, colorOf, entityLines, governanceLine, isDashed, layoutView, pipelineLine, relationEnds, relationLabel, strokeOf } from './render';
+import { exportViews } from '../views';
+import { ASSET_SHAPES, KIND_COLORS, colorOf, entityLines, governanceLine, isDashed, layoutView, pipelineLine, relationEnds, relationLabel, relationMultiplicities, strokeOf } from './render';
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
 
-/** Exporta todas las vistas (linaje, ERD y dominios) a un `.drawio`, una página por vista, ya colocadas con el autolayout. */
+/** Exporta todas las vistas (linaje, ERD en pata de gallo y en UML, y dominios) a un `.drawio`, una página por vista, ya colocadas con el autolayout. */
 export async function toDrawio(doc: DataDocument): Promise<string> {
   const pages: string[] = [];
-  for (const view of listViews(doc)) {
+  for (const view of exportViews(doc)) {
     const { layout, assets, pipelineNodes, edges, contextIds } = await layoutView(doc, view.id);
     const erd = view.type === 'erd';
     const cells: string[] = ['<mxCell id="0"/>', '<mxCell id="1" parent="0"/>'];
@@ -41,12 +41,22 @@ export async function toDrawio(doc: DataDocument): Promise<string> {
     for (const e of layout.edges) {
       const { source, target, relation, pipeline } = edges.get(e.id)!;
       const dashed = isDashed(pipeline) ? 'dashed=1;' : '';
-      const ends = relation ? relationEnds(relation) : undefined;
-      const arrows = ends ? `startArrow=${ends.source === 'one' ? 'ERone' : 'ERmany'};startFill=0;endArrow=${ends.target === 'one' ? 'ERone' : 'ERmany'};endFill=0;` : 'endArrow=block;';
+      const uml = !!relation && view.notation === 'uml';
+      const ends = relation && !uml ? relationEnds(relation) : undefined;
+      const arrows = uml ? 'startArrow=none;endArrow=none;' : ends ? `startArrow=${ends.source === 'one' ? 'ERone' : 'ERmany'};startFill=0;endArrow=${ends.target === 'one' ? 'ERone' : 'ERmany'};endFill=0;` : 'endArrow=block;';
       const points = e.points.slice(1, -1).map((p) => `<mxPoint x="${p.x}" y="${p.y}"/>`).join('');
       cells.push(
-        `<mxCell id="e-${esc(e.id)}" value="${esc(relation ? relationLabel(relation) : '')}" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;${arrows}${dashed}" edge="1" parent="1" source="n-${esc(source)}" target="n-${esc(target)}"><mxGeometry relative="1" as="geometry">${points ? `<Array as="points">${points}</Array>` : ''}</mxGeometry></mxCell>`,
+        `<mxCell id="e-${esc(e.id)}" value="${esc(relation ? relationLabel(relation, view.notation) : '')}" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;${arrows}${dashed}" edge="1" parent="1" source="n-${esc(source)}" target="n-${esc(target)}"><mxGeometry relative="1" as="geometry">${points ? `<Array as="points">${points}</Array>` : ''}</mxGeometry></mxCell>`,
       );
+      // La multiplicidad UML de cada extremo es una etiqueta de la arista (`x` = -1 junto al origen, 1 junto al destino).
+      if (uml && relation) {
+        const m = relationMultiplicities(relation);
+        for (const [side, text, x] of [['source', m.source, -0.85], ['target', m.target, 0.85]] as const) {
+          cells.push(
+            `<mxCell id="e-${esc(e.id)}-${side}" value="${esc(text)}" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="e-${esc(e.id)}"><mxGeometry x="${x}" relative="1" as="geometry"><mxPoint y="-10" as="offset"/></mxGeometry></mxCell>`,
+          );
+        }
+      }
     }
     pages.push(
       `<diagram id="${esc(view.id)}" name="${esc(view.title.slice(0, 60))}"><mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" math="0" shadow="0"><root>${cells.join('')}</root></mxGraphModel></diagram>`,
