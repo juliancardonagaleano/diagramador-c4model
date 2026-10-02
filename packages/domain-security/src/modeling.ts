@@ -7,6 +7,7 @@ import {
   STRIDE_BY_ELEMENT,
   STRIDE_LABELS,
   TRUST_LABELS,
+  controlStatusOf,
   flowName,
   indexElements,
   sensitive,
@@ -87,6 +88,25 @@ export function standardsCoverage(doc: SecurityDocument): Array<{ standard: Cont
     return { standard, label: standard === 'none' ? 'Sin estándar' : STANDARD_LABELS[standard], controls: controls.length, threats: doc.threats.filter((t) => (t.controlIds ?? []).some((c) => ids.has(c))).length };
   });
   return rows.filter((r) => r.standard !== 'none' || r.controls > 0);
+}
+
+/** Cobertura de una amenaza por los controles de un catálogo de estándares: con un control implementado, solo con controles previstos o ninguna. */
+export type Coverage = 'covered' | 'planned' | 'none';
+export const COVERAGE_LABELS: Record<Coverage, string> = { covered: 'cubierta', planned: 'cobertura prevista', none: 'sin cobertura' };
+
+/**
+ * Cobertura de una amenaza por los controles de una vista de estándares (`controlIds`, los de la vista): cubierta si alguno de
+ * sus controles enlazados dentro de ese conjunto está implementado, con cobertura prevista si los que tiene solo están
+ * previstos, y sin cobertura si no tiene ninguno. `controls` son los enlazados que cuentan, sin repetir y en el orden de la
+ * amenaza.
+ */
+export function threatCoverage(doc: SecurityDocument, controlIds: readonly string[], t: Threat): { level: Coverage; controls: Control[] } {
+  const controls = [...new Set(t.controlIds ?? [])]
+    .filter((id) => controlIds.includes(id))
+    .map((id) => doc.controls.find((c) => c.id === id))
+    .filter((c): c is Control => c !== undefined);
+  const level = controls.length === 0 ? 'none' : controls.some((c) => controlStatusOf(c) === 'implemented') ? 'covered' : 'planned';
+  return { level, controls };
 }
 
 const suggestedIn = (doc: SecurityDocument, ids: string[]): Threat[] => doc.threats.filter((t) => t.suggested === true && ids.includes(t.id));

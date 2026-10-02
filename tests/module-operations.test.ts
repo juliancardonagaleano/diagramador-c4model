@@ -108,7 +108,7 @@ describe('comandos', () => {
 
   it('separa los informes de las conversiones entre módulos', () => {
     const infos = commandInfos(securityModule);
-    expect(infos.filter((c) => c.kind === 'report').map((c) => c.name)).toEqual(['risks', 'stride', 'exposure']);
+    expect(infos.filter((c) => c.kind === 'report').map((c) => c.name)).toEqual(['risks', 'heatmap', 'stride', 'standards', 'exposure']);
     expect(infos.filter((c) => c.kind === 'convert').map((c) => c.name)).toEqual(['from-integration', 'from-platform']);
   });
 

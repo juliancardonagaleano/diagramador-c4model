@@ -1,32 +1,50 @@
 import type { CommandSpec } from '@iark/kernel';
+import { HEAT_ROWS, heatContents, heatNote } from './export/render';
 import { attackPaths, entryPoints } from './graph';
 import { fromIntegrationJson } from './import/fromIntegration';
 import { SecurityImportError } from './import/fromMermaid';
 import { fromPlatformJson } from './import/fromPlatform';
 import { applicableCategories } from './issues';
+import { COVERAGE_LABELS, threatCoverage, type Coverage } from './modeling';
 import { formatSecurityIssues, validateSecurityDocument } from './schema';
 import {
   ASSET_LABELS,
   AUTHENTICATION_LABELS,
+  CONTROL_LABELS,
+  CONTROL_STANDARDS,
+  CONTROL_STATUS_LABELS,
   DATA_LABELS,
+  IMPACTS,
+  LIKELIHOOD_LABELS,
   RATING_LABELS,
+  RISK_RATINGS,
+  STANDARD_LABELS,
   STATUS_LABELS,
   STRIDE,
   STRIDE_LABELS,
   THREAT_STATUSES,
   TRUST_LABELS,
+  cellRating,
+  cellScore,
   controlStatusOf,
+  heatCellId,
   indexElements,
+  residualOf,
   riskOf,
   sensitive,
   statusOf,
   trustOf,
   type Asset,
+  type Control,
+  type ControlStandard,
   type Element,
+  type RiskRating,
   type SecurityDocument,
   type Stride,
+  type Threat,
   type ThreatStatus,
 } from './types';
+import { findView, standardsInUse, type SecurityView } from './views';
 
 function parseJson(text: string | undefined, what: string): unknown {
   if (!text) throw new SecurityImportError(`Falta la entrada: indica un archivo JSON o usa --stdin (${what}).`);
@@ -44,12 +62,20 @@ function readSecurity(text: string | undefined): SecurityDocument {
 }
 
 const cell = (s: string | undefined): string => (s ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+/** «alto (6)»: la valoración y la puntuación (probabilidad × impacto) de un riesgo. */
+const riskLabel = (r: { rating: RiskRating; score: number }): string => `${RATING_LABELS[r.rating]} (${r.score})`;
+/** «1 crítico, 2 alto, 1 medio, 0 bajo»: cuántas valoraciones hay de cada una, de mayor a menor. */
+const ratingSummary = (ratings: RiskRating[]): string => [...RISK_RATINGS].reverse().map((r) => `${ratings.filter((x) => x === r).length} ${RATING_LABELS[r]}`).join(', ');
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+const controlLabel = (c: Control): string => `${c.name}${controlStatusOf(c) === 'planned' ? ' (prevista)' : ''}`;
+/** De mayor a menor riesgo inherente; a igualdad, en el orden del documento. */
+const byRisk = (threats: Threat[]): Threat[] => [...threats].sort((a, b) => riskOf(b).score - riskOf(a).score);
 const STRIDE_LETTERS: Record<Stride, string> = { spoofing: 'S', tampering: 'T', repudiation: 'R', 'information-disclosure': 'I', 'denial-of-service': 'D', 'elevation-of-privilege': 'E' };
 
 export const securityCommands: CommandSpec[] = [
   {
     name: 'risks',
-    description: 'Registro de riesgos (tabla Markdown): las amenazas ordenadas por riesgo (probabilidad × impacto) con su estado y los controles que las mitigan, y el resumen de las abiertas',
+    description: 'Registro de riesgos (tabla Markdown): las amenazas ordenadas por riesgo inherente (probabilidad × impacto) con su estado, los controles que las mitigan y el riesgo residual que queda tras los controles implementados, y el resumen de las abiertas',
     input: { description: 'documento de seguridad en JSON' },
     options: [{ flags: '--status <estado>', description: `solo las amenazas en ese estado (${THREAT_STATUSES.join(' | ')})` }],
     run: ({ options, input }) => {
@@ -59,20 +85,48 @@ export const securityCommands: CommandSpec[] = [
       if (doc.threats.length === 0) return 'El documento no define amenazas.';
       const elements = indexElements(doc);
       const controls = new Map(doc.controls.map((c) => [c.id, c]));
-      const rows = doc.threats
-        .map((t, index) => ({ t, risk: riskOf(t), index }))
-        .filter(({ t }) => status === undefined || statusOf(t) === status)
-        .sort((a, b) => b.risk.score - a.risk.score || a.index - b.index);
-      const out = ['| Riesgo | Amenaza | STRIDE | Sobre | Estado | Controles |', '|---|---|---|---|---|---|'];
-      for (const { t, risk } of rows) {
-        const linked = (t.controlIds ?? []).map((id) => `${controls.get(id)!.name}${controlStatusOf(controls.get(id)!) === 'planned' ? ' (prevista)' : ''}`);
-        out.push(`| ${RATING_LABELS[risk.rating]} (${risk.score}) | ${cell(t.title)} | ${STRIDE_LABELS[t.category]} | ${cell(elements.get(t.targetId)!.name)} | ${STATUS_LABELS[statusOf(t)]} | ${cell(linked.join('; ')) || '—'} |`);
+      const out = ['| Riesgo | Amenaza | STRIDE | Sobre | Estado | Controles | Residual |', '|---|---|---|---|---|---|---|'];
+      for (const t of byRisk(doc.threats.filter((x) => status === undefined || statusOf(x) === status))) {
+        const linked = (t.controlIds ?? []).map((id) => controlLabel(controls.get(id)!));
+        const residual = residualOf(doc, t);
+        out.push(`| ${riskLabel(riskOf(t))} | ${cell(t.title)} | ${STRIDE_LABELS[t.category]} | ${cell(elements.get(t.targetId)!.name)} | ${STATUS_LABELS[statusOf(t)]} | ${cell(linked.join('; ')) || '—'} | ${riskLabel(residual)}${residual.reduced ? ' ↓' : ''} |`);
       }
       const count = (s: ThreatStatus): number => doc.threats.filter((t) => statusOf(t) === s).length;
       const open = doc.threats.filter((t) => statusOf(t) === 'open');
-      const byRating = (r: string): number => open.filter((t) => riskOf(t).rating === r).length;
       out.push('', `Amenazas: ${doc.threats.length} · abiertas: ${count('open')} · mitigadas: ${count('mitigated')} · aceptadas: ${count('accepted')}`);
-      out.push(`Abiertas por riesgo: ${byRating('critical')} crítico, ${byRating('high')} alto, ${byRating('medium')} medio, ${byRating('low')} bajo`);
+      out.push(`Abiertas por riesgo: ${ratingSummary(open.map((t) => riskOf(t).rating))}`);
+      out.push(`Abiertas por riesgo residual: ${ratingSummary(open.map((t) => residualOf(doc, t).rating))}`);
+      out.push('Residual: lo que queda tras los controles implementados (↓ = menor que el inherente); los controles previstos no cuentan.');
+      return out.join('\n');
+    },
+  },
+  {
+    name: 'heatmap',
+    description: 'Matriz de calor (tabla Markdown): probabilidad × impacto con el número de amenazas de cada celda y, debajo, qué amenazas hay en cada celda no vacía; con --residual, donde quedan tras los controles implementados',
+    input: { description: 'documento de seguridad en JSON' },
+    options: [{ flags: '--residual', description: 'colocar las amenazas por su riesgo residual (tras los controles implementados) en vez de por el inherente' }],
+    run: ({ options, input }) => {
+      const doc = readSecurity(input);
+      if (doc.threats.length === 0) return 'El documento no define amenazas.';
+      const view = findView(doc, options.residual ? 'heatmap:residual' : 'heatmap');
+      const mode = view.mode ?? 'inherent';
+      const cells = heatContents(doc, view);
+      const elements = indexElements(doc);
+      const out = [view.title, '', `| Probabilidad \\ Impacto | ${IMPACTS.map((i) => RATING_LABELS[i]).join(' | ')} |`, `|---|${IMPACTS.map(() => ':-:').join('|')}|`];
+      for (const l of HEAT_ROWS) out.push(`| ${LIKELIHOOD_LABELS[l]} | ${IMPACTS.map((i) => cells.get(heatCellId(l, i))!.length).join(' | ')} |`);
+      const occupied = HEAT_ROWS.flatMap((l) => IMPACTS.map((i) => ({ l, i, threats: cells.get(heatCellId(l, i))! })))
+        .filter((c) => c.threats.length > 0)
+        .sort((a, b) => cellScore(b.l, b.i) - cellScore(a.l, a.i));
+      out.push('', 'Amenazas por celda, de mayor a menor riesgo:');
+      for (const { l, i, threats } of occupied) {
+        out.push(`- prob. ${LIKELIHOOD_LABELS[l]} × impacto ${RATING_LABELS[i]} · riesgo ${riskLabel({ rating: cellRating(l, i), score: cellScore(l, i) })} · ${plural(threats.length, 'amenaza', 'amenazas')}`);
+        for (const t of threats) {
+          const note = heatNote(doc, t, mode);
+          out.push(`  - ${cell(t.title)} · ${STRIDE_LABELS[t.category]} · ${cell(elements.get(t.targetId)!.name)} · ${STATUS_LABELS[statusOf(t)]}${note ? ` · ${note}` : ''}`);
+        }
+      }
+      const placed = occupied.flatMap(({ l, i, threats }) => threats.map(() => cellRating(l, i)));
+      out.push('', `Amenazas: ${doc.threats.length} · por riesgo${mode === 'residual' ? ' residual' : ''}: ${ratingSummary(placed)} · con riesgo residual menor que el inherente: ${doc.threats.filter((t) => residualOf(doc, t).reduced).length}`);
       return out.join('\n');
     },
   },
@@ -106,6 +160,55 @@ export const securityCommands: CommandSpec[] = [
       out.push('— no aplica · ○ sin analizar · ●n con n amenaza(s), alguna abierta · ✓n con n amenaza(s), todas mitigadas o aceptadas');
       out.push(`Analizadas: ${analyzed} · Sin analizar: ${gaps}`);
       return out.join('\n');
+    },
+  },
+  {
+    name: 'standards',
+    description: 'Cobertura de estándares (tabla Markdown): para cada catálogo al que remiten los controles (OWASP ASVS, NIST 800-53, ISO 27001, CIS), sus controles y qué amenazas están cubiertas (control implementado), con cobertura solo prevista o sin cobertura (los huecos); con un catálogo, solo ese',
+    input: { description: 'documento de seguridad en JSON' },
+    options: [{ flags: '--catalogo <catálogo>', description: `solo ese catálogo (${CONTROL_STANDARDS.join(' | ')}); por defecto, todos los que usan los controles` }],
+    run: ({ options, input }) => {
+      const doc = readSecurity(input);
+      const chosen = String(options.catalogo ?? '').trim();
+      const wanted = chosen === '' ? undefined : chosen.toLowerCase();
+      if (wanted !== undefined && !(CONTROL_STANDARDS as readonly string[]).includes(wanted)) throw new SecurityImportError(`Catálogo inválido «${chosen}». Use: ${CONTROL_STANDARDS.join(', ')}.`);
+      const used = standardsInUse(doc);
+      if (used.length === 0) return 'Ningún control remite a un estándar (campo «standard» de los controles): no hay cobertura de estándares que mostrar.';
+      if (wanted !== undefined && !used.includes(wanted as ControlStandard)) return `Ningún control remite a ${STANDARD_LABELS[wanted as ControlStandard]}. Estándares en uso: ${used.map((s) => STANDARD_LABELS[s]).join(', ')}.`;
+      const elements = indexElements(doc);
+      const coverage = (view: SecurityView) => {
+        const tally: Record<Coverage, number> = { covered: 0, planned: 0, none: 0 };
+        const rows = byRisk(doc.threats.filter((t) => view.threatIds.includes(t.id))).map((t) => {
+          const c = threatCoverage(doc, view.controlIds, t);
+          tally[c.level]++;
+          return { t, ...c };
+        });
+        return { rows, tally };
+      };
+      const standardView = (standard: ControlStandard): SecurityView => findView(doc, `standards:${standard}`);
+      const section = (standard: ControlStandard, heading: boolean): string[] => {
+        const view = standardView(standard);
+        const controls = doc.controls.filter((c) => view.controlIds.includes(c.id));
+        const { rows, tally } = coverage(view);
+        const out = heading ? [`## ${STANDARD_LABELS[standard]} · ${plural(controls.length, 'control', 'controles')}`, ''] : [];
+        out.push('| Control | Tipo | Estado | Mitiga |', '|---|---|---|---|');
+        for (const c of controls) out.push(`| ${cell(c.name)} | ${CONTROL_LABELS[c.kind]} | ${CONTROL_STATUS_LABELS[controlStatusOf(c)]} | ${plural(doc.threats.filter((t) => (t.controlIds ?? []).includes(c.id)).length, 'amenaza', 'amenazas')} |`);
+        out.push('', '| Riesgo | Amenaza | Sobre | Estado | Cobertura | Controles |', '|---|---|---|---|---|---|');
+        for (const { t, level, controls: linked } of rows) {
+          out.push(`| ${riskLabel(riskOf(t))} | ${cell(t.title)} | ${cell(elements.get(t.targetId)!.name)} | ${STATUS_LABELS[statusOf(t)]} | ${COVERAGE_LABELS[level]} | ${cell(linked.map(controlLabel).join('; ')) || '—'} |`);
+        }
+        out.push('', `Cubiertas: ${tally.covered} · Con cobertura prevista: ${tally.planned} · Sin cobertura: ${tally.none}`);
+        return out;
+      };
+      if (wanted !== undefined) return [standardView(wanted as ControlStandard).title, '', ...section(wanted as ControlStandard, false)].join('\n');
+      const overview = ['| Estándar | Controles | Cubiertas | Con cobertura prevista | Sin cobertura |', '|---|--:|--:|--:|--:|'];
+      const row = (label: string, view: SecurityView): void => {
+        const { tally } = coverage(view);
+        overview.push(`| ${label} | ${view.controlIds.length} | ${tally.covered} | ${tally.planned} | ${tally.none} |`);
+      };
+      for (const standard of used) row(STANDARD_LABELS[standard], standardView(standard));
+      if (used.length > 1) row('Todos los estándares', findView(doc, 'standards'));
+      return [findView(doc, 'standards').title, '', ...overview, ...used.flatMap((standard) => ['', ...section(standard, true)])].join('\n');
     },
   },
   {

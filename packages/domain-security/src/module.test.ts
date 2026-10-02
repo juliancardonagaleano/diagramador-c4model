@@ -14,7 +14,7 @@ import { fromPlatformJson } from './import/fromPlatform';
 import { applicableCategories, analyzeSecurity } from './issues';
 import { securityModule } from './module';
 import { formatSecurityIssues, validateSecurityDocument } from './schema';
-import { indexElements, riskOf, type SecurityDocument } from './types';
+import { RATING_LABELS, indexElements, residualOf, riskOf, type SecurityDocument } from './types';
 import { findView, listViews, traceView } from './views';
 
 const example = JSON.parse(readFileSync('examples/seguridad-ejemplo.json', 'utf8')) as unknown;
@@ -611,7 +611,7 @@ describe('módulo', () => {
     expect(securityModule.validate(doc).filter((i) => i.severity === 'warning')).toHaveLength(7);
     expect((securityModule.jsonSchema() as { type: string }).type).toBe('object');
     expect(securityModule.importers[0].detect!('flowchart LR\n a --> b')).toBe(true);
-    expect(securityModule.cliCommands!.map((c) => c.name)).toEqual(['risks', 'stride', 'exposure', 'from-integration', 'from-platform']);
+    expect(securityModule.cliCommands!.map((c) => c.name)).toEqual(['risks', 'heatmap', 'stride', 'standards', 'exposure', 'from-integration', 'from-platform']);
   });
 });
 
@@ -623,7 +623,7 @@ describe('comandos', () => {
     const text = run('risks', [], example);
     const rows = text.split('\n').filter((l) => l.startsWith('| ') && !l.startsWith('| Riesgo'));
     expect(rows).toHaveLength(10);
-    expect(rows[0]).toBe('| crítico (9) | Robo de credenciales de clientes (credential stuffing) | Suplantación | Cliente | abierta | Autenticación multifactor para clientes (prevista); Limitación de intentos y de tasa en el balanceador |');
+    expect(rows[0]).toBe('| crítico (9) | Robo de credenciales de clientes (credential stuffing) | Suplantación | Cliente | abierta | Autenticación multifactor para clientes (prevista); Limitación de intentos y de tasa en el balanceador | alto (6) ↓ |');
     expect(rows[rows.length - 1]).toContain('| bajo (2) | El cliente niega haber hecho un pedido |');
     expect(rows.find((r) => r.includes('Correos con datos'))).toContain('| abierta | — |');
     expect(text).toContain('Amenazas: 10 · abiertas: 4 · mitigadas: 5 · aceptadas: 1');
@@ -632,6 +632,30 @@ describe('comandos', () => {
     expect(open).toHaveLength(4);
     expect(run('risks', [], {})).toBe('El documento no define amenazas.');
     expect(() => run('risks', [], example, { status: 'cerrada' })).toThrow(/Estado inválido «cerrada»/);
+  });
+
+  it('risks añade el riesgo residual tras los controles implementados y resume las abiertas por él', () => {
+    const text = run('risks', [], example);
+    expect(text).toContain('| Riesgo | Amenaza | STRIDE | Sobre | Estado | Controles | Residual |');
+    const rows = text.split('\n').filter((l) => l.startsWith('| ') && !l.startsWith('| Riesgo'));
+    const row = (title: string) => rows.find((r) => r.includes(title))!;
+    // Un control implementado baja la probabilidad; dos, también el impacto: la marca ↓ indica que baja.
+    expect(row('credential stuffing')).toMatch(/\| alto \(6\) ↓ \|$/);
+    expect(row('Inyección SQL')).toMatch(/\| crítico \(8\) \|.*\| medio \(3\) ↓ \|$/);
+    // Un control solo previsto, o ninguno, no cambia el riesgo residual.
+    expect(row('(IDOR)')).toMatch(/\| alto \(6\) \|$/);
+    expect(row('Correos con datos')).toMatch(/\| medio \(4\) \|$/);
+    // Es el mismo cálculo que usan la matriz de calor y el lienzo (`residualOf`).
+    for (const t of doc.threats) {
+      const residual = residualOf(doc, t);
+      const line = row(t.title);
+      expect(line.endsWith(`| ${RATING_LABELS[residual.rating]} (${residual.score})${residual.reduced ? ' ↓' : ''} |`)).toBe(true);
+    }
+    expect(text).toContain('Abiertas por riesgo: 1 crítico, 2 alto, 1 medio, 0 bajo');
+    expect(text).toContain('Abiertas por riesgo residual: 0 crítico, 2 alto, 2 medio, 0 bajo');
+    expect(text).toContain('los controles previstos no cuentan');
+    // El filtro por estado no cambia el resumen de las abiertas.
+    expect(run('risks', [], example, { status: 'mitigated' })).toContain('Abiertas por riesgo residual: 0 crítico, 2 alto, 2 medio, 0 bajo');
   });
 
   it('stride cruza cada activo y flujo con las categorías que le aplican y las que ya están analizadas', () => {
