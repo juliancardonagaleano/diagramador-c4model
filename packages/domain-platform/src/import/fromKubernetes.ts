@@ -894,12 +894,12 @@ class KubernetesBuilder {
           const cm = rec(from?.configMapKeyRef);
           const secret = rec(from?.secretKeyRef);
           if (cm && text(cm.name)) {
-            useConfigMap(text(cm.name)!, `Variable de entorno ${name} (${cname})`);
+            useConfigMap(text(cm.name)!, `Variable de entorno ${name}`);
             const value = this.configMapValues(ns, text(cm.name)!).find(([k]) => k === text(cm.key))?.[1];
             if (value !== undefined) for (const f of this.scan(value, name, true)) this.reference(source, w, { ...f, origin: `variable de entorno ${name}, del ConfigMap «${text(cm.name)}»` });
           }
           if (secret && text(secret.name)) {
-            this.useSecret(source, ns, text(secret.name)!, `Variable de entorno ${name} (${cname})`);
+            this.useSecret(source, ns, text(secret.name)!, `Variable de entorno ${name}`);
             this.secretRefs.push(`${name} (${w.obj.name})`);
           }
         }
@@ -924,7 +924,7 @@ class KubernetesBuilder {
         if (claim) this.addDependency(source, this.targets.get(this.key(ns, `PersistentVolumeClaim/${claim}`)), `Volumen ${text(v.name) ?? claim}`, undefined, 'data');
         if (cm) {
           useConfigMap(cm, `Volumen ${text(v.name) ?? cm}`);
-          for (const [k, content] of this.configMapValues(ns, cm)) for (const f of this.scan(content, undefined, false)) this.reference(source, w, { ...f, origin: `archivo ${k} del ConfigMap «${cm}» que monta` });
+          for (const [k, content] of this.configMapValues(ns, cm)) for (const f of this.scan(content, undefined, false)) this.reference(source, w, { ...f, origin: `archivo ${k} del ConfigMap «${cm}»` });
         }
         if (secret) this.useSecret(source, ns, secret, `Volumen ${text(v.name) ?? secret}`);
       }

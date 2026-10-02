@@ -104,7 +104,7 @@ describe('Kubernetes: aplicación web con base de datos (kustomize build)', () =
     expect(dep(doc, 'api', 'redis')).toMatchObject({ kind: 'data', protocol: 'Redis' });
     expect(dep(doc, 'api', 'redis')?.description).toMatch(/CACHE_URL.*ConfigMap «api-config»/);
     expect(dep(doc, 'web', 'api')).toMatchObject({ kind: 'calls', protocol: 'HTTP' });
-    expect(dep(doc, 'web', 'api')?.description).toMatch(/default\.conf.*web-nginx/);
+    expect(dep(doc, 'web', 'api')?.description).toBe('Archivo default.conf del ConfigMap «web-nginx»');
     expect(dep(doc, 'limpieza-carritos', 'api')?.description).toMatch(/argumento/i);
     expect(dep(doc, 'postgres', 'postgres-data')).toMatchObject({ kind: 'data' });
     expect(dep(doc, 'web', 'web-nginx')).toBeDefined();
@@ -112,6 +112,7 @@ describe('Kubernetes: aplicación web con base de datos (kustomize build)', () =
     // Un Service sin consumidor no inventa dependencias.
     expect(dep(doc, 'redis', 'postgres')).toBeUndefined();
     for (const d of doc.dependencies) expect(d.description).toBeTruthy();
+    for (const d of doc.dependencies) expect(d.description!.length).toBeLessThanOrEqual(80);
   });
 
   it('avisa del clúster implícito, de lo que no mapea, de los valores de Secret y de los hosts externos', () => {

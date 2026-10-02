@@ -105,6 +105,12 @@ describe('Terraform: configuración HCL de AWS (VPC, EKS, RDS, SQS, ALB…)', ()
     expect(dep(doc, 'sqs-queue-orders', 'orders')).toBeUndefined();
     expect(dep(doc, 'orders', 'sessions')).toBeUndefined();
     for (const d of doc.dependencies) expect(d.description).toBeTruthy();
+    // Las descripciones son las etiquetas de las flechas del lienzo: cortas y con la dirección de Terraform que las origina.
+    expect(dep(doc, 'public', 'eks-cluster-main')?.description).toBe('Regla aws_security_group_rule.nodes_from_alb');
+    expect(dep(doc, 'eks-cluster-main', 'orders')?.description).toBe('Ingreso aws_security_group.db');
+    expect(dep(doc, 'route53-zone-main', 'public')?.description).toBe('Registro aws_route53_record.www');
+    expect(dep(doc, 'orders', 'kms-key-main')?.description).toBe('Referencia aws_kms_key.main');
+    for (const d of doc.dependencies) expect(d.description!.length).toBeLessThanOrEqual(80);
   });
 
   it('avisa, agrupado, de lo que no importa: tipos sin mapear, soporte, datos, módulos y redes sin exposición', () => {
@@ -161,7 +167,7 @@ describe('Terraform: estado (.tfstate)', () => {
   });
 
   it('las dependencias salen de las que registra el estado y de los grupos de seguridad (por identificador físico)', () => {
-    expect(dep(doc, 'orders', 'kms-key-main')?.description).toMatch(/registrada en el estado/);
+    expect(dep(doc, 'orders', 'kms-key-main')?.description).toMatch(/^Estado aws_kms_key\.main$/);
     expect(dep(doc, 'sqs-queue-orders', 'kms-key-main')).toBeDefined();
     expect(dep(doc, 'eks-cluster-main', 'orders')).toMatchObject({ kind: 'data', protocol: 'tcp/5432' });
   });
@@ -230,7 +236,7 @@ describe('Terraform: Azure, GCP y .tf.json', () => {
     expect(byId(doc.networks, 'data').exposure).toBe('private');
     expect(byId(doc.resources, 'postgresql-flexible-server-main').networkId).toBe('data');
     expect(byId(doc.resources, 'kubernetes-cluster-main').networkId).toBe('aks');
-    expect(dep(doc, 'kubernetes-cluster-main', 'container-registry-main')?.description).toMatch(/asignación de rol/);
+    expect(dep(doc, 'kubernetes-cluster-main', 'container-registry-main')?.description).toMatch(/^Asignación de rol azurerm_role_assignment\.aks_acr$/);
     expect(JSON.stringify({ doc, warnings })).not.toContain('cambiar-en-el-pipeline');
     await expectHealthy(doc);
   });

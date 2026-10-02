@@ -647,8 +647,8 @@ class TerraformBuilder {
           if (target === host) continue;
           const el = this.endpoint(target);
           const explicit = node.dependsOn.includes(target.address);
-          const origin = this.model.format === 'state' ? 'Dependencia registrada en el estado' : explicit && !via ? 'depends_on' : 'Referencia en Terraform';
-          push(source, el, explicit && !via && this.model.format !== 'state' ? 3 : 2, `${origin}${via ? ` (vía ${via})` : ''}: ${target.address}`);
+          const origin = this.model.format === 'state' ? 'Estado' : explicit && !via ? 'depends_on' : 'Referencia';
+          push(source, el, explicit && !via && this.model.format !== 'state' ? 3 : 2, `${origin} ${target.address}${via ? ` (vía ${via})` : ''}`);
         } else if (CARRIER_TYPES.test(target.type)) for (const next of this.nodesOf(target)) queue.push({ node: next, via: via ?? target.address });
       }
     }
@@ -686,12 +686,12 @@ class TerraformBuilder {
       if (SECURITY_GROUP.test(node.type)) {
         for (const block of blocksOf(node.attrs, 'ingress')) {
           const sources = this.nodesIn(block.security_groups);
-          if (sources.length > 0) rules.push({ via: `El ingreso de ${node.address}`, target: node, sources, block });
+          if (sources.length > 0) rules.push({ via: `Ingreso ${node.address}`, target: node, sources, block });
         }
       } else if (INGRESS_RULE.test(node.type) && (node.type !== 'aws_security_group_rule' || this.scope.str(node.attrs.type) === 'ingress')) {
         const sources = this.nodesIn(node.attrs.source_security_group_id ?? node.attrs.referenced_security_group_id);
         const targets = this.nodesIn(node.attrs.security_group_id);
-        if (sources.length > 0) for (const target of targets) rules.push({ via: `La regla ${node.address}`, target, sources, block: node.attrs });
+        if (sources.length > 0) for (const target of targets) rules.push({ via: `Regla ${node.address}`, target, sources, block: node.attrs });
       }
     }
     for (const { via, target, sources, block } of rules) {
@@ -701,7 +701,7 @@ class TerraformBuilder {
         if (source === target) continue;
         const origin = this.endpoint(source) ? [source] : this.members(source);
         for (const o of origin) {
-          for (const t of targets) if (o !== t) push(this.endpoint(o), this.endpoint(t), 0, `${via} admite el tráfico de ${source.address}`, protocol);
+          for (const t of targets) if (o !== t) push(this.endpoint(o), this.endpoint(t), 0, via, protocol);
         }
       }
     }
@@ -712,7 +712,7 @@ class TerraformBuilder {
     for (const record of this.nodes.filter((n) => /(?:route53_record|dns_(?:a|aaaa|cname)_record|dns_record_set)$/.test(n.type))) {
       const related = this.nodesOf(record).filter((n) => this.endpoint(n));
       const zones = related.filter((n) => this.endpoint(n)!.kind === 'resource' && (this.endpoint(n) as Elem & { kind: 'resource' }).res.kind === 'dns');
-      for (const zone of zones) for (const target of related.filter((n) => !zones.includes(n))) push(this.endpoint(zone), this.endpoint(target), 2, `El registro ${record.address} apunta a ${target.address}`);
+      for (const zone of zones) for (const target of related.filter((n) => !zones.includes(n))) push(this.endpoint(zone), this.endpoint(target), 2, `Registro ${record.address}`);
     }
   }
 
@@ -721,7 +721,7 @@ class TerraformBuilder {
     for (const assignment of this.nodes.filter((n) => n.type === 'azurerm_role_assignment')) {
       const principals = this.nodesIn(assignment.attrs.principal_id).filter((n) => this.endpoint(n));
       const scopes = this.nodesIn(assignment.attrs.scope).filter((n) => this.endpoint(n));
-      for (const p of principals) for (const s of scopes) push(this.endpoint(p), this.endpoint(s), 2, `La asignación de rol ${assignment.address} da acceso a ${s.address}`);
+      for (const p of principals) for (const s of scopes) push(this.endpoint(p), this.endpoint(s), 2, `Asignación de rol ${assignment.address}`);
     }
   }
 
@@ -735,12 +735,12 @@ class TerraformBuilder {
         const groups = unique([...this.nodesOf(listener), ...rules.flatMap((r) => this.nodesOf(r))].filter((n) => TARGET_GROUP.test(n.type)));
         const protocol = this.scope.str(listener.attrs.protocol)?.toUpperCase();
         // Lo que el listener usa directamente (un certificado).
-        for (const used of this.nodesOf(listener)) if (used !== lb && this.endpoint(used)) push(this.endpoint(lb), this.endpoint(used), 2, `El listener ${listener.address} usa ${used.address}`);
+        for (const used of this.nodesOf(listener)) if (used !== lb && this.endpoint(used)) push(this.endpoint(lb), this.endpoint(used), 2, `Listener ${listener.address}`);
         for (const group of groups) {
           // Quien usa el grupo de destino (un servicio ECS, un grupo de autoescalado) y lo que registran sus asociaciones (instancias).
           const users = this.nodes.filter((n) => n !== lb && this.nodesOf(n).includes(group));
           const served = users.flatMap((u) => (this.endpoint(u) ? [u] : /attachment/.test(u.type) ? this.nodesOf(u) : []));
-          for (const target of served) push(this.endpoint(lb), this.endpoint(target), 1, `El listener ${listener.address} lo sirve por el grupo de destino ${group.address}`, protocol);
+          for (const target of served) push(this.endpoint(lb), this.endpoint(target), 1, `Listener ${listener.address} (grupo ${group.address})`, protocol);
         }
       }
     }
