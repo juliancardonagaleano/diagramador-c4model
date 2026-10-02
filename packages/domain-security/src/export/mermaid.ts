@@ -32,7 +32,7 @@ function flowNode(n: SceneNode, alias: string): string {
 
 /**
  * Exporta una vista a Mermaid como `flowchart`. Los flujos de datos anidan cada zona de confianza en un `subgraph` con el
- * prefijo `Zona <nivel>: …`; el tipo de cada activo va en su clase (`actor`, `external`, `process`, `datastore`) y el texto
+ * prefijo `Zona <nivel>: …`; el tipo de cada activo va en su clase (`actor`, `external`, `process`, `datastore`, `identity`, `secret`, `channel`) y el texto
  * incluye su tecnología, la clasificación de sus datos y el cifrado en reposo. La flecha dice si el flujo va cifrado
  * (`==>`), sin cifrar (`-.->`) o no se sabe (`-->`), y su etiqueta lleva `protocolo · descripción · datos … · autenticación …`.
  * El modelo de amenazas dibuja amenazas (`-.->` al activo o flujo que amenazan) y controles (`-->|"mitiga"|` a la amenaza).

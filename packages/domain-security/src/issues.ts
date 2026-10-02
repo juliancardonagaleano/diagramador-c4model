@@ -73,6 +73,24 @@ export function analyzeSecurity(doc: SecurityDocument): ModuleIssue[] {
         add('warning', a.id, `${label(e)} guarda datos ${DATA_LABELS[a.classification!]} en la zona ${TRUST_LABELS[trustOf(zone)]} «${zone.name}»: deberían estar en una zona interna o restringida.`);
       }
     }
+    if (a.kind === 'secret') {
+      if (a.encryptedAtRest !== true) add('warning', a.id, `${label(e)} ${a.encryptedAtRest === false ? 'se guarda sin cifrar' : 'no indica si se guarda cifrado'} en reposo: protégelo en un almacén de secretos o con cifrado.`);
+      if (a.rotation === false) add('warning', a.id, `${label(e)} no se rota: define una rotación periódica.`);
+      else if (a.rotation === undefined) add('info', a.id, `${label(e)} no indica si se rota periódicamente.`);
+      if (zone && trustRank(trustOf(zone)) < trustRank('internal')) add('warning', a.id, `${label(e)} está en la zona ${TRUST_LABELS[trustOf(zone)]} «${zone.name}»: un secreto debería estar en una zona interna o restringida.`);
+    }
+    if (a.kind === 'identity') {
+      if (a.authentication === 'none') add('warning', a.id, `${label(e)} no autentica a quien la usa.`);
+      else if (a.authentication === 'password') add('warning', a.id, `${label(e)} se autentica solo con contraseña: añade un segundo factor o usa SSO.`);
+      else if (a.authentication === undefined) add('info', a.id, `${label(e)} no indica cómo autentica.`);
+    }
+    if (a.kind === 'channel') {
+      if (a.encrypted !== true) add('warning', a.id, `${label(e)} ${a.encrypted === false ? 'no cifra el tráfico' : 'no indica si cifra el tráfico'}: un canal de confianza debe cifrar.`);
+      if (a.authentication === 'none') add('warning', a.id, `${label(e)} no autentica a sus extremos.`);
+      else if (a.authentication === undefined) add('info', a.id, `${label(e)} no indica cómo se autentican sus extremos (p. ej., mTLS).`);
+      const zonesJoined = new Set([a.zoneId, ...doc.flows.filter((f) => f.sourceId === a.id || f.targetId === a.id).map((f) => assets.get(f.sourceId === a.id ? f.targetId : f.sourceId)?.zoneId ?? a.zoneId)]);
+      if (withFlows.has(a.id) && zonesJoined.size === 1) add('info', a.id, `${label(e)} solo conecta activos de una zona: un canal de confianza debería unir zonas distintas.`);
+    }
     if ((a.kind === 'process' || a.kind === 'datastore') && sensitive(a.classification) && !a.owner) add('info', a.id, `${label(e)} trata datos ${DATA_LABELS[a.classification!]} y no tiene responsable.`);
     // Un activo trata al menos la información de los flujos que envía o recibe.
     const flowsMax = effectiveClassification(doc, a);

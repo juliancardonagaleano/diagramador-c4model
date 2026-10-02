@@ -37,6 +37,9 @@ const generatedAsset = z.object({
   owner: nullable(z.string()),
   classification: nullable(z.enum(CLASSIFICATIONS)),
   encryptedAtRest: nullable(z.boolean()),
+  authentication: nullable(z.enum(AUTHENTICATIONS)),
+  rotation: nullable(z.boolean()),
+  encrypted: nullable(z.boolean()),
 });
 
 const generatedFlow = z.object({
@@ -111,9 +114,13 @@ restringida dentro de la red interna). Todo activo pertenece a una zona.
 
 Activos ("assets"), cada uno en una zona ("zoneId"):
 - "actor" (persona o usuario), "external" (sistema de un tercero), "process" (componente que ejecuta código: API, servicio, worker,
-  balanceador, broker) y "datastore" (base de datos, caché, almacenamiento, cola persistente, almacén de secretos).
+  balanceador, broker), "datastore" (base de datos, caché, almacenamiento, cola persistente), "identity" (proveedor de identidad:
+  IdP, directorio, SSO), "secret" (secreto, clave o certificado concreto, no el almacén que lo guarda) y "channel" (canal de confianza
+  entre zonas: VPN, túnel, mTLS; se pone en una zona y los flujos que lo atraviesan pasan por él).
 - classification (public, internal, confidential, restricted) = la clasificación más alta de los datos que trata o guarda.
-- encryptedAtRest solo en almacenes de datos: true si están cifrados en reposo, false si no; null si no se sabe.
+- encryptedAtRest solo en almacenes de datos y secretos: true si están cifrados en reposo, false si no; null si no se sabe.
+- authentication ("none", "password", "token", "mtls" o "sso") solo en identidades y canales; rotation (true si se rota periódicamente)
+  solo en secretos; encrypted solo en canales (true si cifran el tráfico). null en el resto o si no se sabe.
 - technology y owner solo si se mencionan.
 
 Flujos de datos ("flows"): sourceId envía datos a targetId (activos distintos). protocol (HTTPS, gRPC, AMQP, SQL…), description (qué
@@ -122,8 +129,9 @@ o "sso"; null si no se sabe). Un flujo que cruza de una zona menos confiable a o
 
 Amenazas ("threats"): categoría STRIDE (spoofing, tampering, repudiation, information-disclosure, denial-of-service,
 elevation-of-privilege) sobre un activo o un flujo ("targetId"). Aplica STRIDE por elemento: actores y sistemas externos solo
-suplantación y repudio; almacenes de datos manipulación, repudio, divulgación y denegación de servicio; flujos manipulación,
-divulgación y denegación de servicio; los procesos, las seis. likelihood (low, medium, high), impact (low, medium, high,
+suplantación y repudio; almacenes de datos y secretos manipulación, repudio, divulgación y denegación de servicio; flujos
+manipulación, divulgación y denegación de servicio; canales suplantación, manipulación y divulgación; los procesos y las
+identidades, las seis. likelihood (low, medium, high), impact (low, medium, high,
 critical) y status (open por defecto, mitigated, accepted). Cada amenaza cita en "controlIds" los controles que la mitigan.
 Prioriza los flujos que cruzan fronteras y los activos con datos confidenciales o restringidos; no inventes amenazas genéricas.
 
@@ -150,6 +158,9 @@ export function toGenerated(doc: SecurityDocument): GeneratedSecurity {
       owner: n(a.owner),
       classification: n(a.classification),
       encryptedAtRest: n(a.encryptedAtRest),
+      authentication: n(a.authentication),
+      rotation: n(a.rotation),
+      encrypted: n(a.encrypted),
     })),
     flows: doc.flows.map((f) => ({
       id: f.id,

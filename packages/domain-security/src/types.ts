@@ -10,8 +10,12 @@ export const SECURITY_DOCUMENT_VERSION = '1.0' as const;
 export const TRUST_LEVELS = ['untrusted', 'dmz', 'internal', 'restricted'] as const;
 export type TrustLevel = (typeof TRUST_LEVELS)[number];
 
-/** `actor` = persona; `external` = sistema de un tercero; `process` = componente que ejecuta código; `datastore` = guarda datos. */
-export const ASSET_KINDS = ['actor', 'external', 'process', 'datastore'] as const;
+/**
+ * `actor` = persona; `external` = sistema de un tercero; `process` = componente que ejecuta código; `datastore` = guarda datos;
+ * `identity` = proveedor de identidad (IdP, directorio, SSO); `secret` = secreto, clave o certificado; `channel` = canal de
+ * confianza (VPN, mTLS, túnel) que se dibuja como un nodo pequeño por el que pasan los flujos entre zonas.
+ */
+export const ASSET_KINDS = ['actor', 'external', 'process', 'datastore', 'identity', 'secret', 'channel'] as const;
 export type AssetKind = (typeof ASSET_KINDS)[number];
 
 /** De menos a más sensible. */
@@ -63,8 +67,14 @@ export interface Asset {
   owner?: string;
   /** La clasificación más alta de los datos que trata o guarda. */
   classification?: Classification;
-  /** Almacenes: los datos van cifrados en reposo. Si no se indica, no se sabe. */
+  /** Almacenes y secretos: van cifrados en reposo. Si no se indica, no se sabe. */
   encryptedAtRest?: boolean;
+  /** Identidades y canales: cómo se autentica quien lo usa. Si no se indica, no se sabe. */
+  authentication?: Authentication;
+  /** Secretos: se rotan periódicamente. Si no se indica, no se sabe. */
+  rotation?: boolean;
+  /** Canales: el tráfico va cifrado por el canal. Si no se indica, no se sabe. */
+  encrypted?: boolean;
   ref?: string;
   tags?: string[];
 }
@@ -136,7 +146,7 @@ export interface Element {
 
 export const ELEMENT_LABELS: Record<ElementKind, string> = { zone: 'Zona', asset: 'Activo', flow: 'Flujo', threat: 'Amenaza', control: 'Control' };
 export const TRUST_LABELS: Record<TrustLevel, string> = { untrusted: 'no confiable', dmz: 'DMZ', internal: 'interna', restricted: 'restringida' };
-export const ASSET_LABELS: Record<AssetKind, string> = { actor: 'Actor', external: 'Sistema externo', process: 'Proceso', datastore: 'Almacén de datos' };
+export const ASSET_LABELS: Record<AssetKind, string> = { actor: 'Actor', external: 'Sistema externo', process: 'Proceso', datastore: 'Almacén de datos', identity: 'Identidad (IdP)', secret: 'Secreto o clave', channel: 'Canal de confianza' };
 export const CLASSIFICATION_LABELS: Record<Classification, string> = { public: 'pública', internal: 'interna', confidential: 'confidencial', restricted: 'restringida' };
 /** «datos ___»: la clasificación como complemento de «datos». */
 export const DATA_LABELS: Record<Classification, string> = { public: 'públicos', internal: 'internos', confidential: 'confidenciales', restricted: 'restringidos' };
@@ -174,6 +184,9 @@ export const STRIDE_BY_ELEMENT: Record<AssetKind | 'flow', Stride[]> = {
   external: ['spoofing', 'repudiation'],
   process: [...STRIDE],
   datastore: ['tampering', 'repudiation', 'information-disclosure', 'denial-of-service'],
+  identity: [...STRIDE],
+  secret: ['tampering', 'repudiation', 'information-disclosure', 'denial-of-service'],
+  channel: ['spoofing', 'tampering', 'information-disclosure'],
   flow: ['tampering', 'information-disclosure', 'denial-of-service'],
 };
 

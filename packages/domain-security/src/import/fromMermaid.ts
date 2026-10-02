@@ -76,6 +76,18 @@ const CLASS_KINDS: Record<string, AssetKind> = {
   basededatos: 'datastore',
   db: 'datastore',
   bd: 'datastore',
+  identity: 'identity',
+  identidad: 'identity',
+  idp: 'identity',
+  secret: 'secret',
+  secreto: 'secret',
+  clave: 'secret',
+  certificado: 'secret',
+  channel: 'channel',
+  canal: 'channel',
+  canaldeconfianza: 'channel',
+  vpn: 'channel',
+  tunel: 'channel',
 };
 /** Clases que dibuja el modelo de amenazas: no son activos. */
 const THREAT_CLASSES = new Set(['threat', 'control', 'flow']);
@@ -247,7 +259,7 @@ export function fromMermaid(source: string, options: SecurityImportOptions = {})
       zoneId: zoneFor(group, name),
       ...(extras.technology ? { technology: extras.technology } : {}),
       ...(extras.classification ? { classification: extras.classification } : {}),
-      ...(extras.encryptedAtRest !== undefined && assetKind === 'datastore' ? { encryptedAtRest: extras.encryptedAtRest } : {}),
+      ...(extras.encryptedAtRest !== undefined && (assetKind === 'datastore' || assetKind === 'secret') ? { encryptedAtRest: extras.encryptedAtRest } : {}),
     });
   }
   if (ignored > 0) warnings.add(`Se ignoraron ${ignored} nodo(s) del modelo de amenazas (amenazas, controles y flujos): se describen en el JSON, no en Mermaid.`);

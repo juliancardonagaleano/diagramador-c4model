@@ -90,7 +90,10 @@
               "actor",
               "external",
               "process",
-              "datastore"
+              "datastore",
+              "identity",
+              "secret",
+              "channel"
             ]
           },
           "zoneId": {
@@ -135,6 +138,35 @@
               "boolean",
               "null"
             ]
+          },
+          "authentication": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "password",
+                  "token",
+                  "mtls",
+                  "sso"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rotation": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "encrypted": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "required": [
@@ -146,7 +178,10 @@
           "technology",
           "owner",
           "classification",
-          "encryptedAtRest"
+          "encryptedAtRest",
+          "authentication",
+          "rotation",
+          "encrypted"
         ],
         "additionalProperties": false
       }

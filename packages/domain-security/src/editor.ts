@@ -1,5 +1,5 @@
-import { uniqueId, type EdgeNotation, type EditResult, type EditorGraph, type EditorNode, type EdgeMark, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
-import { ASSET_COLORS, ASSET_SHAPES, CONTROL_COLOR, CONTROL_SHAPE, FLOW_NODE_COLOR, FLOW_SHAPE, RISK_COLORS, STANDARD_STYLE, THREAT_SHAPE, ZONE_STYLES, buildScene, heatLayout, heatPlacement } from './export/render';
+import { uniqueId, type EdgeNotation, type EditResult, type EditorGraph, type EditorNode, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
+import { ASSET_COLORS, assetFacts, ASSET_SHAPES, CONTROL_COLOR, CONTROL_SHAPE, FLOW_NODE_COLOR, FLOW_SHAPE, RISK_COLORS, STANDARD_STYLE, THREAT_SHAPE, ZONE_STYLES, buildScene, heatLayout, heatPlacement } from './export/render';
 import {
   ASSET_KINDS,
   ASSET_LABELS,
@@ -36,8 +36,7 @@ import {
   type Threat,
   type Zone,
 } from './types';
-import type { Crossing } from './graph';
-import { crossingLabel, crossingsById, needsAuthentication, securityActions } from './modeling';
+import { crossingsById, needsAuthentication, securityActions } from './modeling';
 import { findView } from './views';
 
 /**
@@ -56,6 +55,9 @@ const NODE_KIND_NOTATION: NodeNotation[] = [
   asset('external', '▭', 200, 78),
   asset('process', '◯', 170, 96),
   asset('datastore', '⊐', 200, 78),
+  asset('identity', 'ID', 190, 84),
+  asset('secret', '⚿', 170, 84),
+  asset('channel', '⇄', 170, 64),
   { kind: 'zone', label: 'Zona de confianza', glyph: '▦', shape: 'rect', fill: ZONE_STYLES.internal.stroke, width: 260, height: 140 },
   { kind: 'threat', label: 'Amenaza', glyph: '⚠', shape: THREAT_SHAPE, fill: RISK_COLORS.medium, width: 260, height: 84 },
   { kind: 'control', label: 'Control', glyph: '🛡', shape: CONTROL_SHAPE, fill: CONTROL_COLOR, width: 220, height: 78 },
@@ -73,14 +75,8 @@ const EDGE_KIND_NOTATION: EdgeNotation[] = [
   { kind: 'mitigates', label: 'mitiga', stroke: CONTROL_COLOR, line: 'solid', width: 1.5 },
 ];
 
-const BOUNDARY_COLOR = '#c92a2a';
-const boundaryMark = (c: Crossing): EdgeMark => ({
-  text: '⛨',
-  color: BOUNDARY_COLOR,
-  title: `Cruza frontera de confianza: ${crossingLabel(c)}${c.direction === 'ingress' ? ' (entra a una zona más confiable: exige autenticación)' : ''}`,
-});
-
 const flowKindOf = (f: Flow): string => (f.encrypted === true ? 'flow-encrypted' : f.encrypted === false ? 'flow-plain' : 'flow');
+const ASSET_KIND_SET = new Set<string>(ASSET_KINDS);
 const isFlowKind = (kind: string): boolean => kind === 'flow' || kind === 'flow-encrypted' || kind === 'flow-plain';
 
 const options = <T extends string>(values: readonly T[], labels: Record<T, string>): Array<{ value: string; label: string }> => values.map((value) => ({ value, label: labels[value] }));
@@ -111,7 +107,10 @@ function nodeFields(kind: string, doc: SecurityDocument): FieldSpec[] {
       { key: 'technology', label: 'Tecnología', type: 'text' },
       { key: 'owner', label: 'Responsable', type: 'text' },
       CLASSIFICATION,
-      ...(kind === 'datastore' ? [{ key: 'encryptedAtRest', label: 'Cifrado en reposo', type: 'select', options: YES_NO, allowEmpty: true, hint: 'vacío = no se sabe' } as FieldSpec] : []),
+      ...(kind === 'datastore' || kind === 'secret' ? [{ key: 'encryptedAtRest', label: 'Cifrado en reposo', type: 'select', options: YES_NO, allowEmpty: true, hint: 'vacío = no se sabe' } as FieldSpec] : []),
+      ...(kind === 'identity' || kind === 'channel' ? [{ key: 'authentication', label: 'Autenticación', type: 'select', options: options(AUTHENTICATIONS, AUTHENTICATION_LABELS), allowEmpty: true, hint: 'vacío = no se sabe' } as FieldSpec] : []),
+      ...(kind === 'secret' ? [{ key: 'rotation', label: 'Rotación periódica', type: 'select', options: YES_NO, allowEmpty: true, hint: 'vacío = no se sabe' } as FieldSpec] : []),
+      ...(kind === 'channel' ? [{ key: 'encrypted', label: 'Cifra el tráfico', type: 'select', options: YES_NO, allowEmpty: true, hint: 'vacío = no se sabe' } as FieldSpec] : []),
       { key: 'ref', label: 'Referencia (URN)', type: 'text', hint: 'urn:iark:<módulo>:<id>' },
       { key: 'tags', label: 'Etiquetas', type: 'list' },
     ];
@@ -155,7 +154,7 @@ function nodeFields(kind: string, doc: SecurityDocument): FieldSpec[] {
 }
 
 const clean = (value: unknown): unknown => (value === '' || value === null || (Array.isArray(value) && value.length === 0) ? undefined : value);
-const YES_NO_KEYS = new Set(['encrypted', 'encryptedAtRest']);
+const YES_NO_KEYS = new Set(['encrypted', 'encryptedAtRest', 'rotation']);
 
 function patchObject<T extends object>(target: T, patch: Record<string, unknown>, allowed: string[]): T {
   const next: Record<string, unknown> = { ...(target as Record<string, unknown>) };
@@ -215,9 +214,6 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
     const all = indexElements(doc);
     const flows = new Map(doc.flows.map((f) => [f.id, f]));
     const kinds = new Map(NODE_KIND_NOTATION.map((k) => [k.kind, k]));
-    const crossing = crossingsById(doc);
-    // Frontera de confianza (a la Microsoft TMT): borde discontinuo rojo en las zonas que cruza algún flujo.
-    const bordering = new Set([...crossing.values()].flatMap((c) => [c.from.id, c.to.id]));
     const nodes: EditorNode[] = [];
     for (const [id, g] of scene.groups) {
       if (g.kind === 'cell' || g.kind === 'catalog') {
@@ -226,13 +222,14 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
       }
       // El lienzo antepone la clase («Zona de confianza: …»), así que el título lleva el nombre y el nivel.
       const label = `${all.get(g.elementId)?.name ?? g.short} · ${TRUST_LABELS[g.trust]}`;
-      nodes.push({ id, kind: 'zone', label: bordering.has(g.elementId) ? `${label} · frontera de confianza` : label, parentId: g.groupId, fill: ZONE_STYLES[g.trust].stroke, ...(bordering.has(g.elementId) ? { stroke: BOUNDARY_COLOR, dashed: true } : {}) });
+      nodes.push({ id, kind: 'zone', label, parentId: g.groupId, fill: ZONE_STYLES[g.trust].stroke });
     }
     for (const [id, n] of scene.nodes) {
       const [label = id, ...rest] = n.lines;
       const notation = kinds.get(n.cls) ?? kinds.get('process')!;
       const item = all.get(n.elementId)?.item;
-      const extra = n.cls === 'threat' && (item as Threat).suggested ? ['sugerida'] : n.cls === 'control' && (item as Control).standard ? [STANDARD_LABELS[(item as Control).standard!]] : [];
+      const facts = ASSET_KIND_SET.has(n.cls) && item ? assetFacts(item as Asset) : [];
+      const extra = facts.length > 0 ? facts : n.cls === 'threat' && (item as Threat).suggested ? ['sugerida'] : n.cls === 'control' && (item as Control).standard ? [STANDARD_LABELS[(item as Control).standard!]] : [];
       const badges = [...rest.slice(1), ...(n.note ? [n.note] : []), ...extra].filter(Boolean);
       nodes.push({
         id,
@@ -257,7 +254,6 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
         target: e.target,
         label: e.label,
         width: e.kind === 'flow' ? e.width : undefined,
-        marks: e.kind === 'flow' && crossing.has(id) ? [boundaryMark(crossing.get(id)!)] : undefined,
       })),
     };
   },
@@ -293,7 +289,7 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
     if (e) {
       switch (e.kind) {
         case 'asset':
-          return { type: 'node', kind: (e.item as Asset).kind, values: { ...e.item, encryptedAtRest: yesNo((e.item as Asset).encryptedAtRest) } };
+          return { type: 'node', kind: (e.item as Asset).kind, values: { ...e.item, encryptedAtRest: yesNo((e.item as Asset).encryptedAtRest), rotation: yesNo((e.item as Asset).rotation), encrypted: yesNo((e.item as Asset).encrypted) } };
         case 'flow':
           return { type: 'edge', kind: flowKindOf(e.item as Flow), values: { ...e.item, encrypted: yesNo((e.item as Flow).encrypted) } };
         default:
@@ -368,9 +364,12 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
     if ((typeof patch.name === 'string' && patch.name.trim() === '') || (typeof patch.title === 'string' && patch.title.trim() === '')) return fail('El nombre no puede estar vacío.');
     switch (e.kind) {
       case 'asset': {
-        const next = patchObject(e.item as Asset, patch, ['name', 'description', 'kind', 'zoneId', 'technology', 'owner', 'classification', 'encryptedAtRest', 'ref', 'tags']);
+        const next = patchObject(e.item as Asset, patch, ['name', 'description', 'kind', 'zoneId', 'technology', 'owner', 'classification', 'encryptedAtRest', 'authentication', 'rotation', 'encrypted', 'ref', 'tags']);
         if (all.get(next.zoneId)?.kind !== 'zone') return fail(`No existe la zona «${next.zoneId}».`);
-        if (next.kind !== 'datastore') delete next.encryptedAtRest;
+        if (next.kind !== 'datastore' && next.kind !== 'secret') delete next.encryptedAtRest;
+        if (next.kind !== 'identity' && next.kind !== 'channel') delete next.authentication;
+        if (next.kind !== 'secret') delete next.rotation;
+        if (next.kind !== 'channel') delete next.encrypted;
         return ok({ ...doc, assets: doc.assets.map((a) => (a.id === id ? next : a)) }, id);
       }
       case 'zone': {
@@ -439,6 +438,11 @@ export const securityEditor: EditorSpec<SecurityDocument> = {
       const outside = (a: Asset): boolean => a.kind === 'actor' || a.kind === 'external';
       const [from, to] = [s.item as Asset, t.item as Asset];
       if ((outside(from) && to.kind === 'datastore') || (from.kind === 'datastore' && outside(to))) return 'Un actor o sistema externo no habla directamente con un almacén de datos: pasa por un proceso.';
+      // Un secreto lo leen (o lo guardan) procesos e identidades; un canal une cualquier activo que no sea un secreto.
+      if ((from.kind === 'secret' && to.kind !== 'process' && to.kind !== 'identity') || (to.kind === 'secret' && from.kind !== 'process' && from.kind !== 'identity')) {
+        return 'Un secreto solo lo leen o lo guardan procesos e identidades: conéctalo con un proceso o un proveedor de identidad.';
+      }
+      if (from.kind === 'channel' && to.kind === 'channel') return 'Un canal de confianza no se une con otro canal: pon el canal entre dos zonas, con un flujo a cada lado.';
       return undefined;
     }
     if (kind === 'threat') {

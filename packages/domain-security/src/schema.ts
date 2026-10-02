@@ -40,6 +40,9 @@ export const assetSchema = z.object({
   owner: z.string().optional(),
   classification: z.enum(CLASSIFICATIONS).optional(),
   encryptedAtRest: z.boolean().optional(),
+  authentication: z.enum(AUTHENTICATIONS).optional(),
+  rotation: z.boolean().optional(),
+  encrypted: z.boolean().optional(),
   ref: z.string().optional(),
   tags: z.array(z.string()).optional(),
 });
@@ -134,7 +137,10 @@ export const securityDocumentSchema = z
         issue(['assets', i, 'zoneId'], other ? `La zona de "${a.id}" debe ser una zona, pero "${other.id}" es ${kindName(other.kind)}` : `"${a.id}" referencia una zona inexistente: "${a.zoneId}"`);
       }
       if (a.ref !== undefined && !parseUrn(a.ref)) issue(['assets', i, 'ref'], `La referencia de "${a.id}" no es una URN válida (urn:iark:<módulo>:<id>): "${a.ref}"`);
-      if (a.encryptedAtRest !== undefined && a.kind !== 'datastore') issue(['assets', i, 'encryptedAtRest'], `"${a.id}" no es un almacén de datos: el cifrado en reposo solo se declara en los almacenes`);
+      if (a.encryptedAtRest !== undefined && a.kind !== 'datastore' && a.kind !== 'secret') issue(['assets', i, 'encryptedAtRest'], `"${a.id}" no es un almacén de datos ni un secreto: el cifrado en reposo solo se declara en los almacenes y los secretos`);
+      if (a.authentication !== undefined && a.kind !== 'identity' && a.kind !== 'channel') issue(['assets', i, 'authentication'], `"${a.id}" no es una identidad ni un canal: la autenticación del activo solo se declara en ellos`);
+      if (a.rotation !== undefined && a.kind !== 'secret') issue(['assets', i, 'rotation'], `"${a.id}" no es un secreto: la rotación solo se declara en los secretos`);
+      if (a.encrypted !== undefined && a.kind !== 'channel') issue(['assets', i, 'encrypted'], `"${a.id}" no es un canal de confianza: el cifrado del canal solo se declara en los canales`);
     });
 
     const signatures = new Set<string>();
