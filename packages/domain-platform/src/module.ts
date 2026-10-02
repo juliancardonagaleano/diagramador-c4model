@@ -41,7 +41,7 @@ const drawioExporter: Exporter<PlatformDocument> = {
   label: 'draw.io',
   extension: '.drawio',
   mime: 'application/xml',
-  export: (doc) => toDrawio(doc),
+  export: (doc, ctx) => toDrawio(doc, ctx.viewId),
 };
 
 /**
@@ -75,6 +75,7 @@ export const platformModule: DomainModule<PlatformDocument> = {
     { prefix: 'impact', label: 'Impacto', applies: (e) => e.kind === 'service' || e.kind === 'resource' },
     { prefix: 'depends', label: 'Dependencias', applies: (e) => e.kind === 'service' || e.kind === 'resource' },
     { prefix: 'focus', label: 'Entorno', applies: (e) => e.kind === 'service' || e.kind === 'resource' },
+    { prefix: 'compare', label: 'Comparar con el siguiente entorno', applies: (e) => e.kind === 'environment' },
   ],
   cliCommands: platformCommands,
   editor: platformEditor,

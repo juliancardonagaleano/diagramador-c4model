@@ -1,11 +1,15 @@
+import { nextEnvironment } from './actions';
+import { compareEnvironments, resolveComparison } from './compare';
 import { hasCosts } from './costs';
 import { dependencyGraph, reach, scopeEnvironment, scoped, type Reach } from './graph';
 import { indexElements, type PlatformDocument } from './types';
 
 export interface PlatformView {
-  /** `topology`, `env:<id>`, `delivery`, `costs` o, bajo demanda, `impact:<id>`, `depends:<id>` y `focus:<id>`. */
+  /** `topology`, `env:<id>`, `delivery`, `costs` o, bajo demanda, `impact:<id>`, `depends:<id>`, `focus:<id>` y `compare:<A>:<B>`. */
   id: string;
-  type: 'topology' | 'environment' | 'delivery' | 'costs' | 'impact' | 'depends' | 'focus';
+  type: 'topology' | 'environment' | 'delivery' | 'costs' | 'impact' | 'depends' | 'focus' | 'compare';
+  /** Entornos que compara la vista `compare` (A a la izquierda, B a la derecha). */
+  compareIds?: [string, string];
   title: string;
   /** Entorno al que se acota la vista (`environment` y las de impacto de un elemento de un solo entorno). */
   environmentId?: string;
@@ -91,7 +95,7 @@ function costs(doc: PlatformDocument): PlatformView {
 /**
  * Vistas derivadas del documento: la topología lógica (servicios, recursos y sus dependencias), una por entorno con
  * lo que hay desplegado en cada red y anfitrión, la entrega continua (pipelines) y, si hay costes declarados, los costes por entorno. Solo se listan las que tienen
- * contenido. El impacto o las dependencias de un elemento concreto se piden por su id (ver `findView`).
+ * contenido; la comparación de dos entornos consecutivos en el camino a producción (`compare:<A>:<B>`) se lista si ambos tienen despliegues. El impacto o las dependencias de un elemento concreto se piden por su id (ver `findView`).
  */
 export function listViews(doc: PlatformDocument): PlatformView[] {
   const views: PlatformView[] = [];
@@ -100,8 +104,38 @@ export function listViews(doc: PlatformDocument): PlatformView[] {
     if (doc.resources.some((r) => r.environmentId === e.id) || doc.deployments.some((d) => d.environmentId === e.id)) views.push(environmentView(doc, e.id));
   }
   if (doc.pipelines.length > 0) views.push(delivery(doc));
+  views.push(...promotionPairs(doc).map(([a, b]) => compareView(doc, `${a}:${b}`)));
   if (hasCosts(doc)) views.push(costs(doc));
   return views;
+}
+
+/** Vista de comparación de dos entornos (`compare:<A>:<B>`; con uno solo, se compara con el siguiente en el camino a producción). */
+export function compareView(doc: PlatformDocument, text: string): PlatformView {
+  const [a, b] = resolveComparison(doc, text);
+  const { services, resources } = compareEnvironments(doc, a.id, b.id);
+  const deployments = doc.deployments.filter((d) => d.environmentId === a.id || d.environmentId === b.id);
+  const ids = new Set([...services.map((s) => s.service.id), ...resources.flatMap((r) => [r.a?.id, r.b?.id].filter((id): id is string => !!id))]);
+  return {
+    id: `compare:${a.id}:${b.id}`,
+    type: 'compare',
+    title: `Comparación ${a.name} - ${b.name} - ${doc.workspace.name}`,
+    compareIds: [a.id, b.id],
+    elementIds: inDocumentOrder(doc, ids),
+    dependencyIds: [],
+    deploymentIds: deployments.map((d) => d.id),
+    pipelineIds: [],
+  };
+}
+
+/** Pares de entornos consecutivos en el camino a producción (dev → test → staging → prod) que tienen algo desplegado: los que se comparan por defecto. */
+function promotionPairs(doc: PlatformDocument): Array<[string, string]> {
+  const pairs: Array<[string, string]> = [];
+  const withContent = doc.environments.filter((e) => e.kind !== 'dr' && doc.deployments.some((d) => d.environmentId === e.id));
+  for (const e of withContent) {
+    const next = nextEnvironment(doc, e.id);
+    if (next && withContent.some((x) => x.id === next.id)) pairs.push([e.id, next.id]);
+  }
+  return pairs;
 }
 
 const TRACE: Record<string, { reach: Reach; type: 'impact' | 'depends' | 'focus'; title: string }> = {
@@ -146,6 +180,7 @@ export function findView(doc: PlatformDocument, viewId?: string): PlatformView {
   }
   const exact = views.find((v) => v.id === viewId);
   if (exact) return exact;
+  if (viewId.startsWith('compare:')) return compareView(doc, viewId.slice('compare:'.length));
   const [prefix, ...rest] = viewId.split(':');
   const id = rest.join(':');
   const elements = indexElements(doc);
@@ -154,5 +189,5 @@ export function findView(doc: PlatformDocument, viewId?: string): PlatformView {
   if (bare && (bare.kind === 'service' || bare.kind === 'resource')) return traceView(doc, viewId);
   const environment = views.find((v) => v.id === `env:${viewId}`);
   if (environment) return environment;
-  throw new Error(`No existe la vista «${viewId}». Vistas disponibles: ${[...views.map((v) => v.id), 'impact:<elemento>', 'depends:<elemento>', 'focus:<elemento>'].join(', ')}.`);
+  throw new Error(`No existe la vista «${viewId}». Vistas disponibles: ${[...views.map((v) => v.id), 'impact:<elemento>', 'depends:<elemento>', 'focus:<elemento>', 'compare:<entorno>:<entorno>'].join(', ')}.`);
 }

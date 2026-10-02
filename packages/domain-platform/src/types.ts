@@ -13,7 +13,7 @@ export type EnvironmentKind = (typeof ENVIRONMENT_KINDS)[number];
 export const EXPOSURES = ['public', 'private', 'isolated'] as const;
 export type Exposure = (typeof EXPOSURES)[number];
 
-export const RESOURCE_KINDS = ['cluster', 'vm', 'database', 'cache', 'queue', 'storage', 'load-balancer', 'gateway', 'dns', 'secret-store', 'registry', 'other'] as const;
+export const RESOURCE_KINDS = ['cluster', 'vm', 'database', 'cache', 'queue', 'storage', 'load-balancer', 'gateway', 'dns', 'secret-store', 'registry', 'region', 'namespace', 'certificate', 'monitoring', 'other'] as const;
 export type ResourceKind = (typeof RESOURCE_KINDS)[number];
 /** Recursos donde se despliegan servicios. */
 export const HOST_KINDS: ResourceKind[] = ['cluster', 'vm'];
@@ -202,6 +202,10 @@ export const RESOURCE_LABELS: Record<ResourceKind, string> = {
   dns: 'DNS',
   'secret-store': 'Almacén de secretos',
   registry: 'Registro de imágenes',
+  region: 'Región o zona de disponibilidad',
+  namespace: 'Espacio de nombres',
+  certificate: 'Certificado o dominio',
+  monitoring: 'Monitorización o SLO',
   other: 'Otro recurso',
 };
 

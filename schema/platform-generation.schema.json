@@ -173,6 +173,10 @@
               "dns",
               "secret-store",
               "registry",
+              "region",
+              "namespace",
+              "certificate",
+              "monitoring",
               "other"
             ]
           },

@@ -34,9 +34,20 @@ function hostFor(doc: PlatformDocument, source: Resource | undefined, environmen
   return candidates.find((r) => r.kind === source?.kind && exposure(r) === wanted) ?? candidates.find((r) => r.kind === source?.kind) ?? candidates[0];
 }
 
+/** Recurso del entorno destino que sustituye a `source`: el de su mismo nombre y clase o, si no, el único de su clase (y tecnología, si hay varios). */
+function counterpartResource(doc: PlatformDocument, source: Resource, environmentId: string): Resource | undefined {
+  const candidates = doc.resources.filter((r) => r.environmentId === environmentId && r.kind === source.kind && statusOf(r) !== 'decommissioned');
+  const name = source.name.trim().toLowerCase();
+  const tech = (source.technology ?? '').trim().toLowerCase();
+  const sameTechnology = tech ? candidates.filter((r) => (r.technology ?? '').trim().toLowerCase() === tech) : [];
+  return candidates.find((r) => r.name.trim().toLowerCase() === name) ?? (candidates.length === 1 ? candidates[0] : sameTechnology.length === 1 ? sameTechnology[0] : undefined);
+}
+
 /**
  * Lleva instancias desplegadas a otro entorno: si el servicio ya corre allí, le pasa la versión; si no, lo despliega en el
- * clúster o la máquina que mejor encaja (con la versión y los límites de la instancia de origen).
+ * clúster o la máquina que mejor encaja (con la versión y los límites de la instancia de origen). Las dependencias del
+ * servicio de recursos del entorno de origen (su base de datos, su cola) se repiten sobre el recurso equivalente del destino
+ * (el del mismo nombre o el único de su clase); si no hay equivalente, no se inventa ninguna.
  */
 export function promoteDeployments(doc: PlatformDocument, deploymentIds: string[], target: Environment): EditResult<PlatformDocument> {
   const sources = doc.deployments.filter((d) => deploymentIds.includes(d.id));
@@ -68,7 +79,22 @@ export function promoteDeployments(doc: PlatformDocument, deploymentIds: string[
     deployments.push(created);
     firstId ??= created.id;
   }
-  return ok({ ...doc, deployments }, firstId ? `i:${firstId}` : undefined);
+  // Las dependencias de recursos del origen se re-apuntan al entorno destino (sin repetir las que ya existen).
+  const dependencyIds = new Set(doc.dependencies.map((d) => d.id));
+  const dependencies = [...doc.dependencies];
+  const resourcesById = new Map(doc.resources.map((r) => [r.id, r]));
+  for (const source of movable) {
+    for (const dep of doc.dependencies.filter((d) => d.sourceId === source.serviceId)) {
+      const resource = resourcesById.get(dep.targetId);
+      if (!resource || resource.environmentId !== source.environmentId) continue;
+      const mirror = counterpartResource(doc, resource, target.id);
+      if (!mirror || dependencies.some((d) => d.sourceId === dep.sourceId && d.targetId === mirror.id && d.kind === dep.kind)) continue;
+      const id = uniqueId(`${dep.sourceId}-${mirror.id}`, dependencyIds);
+      dependencyIds.add(id);
+      dependencies.push({ ...dep, id, targetId: mirror.id });
+    }
+  }
+  return ok({ ...doc, deployments, dependencies }, firstId ? `i:${firstId}` : undefined);
 }
 
 /** Copia un entorno con sus redes, recursos, instancias y las dependencias de sus recursos; los pipelines lo añaden como etapa tras el original. */

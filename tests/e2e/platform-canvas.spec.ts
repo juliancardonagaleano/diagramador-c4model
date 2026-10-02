@@ -70,4 +70,16 @@ test.describe('lienzo de plataforma: infraestructura, metadatos y acciones', () 
     expect(text).toContain('pedidos-db-dev-pruebas-de-carga');
     await expect(page.getByTestId('canvas-view').locator('option', { hasText: 'Pruebas de carga' })).toHaveCount(1);
   });
+
+  test('la vista «Comparar» pone dos entornos lado a lado y marca lo que difiere', async ({ page }) => {
+    const errors = await open(page);
+    await page.getByTestId('canvas-view').selectOption('compare:dev:prod');
+    await expect(page.locator('[data-testid="node-c:dev"].cv-group')).toContainText('Desarrollo');
+    await expect(page.locator('[data-testid="node-c:prod"].cv-group')).toContainText('Producción');
+    await expect(page.locator('[data-testid="node-i:pedidos-prod"]')).toContainText('Versión + réplicas');
+    await expect(page.locator('[data-testid="node-i:pedidos-dev"]')).toContainText('3.1.0');
+    await expect(page.locator('[data-testid="node-lb-prod"]')).toContainText('Solo en Producción');
+    await page.screenshot({ path: 'test-results/platform-compare.png' });
+    expect(errors).toEqual([]);
+  });
 });

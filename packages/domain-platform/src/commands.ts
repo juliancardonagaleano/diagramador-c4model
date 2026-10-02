@@ -1,4 +1,5 @@
 import type { CommandSpec } from '@iark/kernel';
+import { compareEnvironments, compareReport, resolveComparison } from './compare';
 import { dependencyGraph, reach, scopeEnvironment, type Reach, type ReachStep } from './graph';
 import { fromIntegrationJson } from './import/fromIntegration';
 import { PlatformImportError } from './import/fromMermaid';
@@ -59,6 +60,24 @@ export const platformCommands: CommandSpec[] = [
       out.push(unplaced.length > 0 ? `Sin despliegue en ningún entorno: ${unplaced.join(', ')}` : 'Todos los servicios se despliegan en algún entorno.');
       if (drift.length > 0) out.push(`Versiones distintas entre entornos: ${drift.join(' · ')}`);
       return out.join('\n');
+    },
+  },
+  {
+    name: 'compare',
+    description: 'Compara dos entornos (p. ej. preproducción y producción): servicios y recursos que solo están en uno, y los que difieren en versión o en réplicas',
+    input: { description: 'documento de plataforma en JSON' },
+    args: [
+      { name: 'entornoA', description: 'id o nombre del primer entorno', required: true },
+      { name: 'entornoB', description: 'id o nombre del segundo (por defecto, el siguiente en el camino a producción)' },
+    ],
+    run: ({ args, input }) => {
+      const doc = readPlatform(input);
+      try {
+        const [a, b] = resolveComparison(doc, args[1] ? `${args[0]}:${args[1]}` : args[0]);
+        return compareReport(doc, compareEnvironments(doc, a.id, b.id));
+      } catch (error) {
+        throw new PlatformImportError((error as Error).message);
+      }
     },
   },
   {
