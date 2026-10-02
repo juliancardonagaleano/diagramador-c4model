@@ -44,6 +44,12 @@ export default defineConfig({
     // OUT_DIR permite compilar a otra carpeta (p. ej. el despliegue a Pages) sin pisar el dist/app que usan preview y E2E.
     outDir: process.env.OUT_DIR ?? 'dist/app',
     emptyOutDir: true,
+    // Los únicos trozos por encima de 500 kB son inevitables: `domain-c4` (≈1,7 MB: el módulo C4 más ELK, ≈1,4 MB, y el kernel
+    // que comparten todos los módulos), `elk` (la copia 0.9.3 de ELK que trae mermaid, ≈1,5 MB, solo se descarga al usar el
+    // layout `elk` de mermaid) y `chunk-*` del parser de mermaid (≈660 kB, también bajo demanda). Partirlos no reduce lo que
+    // se descarga (ELK es un único archivo minificado) y el trozo de C4 ya se carga a la vez que el editor. El límite queda
+    // en 2000 kB en vez de desactivar el aviso: si un trozo nuevo o el editor (`main`, hoy ≈430 kB) crece hasta 2 MB, avisa.
+    chunkSizeWarningLimit: 2000,
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
@@ -57,7 +63,7 @@ export default defineConfig({
       output: {
         // El módulo C4 lo importa el editor principal de forma estática y el banco de trabajo bajo demanda: si quedara
         // dentro del trozo del editor, abrir C4 en el banco ejecutaría (y pintaría) el editor entero. Va en su propio trozo.
-        advancedChunks: {
+        codeSplitting: {
           groups: [{ name: 'domain-c4', test: /packages[\\/]domain-c4[\\/]/ }],
         },
       },

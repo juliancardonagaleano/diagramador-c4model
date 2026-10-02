@@ -14,6 +14,11 @@ import {
 import { viewLevel } from '../model/factories';
 import { estimateLabelSize } from './labelMetrics';
 import { measureLayout, type EdgeRoute, type LayoutQuality } from './quality';
+// Ciclo de importación deliberado con smartLayout (este archivo lo llama y él usa runElkLayout/measureDerived…):
+// es seguro porque ninguno de los dos usa al cargarse nada del otro, solo al ejecutar las funciones. Antes se
+// resolvía con `await import('./smartLayout')`, pero index.ts ya lo importa de forma estática, así que ese import
+// dinámico no separaba nada (aviso INEFFECTIVE_DYNAMIC_IMPORT del build).
+import { smartLayout } from './smartLayout';
 
 export interface LayoutOptions {
   /** Dirección concreta o 'auto' (C1 arriba→abajo, C2/C3 izquierda→derecha, con fallback al mejor ajuste). */
@@ -162,7 +167,6 @@ export async function layoutDerivedView(derived: DerivedView, options: LayoutOpt
       if (!interactive) throw error;
     }
   }
-  const { smartLayout } = await import('./smartLayout');
   return smartLayout(derived, params);
 }
 
