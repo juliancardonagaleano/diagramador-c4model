@@ -23,7 +23,7 @@ import {
   type Service,
   type ServiceKind,
 } from '../types';
-import { compareEnvironments, versionText, type DiffKind, type Presence } from '../compare';
+import { compareEnvironments, MATCH_NOTES, versionText, type DiffKind, type Presence } from '../compare';
 import { costsByEnvironment, formatCost } from '../costs';
 import { findView, type PlatformView } from '../views';
 
@@ -337,7 +337,7 @@ function deliveryScene(doc: PlatformDocument, view: PlatformView): Scene {
 /**
  * Comparación de dos entornos: un grupo por entorno (A a la izquierda, B a la derecha) con sus servicios (instancias) y recursos, y
  * una línea entre cada par que se corresponde. Lo que difiere se marca con color e insignia: solo en A, solo en B, versión distinta
- * o réplicas distintas.
+ * o réplicas distintas. La línea de un par de recursos que no se emparejó por nombre idéntico lo dice en su etiqueta.
  */
 function compareScene(doc: PlatformDocument, view: PlatformView): Scene {
   const scene: Scene = { nodes: new Map(), groups: new Map(), edges: new Map() };
@@ -367,7 +367,8 @@ function compareScene(doc: PlatformDocument, view: PlatformView): Scene {
     ([r.a, r.b] as const).forEach((res, side) => {
       if (res) scene.nodes.set(res.id, { ...paint(resourceNode(res), mark), groupId: groupOf(side as 0 | 1) });
     });
-    if (r.a && r.b) edge(`k:r${i}`, r.a.id, r.b.id, mark, r.kinds.includes('version') ? `v${r.a.version ?? '?'} → v${r.b.version ?? '?'}` : undefined);
+    // Lo que difiere y, si el par no se emparejó por nombre idéntico, cómo se emparejó (para que se pueda dudar de la diferencia).
+    if (r.a && r.b) edge(`k:r${i}`, r.a.id, r.b.id, mark, [r.kinds.includes('version') && `v${r.a.version ?? '?'} → v${r.b.version ?? '?'}`, r.matchedBy && r.matchedBy !== 'name' && MATCH_NOTES[r.matchedBy]].filter(Boolean).join(' · ') || undefined);
   });
   return scene;
 }
