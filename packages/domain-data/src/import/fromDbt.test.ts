@@ -622,3 +622,55 @@ describe('dbt: entradas rotas y detección', () => {
     await expect(importText(dataModule, '{"version":1}')).rejects.toThrow('No se reconoce el formato');
   });
 });
+
+describe('dbt: robustez ante manifests dañados y muy grandes', () => {
+  it('un manifest truncado o mutilado, o se importa como documento válido o se rechaza con DataImportError (nunca otra excepción)', () => {
+    let seed = 20260929;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    let imported = 0;
+    let rejected = 0;
+    for (let n = 0; n < 400; n += 1) {
+      const pos = Math.floor(rnd() * text.length);
+      const kind = Math.floor(rnd() * 3);
+      let mutated: string;
+      if (kind === 0) mutated = text.slice(0, pos);
+      else if (kind === 1) mutated = text.slice(0, pos) + text.slice(pos + 1 + Math.floor(rnd() * 60));
+      else {
+        // Cambia un valor por otro tipo de JSON: el manifest sigue siendo JSON, pero con la forma rota.
+        const tree = JSON.parse(text) as Json;
+        const keys = Object.keys(tree.nodes);
+        const victim = tree.nodes[keys[Math.floor(rnd() * keys.length)]] as Json;
+        const fields = Object.keys(victim);
+        victim[fields[Math.floor(rnd() * fields.length)]] = [null, 7, 'x', [], {}, true][Math.floor(rnd() * 6)];
+        mutated = JSON.stringify(tree);
+      }
+      try {
+        expect(validateDataDocument(fromDbt(mutated).document).ok).toBe(true);
+        imported += 1;
+      } catch (error) {
+        if (!(error instanceof DataImportError)) throw error;
+        rejected += 1;
+      }
+    }
+    expect(imported).toBeGreaterThan(100);
+    expect(rejected).toBeGreaterThan(0);
+  });
+
+  it('una cadena de miles de modelos, también en el orden más desfavorable, no agota la pila', () => {
+    const chain = (n: number, reverse: boolean) =>
+      manifestOf({
+        nodes: Array.from({ length: n }, (_, i) => {
+          const next = reverse ? i + 1 : i - 1;
+          return model(`m${String(i).padStart(5, '0')}`, { depends_on: { nodes: next >= 0 && next < n ? [`model.p.m${String(next).padStart(5, '0')}`] : [] } });
+        }),
+      });
+    for (const reverse of [false, true]) {
+      const r = fromDbt(chain(6000, reverse));
+      expect(r.document.pipelines).toHaveLength(5999);
+      expect(r.document.assets.filter((a) => a.kind === 'table')).toHaveLength(6000);
+      // Los activos salen por capas: lo primero que se lee, antes de lo que se construye con ello.
+      const order = r.document.assets.filter((a) => a.kind === 'table').map((a) => a.name);
+      expect(order[0]).toBe(reverse ? 'm05999' : 'm00000');
+    }
+  });
+});

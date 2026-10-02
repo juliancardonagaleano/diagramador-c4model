@@ -570,3 +570,51 @@ describe('detect y registro en el módulo', () => {
     expect(validateDataDocument(a).ok && validateDataDocument(b).ok).toBe(true);
   });
 });
+
+/** Generador pseudoaleatorio con semilla: las mutaciones son las mismas en cada ejecución. */
+const seeded = (seed: number) => () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+
+describe('DDL: robustez ante entradas dañadas y muy grandes', () => {
+  it('un DDL truncado, mutilado o con basura dentro, o se importa como documento válido o se rechaza con DataImportError (nunca otra excepción)', () => {
+    const rnd = seeded(20260929);
+    const junk = ['(', ')', "'", '"', '`', '[', ']', ';', '--', '/*', '*/', '$$', ',', '\n', 'CREATE TABLE', 'AS', 'SELECT', 'FROM', 'JOIN', 'REFERENCES', 'DELIMITER ;;', 'GO', '\u0000'];
+    const sources = ['postgres', 'mysql', 'sqlserver', 'oracle', 'snowflake'].map((dialect) => fixture(`tienda-${dialect}`));
+    let imported = 0;
+    let rejected = 0;
+    for (let n = 0; n < 500; n += 1) {
+      let text = sources[Math.floor(rnd() * sources.length)];
+      const pos = Math.floor(rnd() * text.length);
+      const kind = Math.floor(rnd() * 4);
+      if (kind === 0) text = text.slice(0, pos);
+      else if (kind === 1) text = text.slice(0, pos) + text.slice(pos + 1 + Math.floor(rnd() * 40));
+      else if (kind === 2) text = text.slice(0, pos) + junk[Math.floor(rnd() * junk.length)] + text.slice(pos);
+      else {
+        const other = Math.floor(rnd() * text.length);
+        text = text.slice(Math.min(pos, other), Math.max(pos, other));
+      }
+      try {
+        expect(validateDataDocument(fromDdl(text).document).ok).toBe(true);
+        imported += 1;
+      } catch (error) {
+        if (!(error instanceof DataImportError)) throw error;
+        rejected += 1;
+      }
+    }
+    expect(imported).toBeGreaterThan(100);
+    expect(rejected).toBeGreaterThan(0);
+  });
+
+  it('miles de tablas con claves foráneas, paréntesis muy anidados y vistas encadenadas no agotan la pila ni el tiempo', () => {
+    const tables = Array.from({ length: 3000 }, (_, i) => `CREATE TABLE s${i % 20}.t${i} (id int PRIMARY KEY, padre int${i > 0 ? ` REFERENCES s${(i + 19) % 20}.t${i - 1} (id)` : ''});`).join('\n');
+    const big = fromDdl(tables);
+    expect(big.document.assets.filter((a) => a.kind === 'table')).toHaveLength(3000);
+    expect(big.document.relations).toHaveLength(2999);
+    expect(validateDataDocument(big.document).ok).toBe(true);
+
+    expect(fromDdl(`CREATE TABLE a (x int DEFAULT ${'('.repeat(20000)}1${')'.repeat(20000)});`).document.assets.map((a) => a.id)).toEqual(['a']);
+    const nested = fromDdl(`CREATE TABLE t (id int); CREATE VIEW v AS ${'SELECT * FROM ('.repeat(3000)}SELECT * FROM t${') s'.repeat(3000)};`);
+    expect(nested.document.pipelines).toHaveLength(1);
+    const chain = Array.from({ length: 1500 }, (_, i) => `CREATE VIEW v${i} AS SELECT id FROM ${i === 0 ? 't' : `v${i - 1}`};`).join('\n');
+    expect(fromDdl(`${chain}\nCREATE TABLE t (id int);`).document.pipelines).toHaveLength(1500);
+  });
+});

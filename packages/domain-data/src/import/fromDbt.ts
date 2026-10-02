@@ -168,17 +168,31 @@ export function fromDbt(source: string, options: DataImportOptions = {}): DataIm
   const byUid = new Map(items.map((i) => [i.uid, i]));
 
   // Profundidad en el linaje: las fuentes primero, y cada modelo después de lo que lee (para ordenar los activos por capas).
-  const depthOf = (uid: string, path: Set<string> = new Set()): number => {
-    const item = byUid.get(uid);
-    if (!item || path.has(uid)) return 0;
-    if (item.depth > 0 || item.type === 'source') return item.depth;
-    path.add(uid);
-    const deps = strs(rec(item.node.depends_on)?.nodes).filter((d) => byUid.has(d));
-    item.depth = deps.length === 0 ? 1 : 1 + Math.max(...deps.map((d) => depthOf(d, path)));
-    path.delete(uid);
-    return item.depth;
-  };
-  for (const item of items) depthOf(item.uid);
+  // Recorrido iterativo (un DAG largo no debe agotar la pila); en un ciclo, la dependencia que vuelve atrás cuenta 0.
+  const depthByUid = new Map<string, number>();
+  const visiting = new Set<string>();
+  const dependenciesOf = (uid: string): string[] => strs(rec(byUid.get(uid)!.node.depends_on)?.nodes).filter((d) => byUid.has(d));
+  for (const root of items) {
+    if (depthByUid.has(root.uid)) continue;
+    const stack = [{ uid: root.uid, deps: dependenciesOf(root.uid), next: 0 }];
+    visiting.add(root.uid);
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1];
+      if (top.next < top.deps.length) {
+        const dep = top.deps[top.next++];
+        if (!depthByUid.has(dep) && !visiting.has(dep)) {
+          visiting.add(dep);
+          stack.push({ uid: dep, deps: dependenciesOf(dep), next: 0 });
+        }
+        continue;
+      }
+      const item = byUid.get(top.uid)!;
+      depthByUid.set(top.uid, item.type === 'source' ? 0 : top.deps.length === 0 ? 1 : 1 + top.deps.reduce((deepest, d) => Math.max(deepest, depthByUid.get(d) ?? 0), 0));
+      visiting.delete(top.uid);
+      stack.pop();
+    }
+  }
+  for (const item of items) item.depth = depthByUid.get(item.uid) ?? 0;
   items.sort((a, b) => a.depth - b.depth || (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0));
 
   const exposures = entries(json.exposures).filter(([, e]) => {
@@ -321,7 +335,11 @@ export function fromDbt(source: string, options: DataImportOptions = {}): DataIm
   const sourceGroups = new Map<string, DataAsset>();
   const warehouses = new Map<string, DataAsset>();
   const ownersByContainer = new Map<string, Array<string | undefined>>();
-  const noteOwner = (container: DataAsset, owner: string | undefined): void => void ownersByContainer.set(container.id, [...(ownersByContainer.get(container.id) ?? []), owner]);
+  const noteOwner = (container: DataAsset, owner: string | undefined): void => {
+    const owners = ownersByContainer.get(container.id) ?? [];
+    ownersByContainer.set(container.id, owners);
+    owners.push(owner);
+  };
   const sourceGroup = (item: Item): DataAsset => {
     const name = str(item.node.source_name) ?? 'dbt';
     let g = sourceGroups.get(name);

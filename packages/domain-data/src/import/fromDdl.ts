@@ -758,6 +758,9 @@ export function fromDdl(source: string, options: DataImportOptions = {}): DataIm
   const missing = new Set<string>();
   // Claves foráneas → relaciones.
   const links: Link[] = [];
+  const linkKeys = new Set<string>();
+  const linkIds = new Map<Entity, number>();
+  const linkId = (e: Entity): number => linkIds.get(e) ?? (linkIds.set(e, linkIds.size + 1), linkIds.size);
   for (const fk of ddl.fks) {
     const parent = ddl.resolve(fk.ref, fk.line, missing);
     if (!parent) continue;
@@ -769,7 +772,11 @@ export function fromDdl(source: string, options: DataImportOptions = {}): DataIm
     const mandatory = cols.length > 0 && cols.every((c) => c.notNull || c.pk);
     const set = new Set(fk.cols.map(lower));
     const unique = fk.table.unique.some((u) => u.every((c) => set.has(c)));
-    if (!links.some((l) => l.child === fk.table && l.parent === parent && l.cols.join() === fk.cols.join())) links.push({ child: fk.table, parent, cols: fk.cols, mandatory, unique });
+    const key = `${linkId(fk.table)}|${linkId(parent)}|${fk.cols.join()}`;
+    if (!linkKeys.has(key)) {
+      linkKeys.add(key);
+      links.push({ child: fk.table, parent, cols: fk.cols, mandatory, unique });
+    }
   }
 
   // Vistas y `CREATE TABLE AS` → linaje.
