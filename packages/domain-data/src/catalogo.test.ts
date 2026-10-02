@@ -3,6 +3,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { describe, expect, it } from 'vitest';
 import { dataAiSpec, generatedToData, systemPrompt, toGenerated } from './ai/generation';
 import { dataCommands } from './commands';
+import { toDdl } from './ddl';
 import { dataEditor } from './editor';
 import { toDrawio } from './export/drawio';
 import { toMermaid } from './export/mermaid';
@@ -12,7 +13,7 @@ import { analyzeData } from './issues';
 import { linkId, listLinks, pruneCatalog } from './links';
 import { dataModule } from './module';
 import { formatDataIssues, validateDataDocument } from './schema';
-import { findView, listViews } from './views';
+import { exportViews, findView, listViews, viewRefs } from './views';
 import type { DataAsset, DataDocument, GlossaryTerm } from './types';
 
 const raw = readFileSync('examples/datos-catalogo.json', 'utf8');
@@ -489,7 +490,7 @@ describe('catálogo: exportación', () => {
     const xml = await toDrawio(doc);
     const parsed = new XMLParser({ ignoreAttributes: false }).parse(xml);
     const pages = ([] as unknown[]).concat(parsed.mxfile.diagram) as Array<{ '@_name': string; mxGraphModel: { root: { mxCell: Array<Record<string, string>> } } }>;
-    expect(pages).toHaveLength(listViews(doc).length);
+    expect(pages).toHaveLength(exportViews(doc).length);
     for (const page of pages) {
       const cells = page.mxGraphModel.root.mxCell;
       const ids = new Set(cells.map((c) => c['@_id']));
@@ -609,6 +610,77 @@ describe('catálogo: comandos', () => {
   it('las entradas que no son datos válidos terminan en un error de módulo', () => {
     expect(() => run('products', { assets: [{ id: 'a', kind: 'raro', name: 'A' }] })).toThrow(/Documento de datos inválido/);
     expect(() => run('glossary', 'no es json')).toThrow();
+  });
+});
+
+describe('catálogo: convivencia con el ERD UML, los motores y el DDL', () => {
+  const withColumns = (): DataDocument => {
+    const d = base();
+    return parse({
+      ...d,
+      assets: [
+        ...d.assets,
+        { id: 'p', kind: 'data-product', name: 'Producto con columnas', owner: 'E', columns: [{ name: 'id', type: 'int' }], outputPorts: ['t1'] },
+        { id: 'a', kind: 'data-api', name: 'API con columnas', owner: 'E', columns: [{ name: 'id', type: 'int' }], exposes: ['t1'] },
+        { id: 'g', kind: 'glossary', name: 'Glosario con columnas', columns: [{ name: 'id', type: 'int' }] },
+      ],
+      relations: [{ id: 'r', sourceId: 't1', targetId: 't2', cardinality: '1:N', sourceMin: 0, targetMin: 1 }],
+    });
+  };
+
+  it('las vistas del catálogo se listan junto a las del ERD (pata de gallo y UML), los dominios y los mapas de calor', () => {
+    expect(listViews(doc).map((v) => v.id).slice(0, 4)).toEqual(['lineage', 'erd', 'products', 'glossary']);
+    const refs = viewRefs(doc);
+    expect(refs.map((v) => v.id).slice(0, 6)).toEqual(['lineage', 'erd', 'erd:uml', 'products', 'glossary', 'domain:ventas']);
+    expect(refs.find((v) => v.id === 'erd:uml')).toMatchObject({ variantOf: 'erd', variantLabel: 'UML' });
+    expect(refs.find((v) => v.id === 'products')).toEqual({ id: 'products', title: 'Productos de datos - Catálogo de datos de ventas' });
+    expect(refs.map((v) => v.id)).toEqual(expect.arrayContaining(['calor:clasificacion', 'domain:plataforma']));
+    expect(exportViews(doc).map((v) => v.id).slice(0, 5)).toEqual(['lineage', 'erd', 'erd:uml', 'products', 'glossary']);
+    // la variante UML sigue sin catálogo y con multiplicidades
+    expect(findView(doc, 'erd:uml')).toMatchObject({ type: 'erd', notation: 'uml', linkIds: [], termIds: [] });
+  });
+
+  it('los productos, las APIs y los glosarios no entran en el ERD (pata de gallo ni UML) aunque declaren columnas', () => {
+    const d = withColumns();
+    for (const id of ['erd', 'erd:uml']) {
+      const view = findView(d, id);
+      expect(view.assetIds).toEqual(expect.arrayContaining(['t1', 't2']));
+      expect(view.assetIds.filter((x) => ['p', 'a', 'g'].includes(x))).toEqual([]);
+      expect(dataEditor.project(d, id).nodes.map((n) => n.id)).not.toEqual(expect.arrayContaining(['p']));
+    }
+    for (const [viewId, header] of [['erd', 'erDiagram'], ['erd:uml', 'classDiagram']] as const) {
+      const mermaid = toMermaid(d, { viewId });
+      expect(mermaid).toContain(header);
+      expect(mermaid).not.toMatch(/Producto con columnas|API con columnas|Glosario con columnas/);
+    }
+  });
+
+  it('el DDL solo genera las tablas, no los productos, las APIs ni los glosarios', () => {
+    const d = withColumns();
+    const { text } = toDdl(d);
+    expect(text).toContain('T1');
+    expect(text).not.toMatch(/Producto con columnas|API con columnas|Glosario con columnas/);
+    // tampoco cuando se pide por el activo: un contenedor genera sus tablas
+    expect(toDdl(d, { assetId: 'db' }).text).not.toMatch(/Producto con columnas/);
+  });
+
+  it('un contrato de un producto o una API declara su motor como el de cualquier activo', () => {
+    const d = parse({
+      ...base(),
+      assets: [...base().assets, { id: 'a', kind: 'data-api', name: 'API', owner: 'E', exposes: ['t1'], contractId: 'c', engine: 'postgresql' }],
+      contracts: [{ id: 'c', name: 'Contrato', format: 'odcs', content: 'kind: DataContract\napiVersion: v3.0.2\nid: c\nstatus: active\nschema:\n  - name: ventas\n    properties:\n      - name: id\n        logicalType: integer\n' }],
+    });
+    expect(analyzeData(d).filter((i) => i.elementId === 'a' && i.message.includes('contrato'))).toEqual([]);
+    expect(toDdl(d, { contractId: 'c' }).text).toContain('ventas');
+  });
+
+  it('el generado por IA conserva las multiplicidades de las relaciones junto a los términos', () => {
+    const d = parse({ ...withColumns(), terms: [{ id: 'x', name: 'X', links: [{ assetId: 't1', column: 'id' }] }] });
+    const back = generatedToData(toGenerated(d));
+    expect(back.ok).toBe(true);
+    if (!back.ok) return;
+    expect(back.document.relations[0]).toMatchObject({ sourceMin: 0, targetMin: 1 });
+    expect(back.document.terms).toEqual(d.terms);
   });
 });
 

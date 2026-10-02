@@ -115,9 +115,10 @@ function AttachmentEditor({ attachments, document, detail, readOnly, commit, not
   const format = attachments.formats.find((f) => f.id === detail.format);
   const checked = useDeferredValue(draft);
   const diagnostics = useMemo(
-    () => guarded<AttachmentDiagnostic[]>([{ severity: 'error', message: 'No se pudo analizar el contenido.' }], () => attachments.check(detail.format, checked)),
-    [attachments, detail.format, checked],
+    () => guarded<AttachmentDiagnostic[]>([{ severity: 'error', message: 'No se pudo analizar el contenido.' }], () => attachments.check(detail.format, checked, { document, id: detail.id })),
+    [attachments, detail.format, detail.id, document, checked],
   );
+  const suggestions = useMemo(() => guarded<{ title: string; items: string[] } | undefined>(undefined, () => attachments.suggestions?.(document, detail.id, checked)), [attachments, document, detail.id, checked]);
   const summary = useMemo(() => guarded<string[]>([], () => attachments.summary?.(detail.format, checked) ?? []), [attachments, detail.format, checked]);
   const dirty = draft !== detail.text;
 
@@ -146,6 +147,18 @@ function AttachmentEditor({ attachments, document, detail, readOnly, commit, not
   const remove = (): void => {
     setConfirming(undefined);
     if (commit(attachments.remove(document, detail.id)).ok) onDeleted();
+  };
+  /** Escribe la sugerencia en el cursor (sustituye la selección, si la hay). */
+  const insert = (value: string): void => {
+    const el = area.current;
+    if (!el || readOnly) return;
+    const from = el.selectionStart ?? draft.length;
+    const to = el.selectionEnd ?? from;
+    applyText(`${draft.slice(0, from)}${value}${draft.slice(to)}`);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(from + value.length, from + value.length);
+    });
   };
   const jump = (d: AttachmentDiagnostic): void => {
     const el = area.current;
@@ -262,6 +275,22 @@ function AttachmentEditor({ attachments, document, detail, readOnly, commit, not
         )}
       </div>
 
+      {suggestions && suggestions.items.length > 0 && (
+        <details className="at-section" data-testid="attachment-suggestions">
+          <summary>
+            {suggestions.title} ({suggestions.items.length})
+          </summary>
+          <p className="at-muted">Pulsa uno para escribirlo en el cursor.</p>
+          <div className="at-chips">
+            {suggestions.items.map((item) => (
+              <button key={item} type="button" className="at-chip" disabled={readOnly} onMouseDown={(e) => e.preventDefault()} onClick={() => insert(item)} data-testid={`suggestion-${item}`}>
+                {item}
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
+
       {attachments.summary && (
         <details className="at-section" open data-testid="attachment-summary">
           <summary>Resumen</summary>
@@ -306,7 +335,7 @@ export function AttachmentsPanel({ attachments, document, text, readOnly, histor
       info,
       diagnostics: guarded<AttachmentDiagnostic[]>([], () => {
         const detail = attachments.read(document, info.id);
-        return detail ? attachments.check(info.format, detail.text) : [];
+        return detail ? attachments.check(info.format, detail.text, { document, id: info.id }) : [];
       }),
     }));
   }, [attachments, document]);

@@ -1,6 +1,7 @@
 import type { AiSpec } from '@iark/kernel';
 import { z } from 'zod';
-import { formatDataIssues, validateDataDocument } from '../schema';
+import { formatDataIssues, participationSchema, validateDataDocument } from '../schema';
+import { BUILTIN_ENGINE_IDS } from '../engines';
 import { API_PROTOCOLS, ASSET_KINDS, CARDINALITIES, CLASSIFICATIONS, COLUMN_KEYS, DATA_DOCUMENT_VERSION, PIPELINE_KINDS, TERM_STATUSES, type DataDocument } from '../types';
 
 // Lo que produce el modelo: todos los campos presentes (null si no aplican), como exige la salida estructurada.
@@ -28,6 +29,7 @@ const generatedAsset = z.object({
   name: z.string(),
   description: nullable(z.string()),
   technology: nullable(z.string()),
+  engine: nullable(z.string().describe(`Motor de base de datos: ${BUILTIN_ENGINE_IDS.join(', ')}`)),
   owner: nullable(z.string()),
   steward: nullable(z.string()),
   domainId: nullable(z.string()),
@@ -85,6 +87,8 @@ const generatedRelation = z.object({
   targetId: z.string(),
   cardinality: z.enum(CARDINALITIES),
   description: nullable(z.string()),
+  sourceMin: nullable(participationSchema),
+  targetMin: nullable(participationSchema),
 });
 
 export const generatedDataSchema = z.object({
@@ -108,8 +112,8 @@ function dropNulls<T>(value: T): T {
 }
 
 export function generatedToData(generated: GeneratedData): { ok: true; document: DataDocument } | { ok: false; issues: string } {
-  // Sin términos, el documento no los declara (el campo es opcional).
-  const { terms, ...rest } = dropNulls(generated);
+  // Sin términos (o sin el campo, en una salida anterior al glosario), el documento no los declara (el campo es opcional).
+  const { terms = [], ...rest } = dropNulls(generated);
   const result = validateDataDocument({ version: DATA_DOCUMENT_VERSION, ...rest, ...(terms.length > 0 ? { terms } : {}) });
   return result.ok ? result : { ok: false, issues: formatDataIssues(result.issues) };
 }
@@ -144,6 +148,9 @@ Activos (kind):
 - Agrupa por dominios ("domains", p. ej. Ventas, Clientes) cuando la descripción hable de áreas de negocio y asigna
   domainId a los activos de nivel superior.
 
+Motor (engine, solo si la descripción nombra la tecnología): en la base, almacén, lago, fuente o stream, uno de ${BUILTIN_ENGINE_IDS.map((id) => `"${id}"`).join(', ')}; las tablas lo heredan de su contenedor, así que no se repite en ellas. Usa
+para cada columna un tipo que ese motor tenga (en PostgreSQL "varchar", "uuid"; en Snowflake "varchar", "number"; en MongoDB "string", "objectId").
+
 Gobierno: classification ("public", "internal", "confidential", "restricted") según la sensibilidad indicada. Marca
 pii = true (a nivel de activo o de columna) cuando haya datos personales; un activo con datos personales es como mínimo
 "confidential". Añade retention si se menciona un plazo de conservación.
@@ -167,7 +174,10 @@ Pipelines (linaje): cada pipeline lee uno o más activos (inputs) y escribe uno 
 
 Modelo entidad-relación: si la descripción detalla entidades, dales columns (name, type, keys "pk"/"fk"/"uk") y une las
 tablas con "relations": cardinality "1:N" significa que una fila del origen se relaciona con varias del destino. Las
-relaciones solo unen tablas, vistas, archivos o streams y nunca un activo consigo mismo.
+relaciones solo unen tablas, vistas, archivos o streams y nunca un activo consigo mismo. Opcionalidad (solo si se
+menciona): sourceMin / targetMin = 0 (opcional) o 1 (obligatorio) en cada extremo; por defecto el extremo de "uno" es
+obligatorio (1) y el de "varios" opcional (0..*), de modo que "1:N" es 1 en el origen y 0..* en el destino; con
+targetMin = 1 es 1..* y con sourceMin = 0 es 0..1. Si no se dice nada, deja ambos en null.
 
 Responde en el idioma de la instrucción del usuario (nombres, descripciones). Sé concreto y no inventes activos que la
 descripción no justifique.`;
@@ -184,6 +194,7 @@ export function toGenerated(doc: DataDocument): GeneratedData {
       name: a.name,
       description: n(a.description),
       technology: n(a.technology),
+      engine: n(a.engine),
       owner: n(a.owner),
       steward: n(a.steward),
       domainId: n(a.domainId),
@@ -214,7 +225,7 @@ export function toGenerated(doc: DataDocument): GeneratedData {
       anonymizes: n(p.anonymizes),
       mappings: p.mappings ? p.mappings.map((m) => ({ from: { ...m.from }, to: { ...m.to }, transform: n(m.transform) })) : null,
     })),
-    relations: doc.relations.map((r) => ({ id: r.id, sourceId: r.sourceId, targetId: r.targetId, cardinality: r.cardinality, description: n(r.description) })),
+    relations: doc.relations.map((r) => ({ id: r.id, sourceId: r.sourceId, targetId: r.targetId, cardinality: r.cardinality, description: n(r.description), sourceMin: n(r.sourceMin), targetMin: n(r.targetMin) })),
     terms: (doc.terms ?? []).map((t) => ({
       id: t.id,
       name: t.name,

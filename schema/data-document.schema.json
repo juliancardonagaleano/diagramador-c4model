@@ -91,6 +91,10 @@
           "technology": {
             "type": "string"
           },
+          "engine": {
+            "description": "Motor de base de datos (postgresql, mysql, sqlserver, oracle, sqlite, bigquery, snowflake, redshift, databricks, mongodb, cassandra, dynamodb, kafka; el registro de motores es extensible). Lo heredan las tablas, vistas y archivos del activo.",
+            "type": "string"
+          },
           "owner": {
             "type": "string"
           },
@@ -382,6 +386,22 @@
           },
           "description": {
             "type": "string"
+          },
+          "sourceMin": {
+            "description": "Mínimo del origen: 0 = opcional, 1 = obligatorio (por defecto, 1 si la cardinalidad dice «uno» y 0 si dice «varios»).",
+            "type": "number",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "targetMin": {
+            "description": "Mínimo del destino: 0 = opcional, 1 = obligatorio (mismos valores por defecto que sourceMin).",
+            "type": "number",
+            "enum": [
+              0,
+              1
+            ]
           }
         },
         "required": [

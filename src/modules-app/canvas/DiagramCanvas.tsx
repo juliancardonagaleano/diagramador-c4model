@@ -31,7 +31,7 @@ export interface DiagramCanvasProps {
   document: unknown | undefined;
   text: string;
   viewId?: string;
-  views: Array<{ id: string; title: string; variantOf?: string; variantLabel?: string }>;
+  views: Array<{ id: string; title: string; variantOf?: string; variantLabel?: string; variantsLabel?: string }>;
   onView(id: string): void;
   readOnly: boolean;
   history: EditHistory;
@@ -87,6 +87,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
   const baseViewId = current?.variantOf ?? current?.id ?? '';
   const mainViews = views.filter((v) => !v.variantOf);
   const variants = baseViewId ? views.filter((v) => v.id === baseViewId || v.variantOf === baseViewId) : [];
+  const variantsLabel = variants.find((v) => v.variantsLabel)?.variantsLabel ?? 'Colorear por';
   const signature = graph ? structureKey(graph) : '';
 
   const selectedIds = useMemo(() => resolveSelection(graph, selection), [graph, selection]);
@@ -371,7 +372,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
         {variants.length > 1 && (
           <>
             <label className="cv-edge-kind">
-              Colorear por
+              {variantsLabel}
               <select value={current?.id ?? ''} onChange={(e) => onView(e.target.value)} data-testid="canvas-variant">
                 {variants.map((v) => (
                   <option key={v.id} value={v.id}>

@@ -88,6 +88,8 @@ export interface EditorEdge {
   marks?: EdgeMark[];
   /** Remates de pata de gallo en los extremos (modelo entidad-relación); sustituyen a la punta de flecha. */
   ends?: { source?: EdgeEnd; target?: EdgeEnd };
+  /** Textos escritos junto a cada extremo de la línea (las multiplicidades `1` y `0..*` de la notación UML). */
+  endLabels?: { source?: string; target?: string };
   /** Grosor que sustituye al de la notación (p. ej. criticidad alta). */
   width?: number;
 }
@@ -205,8 +207,8 @@ export interface AttachmentSpec<TDoc> {
   formats: AttachmentFormat[];
   list(document: TDoc): AttachmentInfo[];
   read(document: TDoc, id: string): AttachmentDetail | undefined;
-  /** Problemas del contenido para ese formato (sintaxis y reglas del formato). */
-  check(format: string, text: string): AttachmentDiagnostic[];
+  /** Problemas del contenido para ese formato (sintaxis y reglas del formato). `context` dice de qué adjunto del documento es el texto, por si la validación depende de lo que lo usa (el motor de la base de datos). */
+  check(format: string, text: string, context?: { document: TDoc; id: string }): AttachmentDiagnostic[];
   /** Reescribe el contenido en su forma canónica; falla si el texto no se puede interpretar. */
   reformat(format: string, text: string, context: { name: string }): AttachmentTextResult;
   /** Contenido inicial de un adjunto nuevo. */
@@ -214,6 +216,11 @@ export interface AttachmentSpec<TDoc> {
   /** Resumen legible del contenido (operaciones, mensajes, herramientas…). */
   summary?(format: string, text: string): string[];
   transforms?: AttachmentTransform[];
+  /**
+   * Valores que se pueden insertar en el texto (los tipos de columna del motor de la base de datos): el panel los ofrece bajo el
+   * editor y la elegida se escribe en el cursor. `title` los nombra («Tipos de PostgreSQL»).
+   */
+  suggestions?(document: TDoc, id: string, text: string): { title: string; items: string[] } | undefined;
   add(document: TDoc, format: string, name: string): EditResult<TDoc>;
   update(document: TDoc, id: string, patch: { name?: string; format?: string; version?: string; description?: string; url?: string; text?: string }): EditResult<TDoc>;
   remove(document: TDoc, id: string): EditResult<TDoc>;

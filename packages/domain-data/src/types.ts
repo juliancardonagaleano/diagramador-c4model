@@ -78,6 +78,11 @@ export interface DataAsset {
   name: string;
   description?: string;
   technology?: string;
+  /**
+   * Motor de base de datos (`postgresql`, `mongodb`, `snowflake`…; ver el registro de `engines.ts`). Lo hereda lo que cuelga del
+   * activo: una tabla usa el motor de su base, almacén o lago.
+   */
+  engine?: string;
   /** Responsable del dato (quien responde por él). */
   owner?: string;
   /** Custodio del día a día (calidad, catálogo). */
@@ -167,12 +172,23 @@ export interface Pipeline {
   mappings?: ColumnMapping[];
 }
 
+/** Mínimo de cada extremo de una relación: `0` = opcional (puede no haber ninguno), `1` = obligatorio (al menos uno). */
+export const PARTICIPATIONS = [0, 1] as const;
+export type Participation = (typeof PARTICIPATIONS)[number];
+
 export interface Relation {
   id: string;
   sourceId: string;
   targetId: string;
   cardinality: Cardinality;
   description?: string;
+  /**
+   * Opcionalidad del origen: cuántos orígenes, como mínimo, tiene cada destino. Sin indicar, `1` si la cardinalidad dice que es uno
+   * (`1:N`: `1`) y `0` si dice varios (`N:1`: `0..*`). Con `0` en un extremo de uno, `0..1`; con `1` en uno de varios, `1..*`.
+   */
+  sourceMin?: Participation;
+  /** Opcionalidad del destino: cuántos destinos, como mínimo, tiene cada origen (mismos valores por defecto que `sourceMin`). */
+  targetMin?: Participation;
 }
 
 export interface DataDocument {
@@ -194,6 +210,9 @@ export const PARENT_KINDS: Partial<Record<AssetKind, AssetKind[]>> = {
   view: ['database', 'warehouse', 'lake'],
   file: ['lake', 'source'],
 };
+
+/** Activos que pueden declarar un motor de base de datos (los de dentro lo heredan). */
+export const ENGINE_KINDS: AssetKind[] = ['source', 'database', 'warehouse', 'lake', 'stream'];
 
 /** Activos que describen una entidad (tienen columnas y pueden relacionarse en el modelo entidad-relación). */
 export const ENTITY_KINDS: AssetKind[] = ['table', 'view', 'file', 'stream'];

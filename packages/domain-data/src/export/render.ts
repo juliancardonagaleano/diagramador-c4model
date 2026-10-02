@@ -16,6 +16,7 @@ import {
   type Relation,
 } from '../types';
 import { listLinks, linkLabel, type DataLink, type LinkKind } from '../links';
+import { multiplicities, relationSides } from '../relations';
 import { findView, type DataView } from '../views';
 
 export const KIND_COLORS: Record<AssetKind, string> = {
@@ -158,12 +159,19 @@ export function pipelineLine(p: Pipeline): string {
 
 /** Extremos de pata de gallo de una relación: `1` = uno, `N` o `M` = varios (`1:N` = un origen, varios destinos). */
 export function relationEnds(r: Relation): { source: EdgeEnd; target: EdgeEnd } {
-  const [from, to] = r.cardinality.split(':');
-  return { source: from === '1' ? 'one' : 'many', target: to === '1' ? 'one' : 'many' };
+  const { source, target } = relationSides(r);
+  return { source: source.many ? 'many' : 'one', target: target.many ? 'many' : 'one' };
 }
 
-export function relationLabel(r: Relation): string {
+/** Texto de una relación: su descripción y, con la pata de gallo, su cardinalidad (en UML la dicen las multiplicidades de los extremos). */
+export function relationLabel(r: Relation, notation: DataView['notation'] = 'crowfoot'): string {
+  if (notation === 'uml') return r.description ?? '';
   return r.description ? `${r.description} (${r.cardinality})` : r.cardinality;
+}
+
+/** Multiplicidades UML escritas junto a cada extremo de una relación (`1`, `0..1`, `1..*`, `0..*`). */
+export function relationMultiplicities(r: Relation): { source: string; target: string } {
+  return multiplicities(r);
 }
 
 export function colorOf(a: DataAsset, context = false): string {
@@ -245,7 +253,7 @@ export async function layoutView(doc: DataDocument, viewId?: string, options: Gr
 
   const layout = await layoutGraph(
     nodes,
-    [...edges].map(([id, e]) => ({ id, source: e.source, target: e.target, label: e.relation ? relationLabel(e.relation) : e.link ? linkLabel(e.link) : undefined })),
+    [...edges].map(([id, e]) => ({ id, source: e.source, target: e.target, label: e.relation ? relationLabel(e.relation, view.notation) || undefined : e.link ? linkLabel(e.link) : undefined })),
     groups,
     { direction: 'RIGHT', ...options },
   );
@@ -302,6 +310,7 @@ export async function toSvg(doc: DataDocument, viewId?: string): Promise<string>
     edge: (id) => {
       const { relation, pipeline, link } = edges.get(id)!;
       if (link) return { ...LINK_STYLES[link.kind], label: linkLabel(link), width: 1.5 };
+      if (relation && view.notation === 'uml') return { stroke: '#475569', label: relationLabel(relation, 'uml'), head: 'none', endLabels: relationMultiplicities(relation) };
       if (relation) return { stroke: '#475569', label: relationLabel(relation), ends: relationEnds(relation) };
       return { stroke: '#475569', dashed: isDashed(pipeline), width: 1.5 };
     },

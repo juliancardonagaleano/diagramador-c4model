@@ -97,6 +97,17 @@
               "null"
             ]
           },
+          "engine": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Motor de base de datos: postgresql, mysql, sqlserver, oracle, sqlite, bigquery, snowflake, redshift, databricks, mongodb, cassandra, dynamodb, kafka"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "owner": {
             "type": [
               "string",
@@ -306,6 +317,7 @@
           "name",
           "description",
           "technology",
+          "engine",
           "owner",
           "steward",
           "domainId",
@@ -495,6 +507,34 @@
               "string",
               "null"
             ]
+          },
+          "sourceMin": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  0,
+                  1
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "targetMin": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  0,
+                  1
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -502,7 +542,9 @@
           "sourceId",
           "targetId",
           "cardinality",
-          "description"
+          "description",
+          "sourceMin",
+          "targetMin"
         ],
         "additionalProperties": false
       }

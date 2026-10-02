@@ -14,6 +14,7 @@ import {
   type MermaidLine,
 } from '@iark/kernel';
 import { exposeViolation, portViolation, termLinkViolation } from '../links';
+import { participationOfSymbol } from '../relations';
 import { formatDataIssues, validateDataDocument } from '../schema';
 import {
   API_PROTOCOLS,
@@ -136,7 +137,8 @@ function termFields(parts: string[]): Pick<GlossaryTerm, 'name' | 'definition' |
 /**
  * Importa un diagrama de Mermaid como documento de datos.
  * - `erDiagram`: cada entidad es una tabla con sus columnas (claves `PK`/`FK`/`UK`, comentario) y cada relación conserva su
- *   multiplicidad (`1:1`, `1:N`, `N:1`, `N:M`); la opcionalidad no se conserva.
+ *   multiplicidad (`1:1`, `1:N`, `N:1`, `N:M`) y, si difiere de la habitual (`||` uno obligatorio, `o{` varios opcionales), su
+ *   opcionalidad (`|o`, `}|`…) como `sourceMin` y `targetMin`.
  * - `flowchart` / `graph`: linaje. `[( )]` = base de datos, `([ ])` = stream y el resto tablas; cada arista, con sus
  *   entradas y salidas (`A & B --> C`), es un pipeline: continua = por lotes, punteada = streaming, gruesa = CDC (o el
  *   tipo entre corchetes al final de la etiqueta, `"Carga diaria [elt]"`). Un `subgraph` es un contenedor.
@@ -211,12 +213,18 @@ function fromEr(lines: MermaidLine[], warnings: Warnings): Built {
         warnings.add(`${ev.where}: «${ev.from.alias}» se relaciona consigo mismo; el modelo de datos no admite relaciones recursivas, se omite.`);
         continue;
       }
+      const cardinality = cardinalityOf(ev.left, ev.right);
+      // La opcionalidad solo se guarda si difiere de la que la cardinalidad da por defecto (`||` obligatorio, `o{` opcional).
+      const sourceMin = participationOfSymbol(ev.left, erEndIsMany(ev.left));
+      const targetMin = participationOfSymbol(ev.right, erEndIsMany(ev.right));
       relations.push({
         id: pickId(`${source.id}--${target.id}`, relationIds),
         sourceId: source.id,
         targetId: target.id,
-        cardinality: cardinalityOf(ev.left, ev.right),
+        cardinality,
         ...(ev.label ? { description: ev.label } : {}),
+        ...(sourceMin !== undefined ? { sourceMin } : {}),
+        ...(targetMin !== undefined ? { targetMin } : {}),
       });
     }
   }

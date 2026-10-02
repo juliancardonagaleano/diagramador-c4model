@@ -46,6 +46,17 @@ export function edgeEndPaths(end: EdgeEnd, at: { x: number; y: number }, dir: { 
   return [`M${pt(12, 0)} L${pt(0, -6)}`, `M${pt(12, 0)} L${pt(0, 0)}`, `M${pt(12, 0)} L${pt(0, 6)}`];
 }
 
+/**
+ * Dónde se escribe el texto de un extremo de línea (una multiplicidad UML como `0..*`): junto al nodo, encima de la línea si va en
+ * horizontal o a su derecha si va en vertical. `at` es el punto de la línea en el borde del nodo y `dir` el vector unitario hacia
+ * donde va la línea (como en `edgeEndPaths`). Lo comparten el lienzo y el SVG exportado.
+ */
+export function edgeEndLabelPoint(at: { x: number; y: number }, dir: { x: number; y: number }): { x: number; y: number; anchor: 'start' | 'middle' | 'end' } {
+  const r = (v: number): number => Math.round(v * 10) / 10;
+  if (Math.abs(dir.x) >= Math.abs(dir.y)) return { x: r(at.x + dir.x * 20), y: r(at.y - 6), anchor: 'middle' };
+  return { x: r(at.x + 7), y: r(at.y + dir.y * 18 + 4), anchor: 'start' };
+}
+
 export interface SvgEdgeStyle {
   stroke: string;
   dashed?: boolean;
@@ -59,6 +70,8 @@ export interface SvgEdgeStyle {
   head?: 'open' | 'none';
   /** Remates de pata de gallo en el origen y el destino; si hay alguno, la línea no lleva punta de flecha. */
   ends?: { source?: EdgeEnd; target?: EdgeEnd };
+  /** Textos junto a cada extremo de la línea (multiplicidades UML `1`, `0..*`); se dibujan además de lo que lleve la línea (use `head: 'none'` para una asociación sin flecha). */
+  endLabels?: { source?: string; target?: string };
 }
 
 /** Leyenda de colores que se dibuja bajo el título. */
@@ -147,15 +160,28 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
     const ends = style.ends && (style.ends.source || style.ends.target) ? style.ends : undefined;
     out.push(`<path d="${d}" fill="none" stroke="${style.stroke}" stroke-width="${style.width ?? 1.5}"${style.dashed ? ' stroke-dasharray="6 4"' : ''}${ends || style.head === 'none' ? '' : ` marker-end="url(#${style.head === 'open' ? 'arrow-open' : 'arrow'})"`}/>`);
     if (style.tail) out.push(renderTail(style.tail, e.points, style.stroke));
+    const unit = (a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number } => {
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      return { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+    };
     if (ends && e.points.length >= 2) {
       const pts = e.points;
       const last = pts.length - 1;
-      const unit = (a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number } => {
-        const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-        return { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
-      };
       const glyphs = [ends.source && edgeEndPaths(ends.source, pts[0], unit(pts[0], pts[1])), ends.target && edgeEndPaths(ends.target, pts[last], unit(pts[last], pts[last - 1]))];
       for (const g of glyphs) if (g) out.push(`<path d="${g.join(' ')}" fill="none" stroke="${style.stroke}" stroke-width="${style.width ?? 1.5}" stroke-linecap="round"/>`);
+    }
+    if (style.endLabels && e.points.length >= 2) {
+      const pts = e.points;
+      const last = pts.length - 1;
+      const labels = [
+        [style.endLabels.source, pts[0], unit(pts[0], pts[1])],
+        [style.endLabels.target, pts[last], unit(pts[last], pts[last - 1])],
+      ] as const;
+      for (const [text, at, dir] of labels) {
+        if (!text) continue;
+        const p = edgeEndLabelPoint(at, dir);
+        out.push(`<text x="${p.x}" y="${p.y}" text-anchor="${p.anchor}" font-size="11" fill="#334155" stroke="#ffffff" stroke-width="3" paint-order="stroke" stroke-linejoin="round">${esc(text)}</text>`);
+      }
     }
     const marks = style.marks ?? [];
     const anchor = e.label ?? polylineMidpoint(e.points);

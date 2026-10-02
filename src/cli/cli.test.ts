@@ -614,7 +614,8 @@ describe('iark: módulo de datos', () => {
 
     const drawio = join(dir, 'datos.drawio');
     expect(run(['convert', data, '--module', 'data', '--out', drawio]).status).toBe(0);
-    expect([].concat(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram)).toHaveLength(5);
+    // Linaje, ERD en pata de gallo, ERD en UML y tres dominios.
+    expect([].concat(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram)).toHaveLength(6);
 
     const missing = run(['convert', data, '--module', 'data', '--to', 'mermaid', '--view', 'nada']);
     expect(missing.status).not.toBe(0);

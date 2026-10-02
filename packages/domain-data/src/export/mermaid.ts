@@ -1,5 +1,6 @@
 import { LINK_LABELS, listLinks, type DataLink } from '../links';
-import { KIND_LABELS, TERM_STATUS_LABELS, type Cardinality, type DataAsset, type DataDocument, type GlossaryTerm, type Pipeline } from '../types';
+import { erSymbols, multiplicities } from '../relations';
+import { KIND_LABELS, TERM_STATUS_LABELS, type Cardinality, type DataAsset, type DataDocument, type GlossaryTerm, type Pipeline, type Relation } from '../types';
 import { findView } from '../views';
 import { KIND_COLORS, TERM_FILL, TERM_STROKE, impactColumnLines } from './render';
 
@@ -55,8 +56,14 @@ function flowArrow(p: Pipeline): string {
   return p.kind === 'streaming' ? '-.->' : p.kind === 'cdc' ? '==>' : '-->';
 }
 
-/** Cardinalidad → extremos de una relación de `erDiagram`. */
+/** Cardinalidad → extremos de una relación de `erDiagram` (sin opcionalidad declarada; con ella, ver `erEnds`). */
 export const ER_ENDS: Record<Cardinality, string> = { '1:1': '||--||', '1:N': '||--o{', 'N:1': '}o--||', 'N:M': '}o--o{' };
+
+/** Extremos de una relación de `erDiagram`: la cardinalidad y, si la relación la declara, su opcionalidad (`|o`, `}|`…). */
+export function erEnds(r: Relation): string {
+  const { left, right } = erSymbols(r);
+  return `${left}--${right}`;
+}
 
 const erName = (a: DataAsset, aliases: Map<string, string>): string => {
   const alias = aliases.get(a.id)!;
@@ -81,18 +88,51 @@ function toEr(doc: DataDocument, assetIds: string[], relationIds: string[], titl
     out.push('    }');
   }
   for (const r of doc.relations.filter((x) => relationIds.includes(x.id))) {
-    out.push(`    ${aliases.get(r.sourceId)} ${ER_ENDS[r.cardinality]} ${aliases.get(r.targetId)} : "${esc(r.description ?? '')}"`);
+    out.push(`    ${aliases.get(r.sourceId)} ${erEnds(r)} ${aliases.get(r.targetId)} : "${esc(r.description ?? '')}"`);
   }
   return `${out.join('\n')}\n`;
 }
 
 /**
- * Exporta una vista a Mermaid: el modelo entidad-relación como `erDiagram` y el resto (linaje, dominio, trazas) como
- * `flowchart`, con un pipeline por cada grupo de entradas y salidas.
+ * El modelo entidad-relación en notación UML como `classDiagram`: cada entidad es una clase con sus columnas y cada relación
+ * lleva su multiplicidad (`1`, `0..1`, `1..*`, `0..*`) junto a cada extremo. Mermaid no la reimporta como datos.
+ */
+function toUmlClasses(doc: DataDocument, assetIds: string[], relationIds: string[], title: string): string {
+  const assets = doc.assets.filter((a) => assetIds.includes(a.id));
+  const aliases = aliasMap(assets);
+  const out = ['---', `title: ${esc(title)}`, '---', 'classDiagram'];
+  for (const a of assets) {
+    const alias = aliases.get(a.id)!;
+    const head = a.name === alias ? `class ${alias}` : `class ${alias}["${esc(a.name)}"]`;
+    const columns = a.columns ?? [];
+    if (columns.length === 0) {
+      out.push(`    ${head}`);
+      continue;
+    }
+    out.push(`    ${head} {`);
+    for (const c of columns) {
+      const type = (c.type ?? 'string').replace(/[\s,()<>{}]+/g, '_').replace(/_+$/, '');
+      const name = c.name.replace(/[^\w-]+/g, '_');
+      const keys = (c.keys ?? []).map((k) => k.toUpperCase()).join(', ');
+      out.push(`        +${type} ${name}${keys ? ` ${keys}` : ''}`);
+    }
+    out.push('    }');
+  }
+  for (const r of doc.relations.filter((x) => relationIds.includes(x.id))) {
+    const m = multiplicities(r);
+    out.push(`    ${aliases.get(r.sourceId)} "${m.source}" -- "${m.target}" ${aliases.get(r.targetId)}${r.description ? ` : ${esc(r.description)}` : ''}`);
+  }
+  return `${out.join('\n')}\n`;
+}
+
+/**
+ * Exporta una vista a Mermaid: el modelo entidad-relación como `erDiagram` (pata de gallo) o, en notación UML (`erd:uml`),
+ * como `classDiagram` con multiplicidades; el resto (linaje, dominio, trazas) como `flowchart`, con un pipeline por cada
+ * grupo de entradas y salidas.
  */
 export function toMermaid(doc: DataDocument, options: { viewId?: string } = {}): string {
   const view = findView(doc, options.viewId);
-  if (view.type === 'erd') return toEr(doc, view.assetIds, view.relationIds, view.title);
+  if (view.type === 'erd') return view.notation === 'uml' ? toUmlClasses(doc, view.assetIds, view.relationIds, view.title) : toEr(doc, view.assetIds, view.relationIds, view.title);
 
   const assets = doc.assets.filter((a) => view.assetIds.includes(a.id));
   const terms = (doc.terms ?? []).filter((t) => view.termIds.includes(t.id));

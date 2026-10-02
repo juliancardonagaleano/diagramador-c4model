@@ -47,7 +47,7 @@
       "id": "data",
       "name": "Arquitectura de datos",
       "version": "0.1.0",
-      "description": "Linaje, modelo entidad-relación y gobierno del dato: dominios, pipelines, clasificación y datos personales; exporta a Mermaid, SVG y draw.io.",
+      "description": "Linaje, modelo entidad-relación (pata de gallo o UML), gobierno del dato y catálogo (productos de datos, APIs y glosario): dominios, pipelines, clasificación, datos personales y contratos por motor de base de datos; exporta a Mermaid, SVG, draw.io y DDL.",
       "documentVersion": "1.0",
       "importFormats": [
         "mermaid"
@@ -55,7 +55,8 @@
       "exportFormats": [
         "mermaid",
         "svg",
-        "drawio"
+        "drawio",
+        "ddl"
       ],
       "endpoints": {
         "embed": "../modulos.html?module=data",
