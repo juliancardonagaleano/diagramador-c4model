@@ -50,7 +50,9 @@
       "description": "Linaje, modelo entidad-relación y gobierno del dato: dominios, pipelines, clasificación y datos personales; exporta a Mermaid, SVG y draw.io.",
       "documentVersion": "1.0",
       "importFormats": [
-        "mermaid"
+        "mermaid",
+        "ddl",
+        "dbt"
       ],
       "exportFormats": [
         "mermaid",

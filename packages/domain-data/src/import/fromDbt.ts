@@ -131,7 +131,7 @@ export function fromDbt(source: string, options: DataImportOptions = {}): DataIm
   try {
     json = rec(JSON.parse(source));
   } catch (error) {
-    throw new DataImportError(`El archivo no es JSON válido: ${(error as Error).message}`);
+    throw new DataImportError(`El archivo no es JSON válido (${(error as Error).message}): se esperaba el \`target/manifest.json\` de dbt.`);
   }
   if (!json) throw new DataImportError('El JSON no es un manifest de dbt: se esperaba un objeto con `metadata` y `nodes`.');
   const metadata = rec(json.metadata);
