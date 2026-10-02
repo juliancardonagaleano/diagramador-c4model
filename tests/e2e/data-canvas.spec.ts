@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
+import { canvasReady, selectView } from './canvas-helpers';
 
 /** Si existe, las capturas de la notación se dejan también en la carpeta de salidas del proyecto. */
 const SHOTS = process.env.DATA_SHOTS_DIR;
@@ -17,6 +18,7 @@ async function open(page: Page): Promise<string[]> {
   await page.goto('/modulos.html?module=data', { waitUntil: 'networkidle' });
   await expect(page.getByTestId('module-canvas')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
+  await canvasReady(page);
   return errors;
 }
 
@@ -40,21 +42,19 @@ test.describe('datos: lienzo con gobierno, ERD y contratos', () => {
 
   test('el ERD dibuja la pata de gallo en los extremos de la relación y resalta las claves', async ({ page }) => {
     await open(page);
-    await page.getByTestId('canvas-view').selectOption('erd');
+    await selectView(page, 'erd');
     await expect(page.getByTestId('node-erp-pedidos')).toBeVisible();
     await expect(page.getByTestId('edge-end-pedido-lineas-source')).toHaveAttribute('data-end', 'one');
     await expect(page.getByTestId('edge-end-pedido-lineas-target')).toHaveAttribute('data-end', 'many');
     await expect(page.locator('[data-testid="node-erp-lineas"] li[data-emphasis="key"]').first()).toContainText('PK,FK pedido_id');
     await expect(page.locator('[data-testid="node-erp-pedidos"] li[data-emphasis="ref"]')).toContainText('FK cliente_id');
-    await page.waitForTimeout(600);
     await shot(page, 'erd-pata-de-gallo');
   });
 
   test('el mapa de calor colorea el linaje por clasificación', async ({ page }) => {
     await open(page);
-    await page.getByTestId('canvas-view').selectOption('calor:clasificacion');
+    await selectView(page, 'calor:clasificacion');
     await expect(page.getByTestId('node-bronze-clientes')).toBeVisible();
-    await page.waitForTimeout(600);
     await shot(page, 'mapa-de-calor-clasificacion');
   });
 
@@ -116,13 +116,12 @@ test.describe('datos: lienzo con gobierno, ERD y contratos', () => {
     await expect(page.locator('.wb-toast')).toHaveCount(0, { timeout: 8000 });
     await page.keyboard.press('Escape');
 
-    await page.getByTestId('canvas-view').selectOption('column:erp-pedidos.total');
+    await selectView(page, 'column:erp-pedidos.total');
     await expect(page.getByTestId('node-erp-pedidos')).toContainText('● total: numeric');
     await expect(page.getByTestId('node-silver-ventas')).toContainText('▸ importe: numeric');
     await expect(page.getByTestId('node-panel-ventas')).toContainText('▸ Ventas totales');
     await expect(page.getByTestId('node-modelo-fuga')).toContainText('▸ gasto_total');
     await expect(page.getByTestId('node-crm-clientes')).toHaveCount(0);
-    await page.waitForTimeout(600);
     await shot(page, 'linaje-columna');
     expect(errors).toEqual([]);
   });

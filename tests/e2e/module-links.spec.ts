@@ -1,10 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
+import { canvasReady } from './canvas-helpers';
 
 async function open(page: Page, module: string): Promise<string[]> {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`/modulos.html?module=${module}`, { waitUntil: 'networkidle' });
   await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
+  await canvasReady(page);
   return errors;
 }
 
@@ -45,7 +47,8 @@ test.describe('enlaces entre diagramas (URN) y pestaña C4', () => {
   test('C4 se edita en el banco con el editor principal embebido y su documento se sincroniza con la pestaña JSON', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
-    await page.goto('/modulos.html?module=c4', { waitUntil: 'networkidle' });
+    // Con iframes, `networkidle` a veces no se notifica aunque todo esté cargado y el `goto` agota el tiempo de la prueba: se espera por condiciones observables.
+    await page.goto('/modulos.html?module=c4', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('tab', { name: 'C4' })).toHaveAttribute('aria-selected', 'true');
     const iframe = page.locator('iframe[data-testid="c4-embed"]');
     await expect(iframe).toBeVisible({ timeout: 20000 });

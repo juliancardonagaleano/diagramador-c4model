@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { canvasReady, selectView } from './canvas-helpers';
 
 async function open(page: Page): Promise<string[]> {
   const errors: string[] = [];
@@ -6,6 +7,7 @@ async function open(page: Page): Promise<string[]> {
   await page.goto('/modulos.html?module=security', { waitUntil: 'networkidle' });
   await expect(page.getByTestId('module-canvas')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
+  await canvasReady(page);
   return errors;
 }
 
@@ -30,7 +32,7 @@ test.describe('lienzo de seguridad: fronteras, sugerencias y protección', () =>
 
   test('sugerir amenazas propone STRIDE por cruce y se puede aceptar o descartar', async ({ page }) => {
     await open(page);
-    await page.getByTestId('canvas-view').selectOption('threats');
+    await selectView(page, 'threats');
     const before = await page.locator('.react-flow__node').count();
     await page.getByTestId('action-suggest-threats').click();
     await expect.poll(() => page.locator('.react-flow__node').count()).toBeGreaterThan(before);
@@ -50,7 +52,7 @@ const box = async (page: Page, id: string) => (await page.getByTestId(`node-${id
 test.describe('lienzo de seguridad: matriz de calor, estándares y superficie de ataque', () => {
   test('la matriz de calor 3×4 coloca cada amenaza en su celda y arrastrarla a otra cambia su probabilidad e impacto', async ({ page }) => {
     const errors = await open(page);
-    await page.getByTestId('canvas-view').selectOption('heatmap');
+    await selectView(page, 'heatmap');
     await expect(page.locator('.cv-group[data-kind="cell"]')).toHaveCount(12);
     const inside = async (threat: string, cell: string): Promise<boolean> => {
       const [t, c] = [await box(page, threat), await box(page, cell)];
@@ -77,8 +79,8 @@ test.describe('lienzo de seguridad: matriz de calor, estándares y superficie de
 
   test('la variante residual baja de celda las amenazas con controles implementados y no se arrastra', async ({ page }) => {
     await open(page);
-    await page.getByTestId('canvas-view').selectOption('heatmap');
-    await page.getByTestId('canvas-variant').selectOption('heatmap:residual');
+    await selectView(page, 'heatmap');
+    await selectView(page, 'heatmap:residual', 'canvas-variant');
     await expect(page.getByTestId('node-inyeccion-sql')).toContainText('residual');
     await expect.poll(async () => (await box(page, 'inyeccion-sql')).y).toBeGreaterThan((await box(page, 'cell:medium:high')).y);
     await page.screenshot({ path: '/mnt/project-files/seguridad/matriz-de-calor-residual.png' });
@@ -86,12 +88,12 @@ test.describe('lienzo de seguridad: matriz de calor, estándares y superficie de
 
   test('la cobertura de estándares aparece al asignar un estándar a un control y marca lo que no cubre', async ({ page }) => {
     const errors = await open(page);
-    await page.getByTestId('canvas-view').selectOption('threats');
+    await selectView(page, 'threats');
     await page.getByTestId('node-tls-borde').click();
     await page.getByTestId('inspector').getByLabel('Estándar').selectOption('asvs');
     await page.getByTestId('node-cifrado-reposo').click();
     await page.getByTestId('inspector').getByLabel('Estándar').selectOption('nist-800-53');
-    await page.getByTestId('canvas-view').selectOption('standards');
+    await selectView(page, 'standards');
     await expect(page.locator('.cv-group[data-kind="catalog"]')).toHaveCount(2);
     await expect(page.getByTestId('node-correo-en-claro')).toContainText('sin cobertura');
     await expect(page.getByTestId('node-interceptacion')).toContainText('cubierta');
@@ -101,7 +103,7 @@ test.describe('lienzo de seguridad: matriz de calor, estándares y superficie de
 
   test('la superficie de ataque marca los activos expuestos y el radio de alcance', async ({ page }) => {
     const errors = await open(page);
-    await page.getByTestId('canvas-view').selectOption('surface');
+    await selectView(page, 'surface');
     await expect(page.getByTestId('node-waf-lb')).toContainText('expuesto');
     await expect(page.getByTestId('node-pedidos')).toContainText('saltos');
     await page.screenshot({ path: '/mnt/project-files/seguridad/superficie-de-ataque.png' });

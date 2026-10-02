@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { canvasReady, selectView } from './canvas-helpers';
 
 async function open(page: Page): Promise<string[]> {
   const errors: string[] = [];
@@ -7,6 +8,7 @@ async function open(page: Page): Promise<string[]> {
   await page.goto('/modulos.html?module=enterprise', { waitUntil: 'networkidle' });
   await expect(page.getByTestId('module-canvas')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
+  await canvasReady(page);
   return errors;
 }
 
@@ -42,7 +44,7 @@ const shot = (page: Page, name: string): Promise<Buffer> => page.screenshot({ pa
 test.describe('lienzo empresarial: capas, mapa por criterio y relaciones nuevas', () => {
   test('los nodos llevan el color de su capa y el icono de su tipo', async ({ page }) => {
     const errors = await open(page);
-    await page.getByTestId('canvas-view').selectOption('landscape');
+    await selectView(page, 'landscape');
     const app = page.getByTestId('node-tienda-web');
     await expect(app).toBeVisible();
     await expect(app.getByTestId('icon-tienda-web')).toBeVisible();
@@ -63,7 +65,7 @@ test.describe('lienzo empresarial: capas, mapa por criterio y relaciones nuevas'
       ['capabilities:criticality', 'Color: criticidad de las aplicaciones', 'mapa-criticidad'],
       ['capabilities:lifecycle', 'Color: ciclo de vida de las aplicaciones', 'mapa-ciclo-de-vida'],
     ] as const) {
-      await page.getByTestId('canvas-variant').selectOption(value);
+      await selectView(page, value, 'canvas-variant');
       await expect(legend).toContainText(title);
       await expect(page.getByTestId('node-gestion-inventario')).toBeVisible();
       await shot(page, name);
@@ -76,7 +78,7 @@ test.describe('lienzo empresarial: capas, mapa por criterio y relaciones nuevas'
   test('composición, flujo, asignación y disparo se dibujan con su notación', async ({ page }) => {
     const errors = await open(page);
     await loadExtended(page);
-    await page.getByTestId('canvas-view').selectOption('landscape');
+    await selectView(page, 'landscape');
     await expect(page.getByTestId('node-ventas')).toHaveAttribute('data-kind', 'unit');
     await expect(page.locator('.react-flow__edge[data-id="erp--composes--erp-facturacion"] [data-tail="diamond"]')).toBeVisible();
     await expect(page.locator('.react-flow__edge[data-id="ventas--assigned-to--alta-pedido"] [data-tail="dot"]')).toBeVisible();
@@ -96,7 +98,7 @@ test.describe('lienzo empresarial: capas, mapa por criterio y relaciones nuevas'
 
   test('los metadatos de una aplicación se editan en sus propiedades y llegan al documento', async ({ page }) => {
     await open(page);
-    await page.getByTestId('canvas-view').selectOption('landscape');
+    await selectView(page, 'landscape');
     await page.getByTestId('node-crm').click();
     const inspector = page.getByTestId('inspector');
     await inspector.getByLabel('Coste anual').fill('300000');
@@ -113,14 +115,14 @@ test.describe('lienzo empresarial: capas, mapa por criterio y relaciones nuevas'
   test('la hoja de ruta del ciclo de vida agrupa en columnas y «Agrupar por unidad» y «Reemplazar aplicación» actúan sobre la selección', async ({ page }) => {
     const errors = await open(page);
     await loadExtended(page);
-    await page.getByTestId('canvas-view').selectOption('roadmap');
+    await selectView(page, 'roadmap');
     await expect(page.getByTestId('node-roadmap:2027')).toBeVisible();
     await expect(page.getByTestId('node-roadmap:2026')).toBeVisible();
     await expect(page.getByTestId('node-wms-legacy')).toContainText('estrategia reemplazar');
     await expect(page.getByTestId('node-hana')).toContainText('soporte hasta 2034-12');
     await shot(page, 'hoja-de-ruta');
 
-    await page.getByTestId('canvas-view').selectOption('landscape');
+    await selectView(page, 'landscape');
     await page.getByTestId('node-crm').click();
     await page.getByTestId('action-replace-application').click();
     await page.getByTestId('action-prompt').locator('input').fill('CRM nuevo');
@@ -145,9 +147,8 @@ test.describe('lienzo empresarial: capas, mapa por criterio y relaciones nuevas'
     await page.getByLabel('Documento JSON').fill(readFileSync('examples/empresa-flujo-de-valor.json', 'utf8'));
     await page.getByRole('tab', { name: 'Lienzo' }).click();
     await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
-    await page.getByTestId('canvas-view').selectOption('value-stream');
+    await selectView(page, 'value-stream');
     await expect(page.getByTestId('node-pedir')).toBeVisible();
-    await page.waitForTimeout(600); // el encuadre de la cámara termina de animarse
     const stages = ['descubrir', 'pedir', 'preparar', 'entregar', 'posventa'];
     const boxes = [];
     for (const id of stages) {
@@ -181,7 +182,7 @@ test.describe('lienzo empresarial: capas, mapa por criterio y relaciones nuevas'
 
   test('en el paisaje se puede arrastrar una asignación hacia una unidad que solo era responsable', async ({ page }) => {
     const errors = await open(page);
-    await page.getByTestId('canvas-view').selectOption('landscape');
+    await selectView(page, 'landscape');
     await expect(page.getByTestId('node-plataforma')).toHaveAttribute('data-kind', 'unit');
     await page.getByTestId('edge-kind').selectOption('assigned-to');
     const from = (await page.getByTestId('node-alta-pedido').locator('.react-flow__handle.source').boundingBox())!;
