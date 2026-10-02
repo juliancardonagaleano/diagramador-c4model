@@ -689,18 +689,19 @@ Sin estado, sin dependencias (`node:http`). Sin `--cors` solo responde al mismo 
 
 #### Imagen Docker
 
-El `Dockerfile` (dos etapas sobre `node:22-alpine`) compila la biblioteca, el CLI y el sitio, deja solo las dependencias de producción y arranca `iark serve --host 0.0.0.0 --port 8787 --static dist/app` como el usuario `node` (no root). La imagen pesa unos 355 MB (la base de Node, 167 MB; `node_modules`, 176 MB; el sitio, 9 MB; el CLI, 4 MB) y no guarda estado.
+El `Dockerfile` (dos etapas sobre `node:22-alpine`) compila la biblioteca, el CLI y el sitio, deja solo las dependencias de producción y arranca `iark serve --host 0.0.0.0 --port $PORT --static dist/app` (`PORT` vale 8787 por defecto) como el usuario `node` (no root). La imagen pesa unos 207 MB (la base de Node, unos 160 MB; `node_modules`, 28 MB; el sitio, 9 MB; el CLI, 3 MB) y no guarda estado. Pesaba 355 MB mientras el frontend (react, Semi UI, xyflow, zustand…) estaba en `dependencies`: Vite ya lo empaqueta en `dist/app`, así que ahora es `devDependencies` y `npm prune --omit=dev` lo descarta; el paquete npm tampoco lo arrastra a quien lo instala (22 paquetes y 52 MB en vez de 209 y 271 MB).
 
 ```bash
 docker build -t iark-diagrams .
 docker run --rm -p 8787:8787 iark-diagrams                                   # editor, banco de trabajo, shell y API en http://localhost:8787
 docker run --rm -p 9000:8787 iark-diagrams --cors https://mi-app.example    # otro puerto del anfitrión y la API abierta a ese origen
+docker run --rm -e PORT=9100 -p 9000:9100 iark-diagrams                      # otro puerto de dentro (el HEALTHCHECK lo sigue)
 docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges -p 8787:8787 iark-diagrams   # endurecida: no escribe en disco
 ```
 
-- Los argumentos tras el nombre de la imagen se añaden al `ENTRYPOINT` (`--cors`, `--static`…); si repites una opción, gana la última. Para cambiar el puerto de publicación basta `-p`; si cambias el `--port` de dentro, el `HEALTHCHECK` (que consulta `/api/modules` en el 8787) fallará: sobrescríbelo con `--health-cmd` o `--no-healthcheck`.
+- Los argumentos tras el nombre de la imagen se añaden al `ENTRYPOINT` (`--cors`, `--static`…); si repites una opción, gana la última. Para cambiar el puerto de publicación basta `-p`. El puerto de dentro sale de la variable `PORT` (8787 por defecto), que usan igual el servidor y el `HEALTHCHECK` (consulta `/api/modules`): cámbialo con `-e PORT=9100`, no con `--port` (el servidor escucharía en otro puerto que el `HEALTHCHECK` no mira y el contenedor acabaría `unhealthy`; si aun así lo haces, sobrescribe el chequeo con `--health-cmd` o `--no-healthcheck`).
 - El contenedor pasa a `healthy` en unos segundos (`docker inspect --format '{{.State.Health.Status}}' <contenedor>`) y `docker stop` lo detiene en menos de un segundo con código 0: `iark serve` cierra el servidor al recibir `SIGTERM`, sin necesidad de `--init`.
-- Probado con Docker 29 (`docker build` y `docker run --network host`, en un entorno sin red de puente): `/`, `/modulos.html?module=data`, `/suite.html`, `/trazabilidad.html`, `/.well-known/iark.json`, `/api/modules`, validar y exportar (SVG, Mermaid y draw.io) un ejemplo de cada módulo, importar Mermaid, `run/<comando>` y `POST /api/trace`.
+- Probado con Docker 29 (`docker build`, `docker run --network host` y `docker run -p` con red de puente e iptables, incluida la variante endurecida y `-e PORT` con otro `-p`): `/`, `/modulos.html?module=data`, `/suite.html`, `/trazabilidad.html`, `/.well-known/iark.json`, `/api/modules`, validar y exportar (SVG, Mermaid y draw.io) un ejemplo de cada módulo, importar Mermaid, `run/<comando>` y `POST /api/trace`.
 
 ## Estructura del proyecto
 
@@ -736,6 +737,7 @@ tests/e2e/             pruebas Playwright
 - **La IA nunca produce coordenadas**: produce el modelo; ELK produce la geometría. Esto hace la generación robusta y el autolayout la pieza central del sistema.
 - **ELK `layered` con `hierarchyHandling: INCLUDE_CHILDREN`** porque es el único motor JS que trata los boundaries como nodos compuestos.
 - **Semi UI + Tailwind 4** son las mismas librerías que usa drawdb, lo que permite reproducir su estética (tabs tipo card, cards colapsables, grid de puntos, tarjetas con franja de color).
+- **Las librerías del frontend son `devDependencies`**: react, Semi UI, xyflow, zustand y zundo solo las usa el sitio, que Vite empaqueta entero en `dist/app`. `dependencies` se limita a lo que el paquete publicado y la imagen Docker necesitan en ejecución (`dist/core`, `dist/cli` y los dos bundles de `dist/embed`, que no importan nada de ellas): `commander`, `elkjs`, `fast-xml-parser`, `nanoid`, `yaml`, `zod` y los SDK de Anthropic. `tests/runtime-deps.test.ts` lo vigila: construye las cuatro salidas con tsup y falla si alguna importa (o incrusta, porque tsup solo externaliza `dependencies`) algo que no esté declarado como dependencia de ejecución.
 - **Niveles como vistas tipadas sobre un modelo único**, no diagramas independientes: así C1, C2 y C3 se mantienen coherentes entre sí y la navegación (doble clic, breadcrumb, enlaces de página en draw.io) se deriva de la relación vista ↔ alcance sin datos adicionales.
 
 ## Prueba real de `generate`
