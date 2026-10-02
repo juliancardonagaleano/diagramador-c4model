@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs';
 import { ModuleRegistry } from '@iark/kernel';
 import { describe, expect, it } from 'vitest';
 import { platformModule } from '../module';
+import { fromKubernetes } from './fromKubernetes';
+import { PlatformImportError } from './fromMermaid';
+import { fromTerraform } from './fromTerraform';
 import { validatePlatformDocument } from '../schema';
 import type { PlatformDocument } from '../types';
 
@@ -88,5 +91,46 @@ describe('módulo de plataforma: importadores registrados', () => {
     const text = 'resource "aws_s3_bucket" "a" {\n  bucket = "x"\n}\n';
     expect((await importer.import(text, { fallbackName: 'mi-infra.tf' })).document.workspace.name).toBe('mi-infra');
     expect((await importer.import(text, {})).document.workspace.name).toBe('Arquitectura de plataforma');
+  });
+});
+
+describe('importadores de infraestructura: entradas dañadas', () => {
+  // Generador determinista: la misma prueba en cada ejecución. Texto cortado, con un tramo borrado o con símbolos de más:
+  // lo único que puede salir es un documento válido o un PlatformImportError, nunca una excepción cualquiera.
+  const mutations = (text: string, seed: number): string[] => {
+    let state = seed;
+    const next = (): number => (state = (state * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+    const noise = ['{', '}', '"', '[', ']', ':', '\n', '\t', '<<', '${', '---', '#', '- '];
+    const out: string[] = [];
+    for (let i = 0; i < 25; i += 1) out.push(text.slice(0, Math.floor(next() * text.length)));
+    for (let i = 0; i < 25; i += 1) {
+      const a = Math.floor(next() * text.length);
+      out.push(text.slice(0, a) + text.slice(a + Math.floor(next() * 200)));
+    }
+    for (let i = 0; i < 25; i += 1) {
+      let t = text;
+      for (let k = 0; k < 3; k += 1) {
+        const p = Math.floor(next() * t.length);
+        t = t.slice(0, p) + noise[Math.floor(next() * noise.length)] + t.slice(p);
+      }
+      out.push(t);
+    }
+    return out;
+  };
+
+  it.each([
+    ...['aws-tienda/main.tf', 'aws-tienda-staging/terraform.tfstate', 'aws-tienda-dev/plan.json', 'azure-aks/main.tf', 'json-config/main.tf.json'].map((f) => [`${TF}/${f}`, fromTerraform] as const),
+    ...['tienda/manifests.yaml', 'tienda-kubectl/get-all.yaml', 'multi-entorno/entornos.yaml', 'malla-gateway/gateway.yaml'].map((f) => [`${K8S}/${f}`, fromKubernetes] as const),
+  ])('%s: truncado, recortado o con símbolos de más solo da un documento válido o un error de importación', (file, importer) => {
+    let imported = 0;
+    for (const text of mutations(read(file), file.length)) {
+      try {
+        expect(validatePlatformDocument(importer(text, {}).document).ok).toBe(true);
+        imported += 1;
+      } catch (error) {
+        expect(error).toBeInstanceOf(PlatformImportError);
+      }
+    }
+    expect(imported).toBeGreaterThan(0);
   });
 });
