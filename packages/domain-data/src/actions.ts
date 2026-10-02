@@ -1,4 +1,5 @@
 import { uniqueId, type EditorAction } from '@iark/kernel';
+import { CATALOG_ACTIONS } from './catalog-actions';
 import { pipelineNodeId } from './export/render';
 import { sensitivity } from './issues';
 import { traceLineage } from './lineage';
@@ -15,7 +16,7 @@ function selectedAssets(doc: DataDocument, ids: string[]): DataAsset[] {
   return [...new Set(ids)].flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
 }
 
-const allIds = (doc: DataDocument): string[] => [...doc.assets.map((a) => a.id), ...doc.pipelines.map((p) => p.id), ...doc.domains.map((d) => d.id), ...(doc.contracts ?? []).map((c) => c.id)];
+const allIds = (doc: DataDocument): string[] => [...doc.assets.map((a) => a.id), ...doc.pipelines.map((p) => p.id), ...doc.domains.map((d) => d.id), ...(doc.contracts ?? []).map((c) => c.id), ...(doc.terms ?? []).map((t) => t.id)];
 
 // ───────────── Agrupar en dominio ─────────────
 
@@ -188,5 +189,5 @@ const MASK: EditorAction<DataDocument> = {
   },
 };
 
-export const DATA_ACTIONS: Array<EditorAction<DataDocument>> = [GROUP_DOMAIN, PROPAGATE, MASK];
+export const DATA_ACTIONS: Array<EditorAction<DataDocument>> = [GROUP_DOMAIN, PROPAGATE, MASK, ...CATALOG_ACTIONS];
 

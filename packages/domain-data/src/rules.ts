@@ -8,12 +8,14 @@ import { KIND_LABELS, PARENT_KINDS, type AssetKind, type DataAsset } from './typ
 /** Por qué `asset` no puede ser el origen (lo que el pipeline lee) de un flujo, o `undefined` si puede. */
 export function readViolation(asset: DataAsset): string | undefined {
   if (asset.kind === 'report') return `El informe «${asset.name}» solo lee datos: no alimenta a ningún pipeline.`;
+  if (asset.kind === 'glossary') return `El glosario «${asset.name}» define términos, no guarda datos: no alimenta a ningún pipeline.`;
   return undefined;
 }
 
 /** Por qué `asset` no puede ser el destino (lo que el pipeline escribe) de un flujo, o `undefined` si puede. */
 export function writeViolation(asset: DataAsset): string | undefined {
   if (asset.kind === 'source' && asset.external) return `La fuente externa «${asset.name}» solo escribe datos: ningún pipeline de este modelo escribe en ella.`;
+  if (asset.kind === 'glossary') return `El glosario «${asset.name}» define términos, no guarda datos: ningún pipeline escribe en él.`;
   return undefined;
 }
 

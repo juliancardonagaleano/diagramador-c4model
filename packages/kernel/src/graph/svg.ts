@@ -19,8 +19,25 @@ export interface SvgNodeStyle {
   align?: 'center' | 'left';
   /** Máximo de líneas de texto que se dibujan (por defecto 3). */
   maxLines?: number;
-  /** Icono del tipo en la esquina superior izquierda: trazados de una caja de 16 × 16, con el color del texto. */
+  /**
+   * Icono del tipo en la esquina superior izquierda: trazados de una caja de 16 × 16, con el color del texto. Con `iconColor`
+   * es en cambio una ficha de icono de proveedor (un servicio de una nube): un cuadrado blanco con ese color de acento que
+   * cabalga sobre la esquina superior izquierda del nodo.
+   */
   icon?: string[];
+  /** Color de acento de la ficha del icono (`#rrggbb`); si no se indica, el icono es el pequeño del tipo. */
+  iconColor?: string;
+}
+
+/** Lado de la ficha de un icono de proveedor y lo que sobresale de la esquina del nodo (o del grupo) que decora. */
+export const ICON_TILE = 24;
+export const ICON_TILE_OVERHANG = 8;
+
+/** Ficha de un icono de proveedor en (`x`, `y`): fondo blanco, borde y trazos del color de acento (trazados de una caja de 16 × 16). */
+export function iconTile(paths: string[], color: string, x: number, y: number): string {
+  const c = esc(color);
+  const glyph = paths.map((d) => `<path d="${esc(d)}"/>`).join('');
+  return `<g transform="translate(${x} ${y})"><rect width="${ICON_TILE}" height="${ICON_TILE}" rx="5" fill="#ffffff" stroke="${c}" stroke-width="1.5"/><g transform="translate(4 4)" fill="none" stroke="${c}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${glyph}</g></g>`;
 }
 
 /** Insignia pequeña sobre una línea: un número de paso (`text`) o el icono de un patrón (`icon`: trazados de una caja de 16 × 16). */
@@ -46,6 +63,17 @@ export function edgeEndPaths(end: EdgeEnd, at: { x: number; y: number }, dir: { 
   return [`M${pt(12, 0)} L${pt(0, -6)}`, `M${pt(12, 0)} L${pt(0, 0)}`, `M${pt(12, 0)} L${pt(0, 6)}`];
 }
 
+/**
+ * Dónde se escribe el texto de un extremo de línea (una multiplicidad UML como `0..*`): junto al nodo, encima de la línea si va en
+ * horizontal o a su derecha si va en vertical. `at` es el punto de la línea en el borde del nodo y `dir` el vector unitario hacia
+ * donde va la línea (como en `edgeEndPaths`). Lo comparten el lienzo y el SVG exportado.
+ */
+export function edgeEndLabelPoint(at: { x: number; y: number }, dir: { x: number; y: number }): { x: number; y: number; anchor: 'start' | 'middle' | 'end' } {
+  const r = (v: number): number => Math.round(v * 10) / 10;
+  if (Math.abs(dir.x) >= Math.abs(dir.y)) return { x: r(at.x + dir.x * 20), y: r(at.y - 6), anchor: 'middle' };
+  return { x: r(at.x + 7), y: r(at.y + dir.y * 18 + 4), anchor: 'start' };
+}
+
 export interface SvgEdgeStyle {
   stroke: string;
   dashed?: boolean;
@@ -59,6 +87,8 @@ export interface SvgEdgeStyle {
   head?: 'open' | 'none';
   /** Remates de pata de gallo en el origen y el destino; si hay alguno, la línea no lleva punta de flecha. */
   ends?: { source?: EdgeEnd; target?: EdgeEnd };
+  /** Textos junto a cada extremo de la línea (multiplicidades UML `1`, `0..*`); se dibujan además de lo que lleve la línea (use `head: 'none'` para una asociación sin flecha). */
+  endLabels?: { source?: string; target?: string };
 }
 
 /** Leyenda de colores que se dibuja bajo el título. */
@@ -72,7 +102,7 @@ export interface SvgOptions {
   node(id: string): SvgNodeStyle;
   edge(id: string): SvgEdgeStyle;
   /** Etiqueta del grupo y, opcionalmente, su relleno, su borde y el trazo del borde (por defecto gris claro y discontinuo). */
-  group?(id: string): { label: string; fill?: string; stroke?: string; border?: 'solid' | 'dashed' | 'dotted' };
+  group?(id: string): { label: string; fill?: string; stroke?: string; border?: 'solid' | 'dashed' | 'dotted'; /** Ficha de icono de proveedor en la esquina superior derecha (trazados de 16 × 16 y color de acento). */ icon?: string[]; iconColor?: string };
   legend?: SvgLegend;
 }
 
@@ -138,7 +168,8 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
     const style = options.group?.(g.id);
     const label = style?.label ?? g.id;
     out.push(`<rect x="${g.x}" y="${g.y}" width="${g.width}" height="${g.height}" rx="8" fill="${style?.fill ?? '#f8fafc'}" stroke="${style?.stroke ?? '#94a3b8'}"${style?.border === 'solid' ? ' stroke-width="2"' : style?.border === 'dotted' ? ' stroke-width="2" stroke-dasharray="2 4"' : ' stroke-dasharray="6 4"'}/>`);
-    out.push(`<text x="${g.x + 12}" y="${g.y + 22}" font-weight="700" fill="#475569">${esc(fit(label, g.width))}</text>`);
+    out.push(`<text x="${g.x + 12}" y="${g.y + 22}" font-weight="700" fill="#475569">${esc(fit(label, g.width - (style?.icon && style.iconColor ? ICON_TILE : 0)))}</text>`);
+    if (style?.icon && style.icon.length > 0 && style.iconColor) out.push(iconTile(style.icon, style.iconColor, g.x + g.width - ICON_TILE + ICON_TILE_OVERHANG, g.y - ICON_TILE_OVERHANG));
   }
 
   for (const e of layout.edges) {
@@ -147,15 +178,28 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
     const ends = style.ends && (style.ends.source || style.ends.target) ? style.ends : undefined;
     out.push(`<path d="${d}" fill="none" stroke="${style.stroke}" stroke-width="${style.width ?? 1.5}"${style.dashed ? ' stroke-dasharray="6 4"' : ''}${ends || style.head === 'none' ? '' : ` marker-end="url(#${style.head === 'open' ? 'arrow-open' : 'arrow'})"`}/>`);
     if (style.tail) out.push(renderTail(style.tail, e.points, style.stroke));
+    const unit = (a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number } => {
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      return { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+    };
     if (ends && e.points.length >= 2) {
       const pts = e.points;
       const last = pts.length - 1;
-      const unit = (a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number } => {
-        const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-        return { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
-      };
       const glyphs = [ends.source && edgeEndPaths(ends.source, pts[0], unit(pts[0], pts[1])), ends.target && edgeEndPaths(ends.target, pts[last], unit(pts[last], pts[last - 1]))];
       for (const g of glyphs) if (g) out.push(`<path d="${g.join(' ')}" fill="none" stroke="${style.stroke}" stroke-width="${style.width ?? 1.5}" stroke-linecap="round"/>`);
+    }
+    if (style.endLabels && e.points.length >= 2) {
+      const pts = e.points;
+      const last = pts.length - 1;
+      const labels = [
+        [style.endLabels.source, pts[0], unit(pts[0], pts[1])],
+        [style.endLabels.target, pts[last], unit(pts[last], pts[last - 1])],
+      ] as const;
+      for (const [text, at, dir] of labels) {
+        if (!text) continue;
+        const p = edgeEndLabelPoint(at, dir);
+        out.push(`<text x="${p.x}" y="${p.y}" text-anchor="${p.anchor}" font-size="11" fill="#334155" stroke="#ffffff" stroke-width="3" paint-order="stroke" stroke-linejoin="round">${esc(text)}</text>`);
+      }
     }
     const marks = style.marks ?? [];
     const anchor = e.label ?? polylineMidpoint(e.points);
@@ -181,7 +225,9 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
       else out.push(`<path d="${part.d}" fill="none" stroke="${s.stroke}" stroke-width="1.5"${part.opacity !== undefined ? ` stroke-opacity="${part.opacity}"` : ''}/>`);
     }
     out.push('</g>');
-    if (s.icon && s.icon.length > 0) {
+    if (s.icon && s.icon.length > 0 && s.iconColor) {
+      out.push(iconTile(s.icon, s.iconColor, n.x - ICON_TILE_OVERHANG, n.y - ICON_TILE_OVERHANG));
+    } else if (s.icon && s.icon.length > 0) {
       const paths = s.icon.map((d) => `<path d="${d}" fill="none" stroke="${s.textColor ?? '#ffffff'}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
       out.push(`<g transform="translate(${n.x + 7} ${n.y + 5})" opacity="0.85">${paths}</g>`);
     }

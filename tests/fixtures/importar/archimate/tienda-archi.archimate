@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<archimate:model xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:archimate="http://www.archimatetool.com/archimate" name="Tienda de barrio" id="id-3f1c0a52" version="5.0.0">
+  <folder name="Strategy" id="id-f-estrategia" type="strategy">
+    <element xsi:type="archimate:Capability" name="Venta al público" id="id-cap-venta">
+      <documentation>Vender en mostrador y por encargo.</documentation>
+      <property key="Importancia" value="Diferenciadora"/>
+      <property key="Madurez" value="3"/>
+    </element>
+    <element xsi:type="archimate:Capability" name="Cobro" id="id-cap-cobro">
+      <property key="importance" value="core"/>
+      <property key="maturity" value="Level 4"/>
+    </element>
+    <element xsi:type="archimate:Capability" name="Gestión de existencias" id="id-cap-stock">
+      <property key="importance" value="supporting"/>
+    </element>
+    <element xsi:type="archimate:Resource" name="Local comercial" id="id-res-local"/>
+    <element xsi:type="archimate:ValueStream" name="De la visita a la compra" id="id-vs-compra"/>
+    <element xsi:type="archimate:ValueStream" name="Entrar" id="id-vs-entrar"/>
+    <element xsi:type="archimate:ValueStream" name="Pagar" id="id-vs-pagar"/>
+  </folder>
+  <folder name="Business" id="id-f-negocio" type="business">
+    <element xsi:type="archimate:BusinessActor" name="Tendero" id="id-act-tendero"/>
+    <element xsi:type="archimate:BusinessActor" name="Clientela" id="id-act-clientela">
+      <property key="external" value="true"/>
+    </element>
+    <folder name="Procesos" id="id-f-procesos">
+      <element xsi:type="archimate:BusinessProcess" name="Cobrar en caja" id="id-pr-cobrar">
+        <documentation>Cobro con tarjeta o efectivo.</documentation>
+        <property key="Responsable" value="Tendero"/>
+      </element>
+      <element xsi:type="archimate:BusinessProcess" name="Reponer estantes" id="id-pr-reponer"/>
+      <element xsi:type="archimate:BusinessEvent" name="Cliente en caja" id="id-ev-caja"/>
+    </folder>
+    <element xsi:type="archimate:BusinessService" name="Venta en tienda" id="id-svc-venta"/>
+  </folder>
+  <folder name="Application" id="id-f-aplicacion" type="application">
+    <element xsi:type="archimate:ApplicationComponent" name="TPV" id="id-app-tpv">
+      <property key="annual cost" value="1.800 €"/>
+      <property key="Criticidad" value="Alta"/>
+      <property key="users" value="3"/>
+      <property key="Fin de soporte" value="2028-01"/>
+      <property key="owner" value="Tendero"/>
+    </element>
+    <element xsi:type="archimate:ApplicationComponent" name="Hoja de existencias" id="id-app-hoja">
+      <property key="Estrategia" value="Migrar"/>
+      <property key="Ciclo de vida" value="En retirada"/>
+    </element>
+    <element xsi:type="archimate:DataObject" name="Inventario" id="id-do-inventario"/>
+  </folder>
+  <folder name="Technology &amp; Physical" id="id-f-tecnologia" type="technology">
+    <element xsi:type="archimate:Node" name="Tablet de caja" id="id-n-tablet"/>
+    <element xsi:type="archimate:SystemSoftware" name="SQLite" id="id-sw-sqlite"/>
+    <element xsi:type="archimate:Artifact" name="tpv.apk" id="id-ar-apk"/>
+  </folder>
+  <folder name="Motivation" id="id-f-motivacion" type="motivation">
+    <element xsi:type="archimate:Goal" name="Cobrar sin colas" id="id-goal-colas"/>
+  </folder>
+  <folder name="Other" id="id-f-otros" type="other">
+    <element xsi:type="archimate:Junction" id="id-j-y"/>
+    <element xsi:type="archimate:Junction" id="id-j-o" type="or"/>
+  </folder>
+  <folder name="Relations" id="id-f-relaciones" type="relations">
+    <element xsi:type="archimate:CompositionRelationship" id="id-r-1" source="id-cap-venta" target="id-cap-cobro"/>
+    <element xsi:type="archimate:AssignmentRelationship" id="id-r-2" source="id-act-tendero" target="id-pr-cobrar"/>
+    <element xsi:type="archimate:RealizationRelationship" id="id-r-3" source="id-pr-cobrar" target="id-cap-cobro"/>
+    <element xsi:type="archimate:ServingRelationship" id="id-r-4" source="id-app-tpv" target="id-pr-cobrar"/>
+    <element xsi:type="archimate:RealizationRelationship" id="id-r-5" source="id-app-tpv" target="id-cap-cobro"/>
+    <element xsi:type="archimate:ServingRelationship" id="id-r-6" source="id-app-hoja" target="id-cap-stock"/>
+    <element xsi:type="archimate:AccessRelationship" id="id-r-7" source="id-app-hoja" target="id-do-inventario" accessType="3"/>
+    <element xsi:type="archimate:FlowRelationship" id="id-r-8" source="id-app-tpv" target="id-app-hoja" name="ventas del día"/>
+    <element xsi:type="archimate:ServingRelationship" id="id-r-9" source="id-sw-sqlite" target="id-app-tpv"/>
+    <element xsi:type="archimate:AssignmentRelationship" id="id-r-10" source="id-n-tablet" target="id-ar-apk"/>
+    <element xsi:type="archimate:RealizationRelationship" id="id-r-11" source="id-ar-apk" target="id-app-tpv"/>
+    <element xsi:type="archimate:CompositionRelationship" id="id-r-12" source="id-n-tablet" target="id-sw-sqlite"/>
+    <element xsi:type="archimate:TriggeringRelationship" id="id-r-13" source="id-pr-cobrar" target="id-ev-caja"/>
+    <element xsi:type="archimate:TriggeringRelationship" id="id-r-14" source="id-ev-caja" target="id-pr-reponer"/>
+    <element xsi:type="archimate:AssociationRelationship" id="id-r-15" source="id-svc-venta" target="id-pr-cobrar" directed="true"/>
+    <element xsi:type="archimate:CompositionRelationship" id="id-r-16" source="id-vs-compra" target="id-vs-entrar"/>
+    <element xsi:type="archimate:CompositionRelationship" id="id-r-17" source="id-vs-compra" target="id-vs-pagar"/>
+    <element xsi:type="archimate:FlowRelationship" id="id-r-18" source="id-vs-entrar" target="id-vs-pagar"/>
+    <element xsi:type="archimate:ServingRelationship" id="id-r-19" source="id-cap-venta" target="id-vs-entrar"/>
+    <element xsi:type="archimate:ServingRelationship" id="id-r-20" source="id-cap-cobro" target="id-vs-pagar"/>
+    <element xsi:type="archimate:ServingRelationship" id="id-r-21" source="id-vs-compra" target="id-act-clientela"/>
+    <element xsi:type="archimate:RealizationRelationship" id="id-r-22" source="id-cap-cobro" target="id-goal-colas"/>
+    <element xsi:type="archimate:InfluenceRelationship" id="id-r-23" source="id-res-local" target="id-cap-venta"/>
+  </folder>
+  <folder name="Views" id="id-f-vistas" type="diagrams">
+    <element xsi:type="archimate:ArchimateDiagramModel" name="Vista general" id="id-v-1">
+      <child xsi:type="archimate:DiagramObject" id="id-d-1" targetConnections="id-c-1" archimateElement="id-cap-venta">
+        <bounds x="24" y="24" width="120" height="55"/>
+      </child>
+    </element>
+    <element xsi:type="archimate:SketchModel" name="Boceto del local" id="id-v-2"/>
+  </folder>
+  <purpose>Modelo de una tienda de barrio con TPV y caja.</purpose>
+  <property key="Autor" value="Oficina de arquitectura"/>
+</archimate:model>

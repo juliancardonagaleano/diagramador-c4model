@@ -13,7 +13,7 @@ import { analyzeData } from './issues';
 import { findLineageCycles, traceLineage } from './lineage';
 import { dataModule } from './module';
 import { formatDataIssues, validateDataDocument } from './schema';
-import { findView, listViews } from './views';
+import { exportViews, findView, listViews } from './views';
 import type { DataDocument } from './types';
 
 const example = JSON.parse(readFileSync('examples/ventas-datos.json', 'utf8')) as unknown;
@@ -245,7 +245,9 @@ describe('exportadores', () => {
     expect(text).toMatch(/^---\ntitle: Modelo entidad-relación - Plataforma de datos de ventas\n---\nerDiagram/);
     expect(text).toContain('bigint pedido_id PK, FK');
     expect(text).toContain('text nombre "PII"');
-    expect(text).toContain('erp_pedidos ||--o{ erp_lineas : "contiene"');
+    // El pedido lleva al menos una línea (`targetMin: 1`): `|{` en lugar del `o{` por defecto de «varios».
+    expect(text).toContain('erp_pedidos ||--|{ erp_lineas : "contiene"');
+    expect(text).toContain('dwh_dim_cliente ||--o{ dwh_fact_ventas : "compra"');
     expect(text).not.toContain('crm["CRM"]');
   });
 
@@ -269,7 +271,7 @@ describe('exportadores', () => {
     const xml = await toDrawio(doc);
     const parsed = new XMLParser({ ignoreAttributes: false }).parse(xml);
     const pages = [].concat(parsed.mxfile.diagram);
-    expect(pages).toHaveLength(listViews(doc).length);
+    expect(pages).toHaveLength(exportViews(doc).length);
     for (const page of pages as Array<{ mxGraphModel: { root: { mxCell: Array<Record<string, string>> } } }>) {
       const cells = page.mxGraphModel.root.mxCell;
       const ids = new Set(cells.map((c) => c['@_id']));
@@ -406,7 +408,7 @@ describe('generación con IA', () => {
     expect(refine).toContain('"id": "dwh-dim-cliente"');
     expect(refine).toContain('Añade un informe');
     const schema = dataAiSpec.generationJsonSchema() as { properties: Record<string, unknown> };
-    expect(Object.keys(schema.properties)).toEqual(['workspace', 'domains', 'assets', 'pipelines', 'relations']);
+    expect(Object.keys(schema.properties)).toEqual(['workspace', 'domains', 'assets', 'pipelines', 'relations', 'terms']);
   });
 });
 
@@ -414,10 +416,10 @@ describe('módulo', () => {
   it('cumple el contrato y se puede registrar junto a otros módulos', () => {
     const registry = new ModuleRegistry().register(dataModule);
     expect(registry.require('data')).toBe(dataModule);
-    expect(dataModule.exporters.map((e) => e.id)).toEqual(['mermaid', 'svg', 'drawio']);
+    expect(dataModule.exporters.map((e) => e.id)).toEqual(['mermaid', 'svg', 'drawio', 'ddl']);
     expect(dataModule.importers.map((i) => i.id)).toEqual(['mermaid']);
     const manifest = buildManifest(registry, { name: 'Prueba', version: '0.0.0' });
-    expect(manifest.modules[0]).toMatchObject({ id: 'data', importFormats: ['mermaid'], exportFormats: ['mermaid', 'svg', 'drawio'] });
+    expect(manifest.modules[0]).toMatchObject({ id: 'data', importFormats: ['mermaid'], exportFormats: ['mermaid', 'svg', 'drawio', 'ddl'] });
     expect(dataModule.entities!(doc).map((e) => e.kind)).toEqual(expect.arrayContaining(['domain', 'warehouse', 'report', 'pipeline']));
     expect(dataModule.validate(doc)).toEqual([]);
     expect((dataModule.jsonSchema() as { type: string }).type).toBe('object');

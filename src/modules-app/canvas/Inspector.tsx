@@ -247,7 +247,7 @@ export function Inspector({ spec, document, id, selection, readOnly, moduleId, l
   const item = spec.read(document, id);
   if (!item) return <div className="cv-inspector cv-empty">Selecciona un elemento o una relación para ver sus propiedades.</div>;
   const notation = item.type === 'node' ? spec.nodeKinds.find((k) => k.kind === item.kind) : spec.edgeKinds.find((k) => k.kind === item.kind);
-  const fields = spec.fields({ type: item.type, kind: item.kind }, document);
+  const fields = spec.fields({ type: item.type, kind: item.kind }, document, item.values);
   const attachment = fields.some((f) => f.type === 'select' && f.opensAttachment) ? bindAttachments(spec, document, id, onCommit, onOpenAttachment) : undefined;
   return (
     <aside className="cv-inspector" aria-label="Propiedades" data-testid="inspector">

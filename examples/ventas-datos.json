@@ -17,7 +17,7 @@
         { "name": "pais", "type": "text" }
       ]
     },
-    { "id": "erp", "kind": "source", "name": "ERP de pedidos", "technology": "PostgreSQL", "domainId": "ventas", "owner": "Equipo Ventas", "ref": "urn:iark:integration:pedidos" },
+    { "id": "erp", "kind": "source", "name": "ERP de pedidos", "technology": "PostgreSQL", "engine": "postgresql", "domainId": "ventas", "owner": "Equipo Ventas", "ref": "urn:iark:integration:pedidos" },
     {
       "id": "erp-pedidos", "kind": "table", "name": "pedidos", "parentId": "erp", "classification": "internal",
       "columns": [
@@ -66,7 +66,7 @@
         { "name": "importe", "type": "numeric" }
       ]
     },
-    { "id": "dwh", "kind": "warehouse", "name": "DWH corporativo", "technology": "Snowflake", "domainId": "plataforma", "owner": "Equipo Plataforma" },
+    { "id": "dwh", "kind": "warehouse", "name": "DWH corporativo", "technology": "Snowflake", "engine": "snowflake", "domainId": "plataforma", "owner": "Equipo Plataforma" },
     {
       "id": "dwh-dim-cliente", "kind": "table", "name": "dim_cliente", "parentId": "dwh", "classification": "confidential", "retention": "5 años tras la baja",
       "columns": [
@@ -134,7 +134,7 @@
       ] }
   ],
   "relations": [
-    { "id": "pedido-lineas", "sourceId": "erp-pedidos", "targetId": "erp-lineas", "cardinality": "1:N", "description": "contiene" },
+    { "id": "pedido-lineas", "sourceId": "erp-pedidos", "targetId": "erp-lineas", "cardinality": "1:N", "targetMin": 1, "description": "contiene" },
     { "id": "cliente-ventas", "sourceId": "dwh-dim-cliente", "targetId": "dwh-fact-ventas", "cardinality": "1:N", "description": "compra" }
   ]
 }

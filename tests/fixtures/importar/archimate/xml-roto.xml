@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model xmlns="http://www.opengroup.org/xsd/archimate/3.0/"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.opengroup.org/xsd/archimate/3.0/ http://www.opengroup.org/xsd/archimate/3.1/archimate3_Diagram.xsd"
+       identifier="id-roto">
+  <name xml:lang="es">Modelo editado a mano</name>
+
+  <elements>
+    <element identifier="id-cap-1" xsi:type="Capability">
+      <name xml:lang="es">Atención al cliente</name>
+    </element>
+    <element identifier="id-app-1" xsi:type="ApplicationComponent">
+      <name xml:lang="es">CRM</name>
+    </element>
+  <!-- aquí faltó cerrar la lista de elementos -->
+
+  <relationships>
+    <relationship identifier="id-rel-1" xsi:type="Realization" source="id-app-1" target="id-cap-1"/>
+  </relationships>
+</model>

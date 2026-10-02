@@ -3,7 +3,7 @@ import { documentJsonSchema } from '@core/model/schema';
 import { generationJsonSchema } from '@core/ai/generationSchema';
 import { dataModule } from '@iark/domain-data';
 import { enterpriseModule } from '@iark/domain-enterprise';
-import { platformModule } from '@iark/domain-platform';
+import { platformIconPackJsonSchema, platformModule } from '@iark/domain-platform';
 import { securityModule } from '@iark/domain-security';
 import { integrationModule } from '@iark/domain-integration';
 
@@ -32,6 +32,9 @@ const platformDoc = { $id: `${base}/platform-document.schema.json`, title: 'Docu
 writeFileSync('schema/platform-document.schema.json', JSON.stringify(platformDoc, null, 2) + '\n');
 const platformGen = { $id: `${base}/platform-generation.schema.json`, title: 'Modelo de plataforma (salida de IA)', ...(platformModule.ai!.generationJsonSchema() as object) };
 writeFileSync('schema/platform-generation.schema.json', JSON.stringify(platformGen, null, 2) + '\n');
+
+const platformIcons = { $id: `${base}/platform-icon-pack.schema.json`, title: 'Paquete de iconos de plataforma (IArk - DIAgrams)', ...platformIconPackJsonSchema() };
+writeFileSync('schema/platform-icon-pack.schema.json', JSON.stringify(platformIcons, null, 2) + '\n');
 
 const securityDoc = { $id: `${base}/security-document.schema.json`, title: 'Documento de seguridad (IArk - DIAgrams)', ...(securityModule.jsonSchema() as object) };
 writeFileSync('schema/security-document.schema.json', JSON.stringify(securityDoc, null, 2) + '\n');

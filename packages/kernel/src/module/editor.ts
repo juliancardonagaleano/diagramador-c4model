@@ -75,6 +75,13 @@ export interface EditorNode {
   /** Tamaño que sustituye al de la notación (p. ej. una ficha crece con sus columnas). */
   width?: number;
   height?: number;
+  /**
+   * Icono propio del nodo (trazados de una caja de 16 × 16), en lugar del de su tipo: p. ej. el servicio de una nube. Con
+   * `iconColor` se dibuja como una ficha blanca con ese color de acento que cabalga sobre la esquina del nodo (arriba a la
+   * izquierda; arriba a la derecha en una zona).
+   */
+  icon?: string[];
+  iconColor?: string;
 }
 
 export interface EditorEdge {
@@ -88,6 +95,8 @@ export interface EditorEdge {
   marks?: EdgeMark[];
   /** Remates de pata de gallo en los extremos (modelo entidad-relación); sustituyen a la punta de flecha. */
   ends?: { source?: EdgeEnd; target?: EdgeEnd };
+  /** Textos escritos junto a cada extremo de la línea (las multiplicidades `1` y `0..*` de la notación UML). */
+  endLabels?: { source?: string; target?: string };
   /** Grosor que sustituye al de la notación (p. ej. criticidad alta). */
   width?: number;
 }
@@ -205,8 +214,8 @@ export interface AttachmentSpec<TDoc> {
   formats: AttachmentFormat[];
   list(document: TDoc): AttachmentInfo[];
   read(document: TDoc, id: string): AttachmentDetail | undefined;
-  /** Problemas del contenido para ese formato (sintaxis y reglas del formato). */
-  check(format: string, text: string): AttachmentDiagnostic[];
+  /** Problemas del contenido para ese formato (sintaxis y reglas del formato). `context` dice de qué adjunto del documento es el texto, por si la validación depende de lo que lo usa (el motor de la base de datos). */
+  check(format: string, text: string, context?: { document: TDoc; id: string }): AttachmentDiagnostic[];
   /** Reescribe el contenido en su forma canónica; falla si el texto no se puede interpretar. */
   reformat(format: string, text: string, context: { name: string }): AttachmentTextResult;
   /** Contenido inicial de un adjunto nuevo. */
@@ -214,6 +223,11 @@ export interface AttachmentSpec<TDoc> {
   /** Resumen legible del contenido (operaciones, mensajes, herramientas…). */
   summary?(format: string, text: string): string[];
   transforms?: AttachmentTransform[];
+  /**
+   * Valores que se pueden insertar en el texto (los tipos de columna del motor de la base de datos): el panel los ofrece bajo el
+   * editor y la elegida se escribe en el cursor. `title` los nombra («Tipos de PostgreSQL»).
+   */
+  suggestions?(document: TDoc, id: string, text: string): { title: string; items: string[] } | undefined;
   add(document: TDoc, format: string, name: string): EditResult<TDoc>;
   update(document: TDoc, id: string, patch: { name?: string; format?: string; version?: string; description?: string; url?: string; text?: string }): EditResult<TDoc>;
   remove(document: TDoc, id: string): EditResult<TDoc>;
@@ -230,8 +244,8 @@ export interface EditorSpec<TDoc> {
   defaultEdgeKind?: string;
   /** Grafo de la vista `viewId` (si no se indica, la primera). */
   project(document: TDoc, viewId?: string): EditorGraph;
-  /** Campos editables de un tipo. */
-  fields(target: EditorTarget, document: TDoc): FieldSpec[];
+  /** Campos editables de un tipo. `values` son los del elemento que se edita, por si las opciones de un campo dependen de otro (el servicio, del proveedor). */
+  fields(target: EditorTarget, document: TDoc, values?: Record<string, unknown>): FieldSpec[];
   /** Valores actuales de un nodo o relación, para el formulario. */
   read(document: TDoc, id: string): { type: 'node' | 'edge'; kind: string; values: Record<string, unknown> } | undefined;
   /** `parentId` es el contenedor seleccionado (si encaja); `viewId`, la vista abierta (p. ej. para crear el recurso en el entorno que se está viendo). */
