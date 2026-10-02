@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { c4Ready } from './canvas-helpers';
 
 test('protocolo embebido: handshake, export, setView, autosave, guardar y salir, origen no autorizado', async ({ page }) => {
   const hostErrors: string[] = [];
@@ -9,8 +10,8 @@ test('protocolo embebido: handshake, export, setView, autosave, guardar y salir,
 
   const frame = page.frames().find((f) => f.url().includes('embed=1'));
   expect(frame, 'el iframe se abrió con ?embed=1').toBeTruthy();
-  await frame!.waitForSelector('.react-flow__node');
   await expect(frame!.locator('.react-flow__node')).toHaveCount(3);
+  await c4Ready(frame!); // el documento llega sin coordenadas: el editor embebido lo coloca y lo encuadra
   await expect(frame!.getByRole('button', { name: 'Guardar y salir' })).toHaveCount(1);
 
   const xmlLen = await page.evaluate(async () => (await (window as any).embed.export('drawio')).length);
@@ -26,12 +27,14 @@ test('protocolo embebido: handshake, export, setView, autosave, guardar y salir,
 
   // setView desde el anfitrión → evento viewChange.
   await page.evaluate(() => (window as any).embed.setView('cont'));
-  await page.waitForTimeout(500);
-  expect((await page.locator('#log').textContent()) ?? '').toMatch(/viewChange.*"level":"C2"/);
+  await expect.poll(async () => (await page.locator('#log').textContent()) ?? '').toMatch(/viewChange.*"level":"C2"/);
+  await c4Ready(frame!, 'cont');
 
+  // El editor emite `autosave` 500 ms después del último cambio (agrupa los cambios seguidos): se espera al evento, no al tiempo.
+  const autosaves = async () => (((await page.locator('#log').textContent()) ?? '').match(/autosave/g) ?? []).length;
+  const autosavesBefore = await autosaves();
   await page.click('#btn-merge');
-  await page.waitForTimeout(800);
-  expect((await page.locator('#log').textContent()) ?? '').toMatch(/autosave/);
+  await expect.poll(autosaves, { timeout: 15000 }).toBeGreaterThan(autosavesBefore);
 
   await frame!.getByRole('button', { name: 'Guardar y salir' }).click();
   await page.waitForFunction(() => document.getElementById('state')?.textContent === 'salió');
@@ -41,7 +44,7 @@ test('protocolo embebido: handshake, export, setView, autosave, guardar y salir,
 
   // Mensaje desde un origen no permitido: se ignora.
   const ignored = await page.evaluate(() => {
-    return new Promise((resolve) => {
+    return new Promise<boolean>((resolve, reject) => {
       const iframe = document.querySelector('iframe')!;
       let got = false;
       const l = (e: MessageEvent) => {
@@ -52,13 +55,25 @@ test('protocolo embebido: handshake, export, setView, autosave, guardar y salir,
       rogue.src = iframe.src.replace(/origin=[^&]+/, 'origin=' + encodeURIComponent('https://otro.example'));
       rogue.style.display = 'none';
       document.body.appendChild(rogue);
-      setTimeout(() => {
-        rogue.contentWindow!.postMessage(JSON.stringify({ action: 'setView', viewId: 'ctx' }), '*');
-        setTimeout(() => {
-          window.removeEventListener('message', l);
-          resolve(!got);
-        }, 800);
-      }, 2500);
+      // Antes de enviar nada hay que saber que el editor del iframe intruso ya escucha mensajes; si no, el aviso se pierde y la
+      // prueba pasaría sin comprobar nada. Se espera a que ponga `theme-mode` en el <body> (App.tsx): ese efecto está declarado
+      // después del que registra la escucha del puente embebido, así que cuando existe la escucha ya está registrada.
+      const started = Date.now();
+      const whenListening = () => {
+        if (rogue.contentDocument?.body?.hasAttribute('theme-mode')) {
+          rogue.contentWindow!.postMessage(JSON.stringify({ action: 'setView', viewId: 'ctx' }), '*');
+          // Margen de ausencia: que algo NO llegue solo se puede acotar dejando pasar un tiempo, no hay condición que esperar.
+          setTimeout(() => {
+            window.removeEventListener('message', l);
+            resolve(!got);
+          }, 800);
+        } else if (Date.now() - started > 20000) {
+          reject(new Error('el iframe con origen no autorizado no llegó a arrancar'));
+        } else {
+          setTimeout(whenListening, 25);
+        }
+      };
+      whenListening();
     });
   });
   expect(ignored, 'la app ignora acciones de un origen no autorizado (no responde con error ni eventos)').toBe(true);
@@ -77,6 +92,5 @@ test('un mensaje del anfitrión con JSON roto produce un evento de error, no un 
     // antes del fix se descartaba en silencio porque el anfitrión envía JSON como string.
     iframe.contentWindow!.postMessage('{"action": "export", "format":', '*');
   });
-  await page.waitForTimeout(500);
-  expect((await page.locator('#log').textContent()) ?? '').toMatch(/error/);
+  await expect.poll(async () => (await page.locator('#log').textContent()) ?? '').toMatch(/error/);
 });

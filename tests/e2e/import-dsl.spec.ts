@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { c4Ready, openEditor } from './canvas-helpers';
 
 const TIENDA_DSL = `
 workspace "Mi tienda" "Tienda en línea de ejemplo." {
@@ -47,8 +48,7 @@ async function importDsl(page: Page, file: string | { name: string; mimeType: st
 const dslFile = (name: string, text: string) => ({ name, mimeType: 'text/plain', buffer: Buffer.from(text) });
 
 test('Archivo ▸ Importar Structurizr DSL carga el modelo y las vistas se colocan solas al abrirlas', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await openEditor(page);
 
   await importDsl(page, dslFile('tienda.dsl', TIENDA_DSL));
 
@@ -59,6 +59,7 @@ test('Archivo ▸ Importar Structurizr DSL carga el modelo y las vistas se coloc
 
   // Vista de contexto: el DSL no trae coordenadas y aun así todos los nodos se dibujan, cada uno en su sitio.
   const nodes = page.locator('.react-flow__node');
+  await c4Ready(page);
   await expect(nodes).toHaveCount(3);
   for (const name of ['Cliente', 'Tienda en línea', 'Pasarela de pagos']) await expect(nodes.filter({ hasText: name })).toBeVisible();
   const boxes = await nodes.evaluateAll((els) => els.map((e) => (e as HTMLElement).style.transform));
@@ -66,6 +67,7 @@ test('Archivo ▸ Importar Structurizr DSL carga el modelo y las vistas se coloc
 
   // Bajar a los contenedores: se colocan con el autolayout y la base de datos conserva su forma de cilindro.
   await nodes.filter({ hasText: 'Tienda en línea' }).dblclick();
+  await c4Ready(page);
   await expect(nodes.filter({ hasText: 'Aplicación web' })).toBeVisible();
   await expect(nodes.filter({ hasText: 'Base de datos' })).toBeVisible();
   await expect(nodes.filter({ hasText: 'API' })).toBeVisible();
@@ -73,23 +75,24 @@ test('Archivo ▸ Importar Structurizr DSL carga el modelo y las vistas se coloc
 });
 
 test('el ejemplo examples/banca.dsl se importa completo y se navega C1 → C2 → C3', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await openEditor(page);
 
   await importDsl(page, 'examples/banca.dsl');
   await expect(page.getByText(/"banca.dsl" importado: 13 elementos, 19 relaciones, 3 vistas/)).toBeVisible();
   await expect(page.locator('header')).toContainText('Cambios sin guardar'); // el ejemplo cargado por defecto no lo estaba
   await expect(page.locator('.react-flow__node')).toHaveCount(4);
+  await c4Ready(page);
 
   await page.locator('.react-flow__node', { hasText: 'Sistema de banca en línea' }).dblclick();
+  await c4Ready(page);
   await expect(page.locator('.react-flow__node', { hasText: 'Aplicación API' })).toBeVisible();
   await page.locator('.react-flow__node', { hasText: 'Aplicación API' }).dblclick();
+  await c4Ready(page);
   await expect(page.locator('.react-flow__node', { hasText: 'Controlador de cuentas' })).toBeVisible();
 });
 
 test('lo que no se puede importar del DSL se lista en un aviso (y el resto se importa)', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await openEditor(page);
 
   const dsl = `workspace "Avisos" {
   model {
@@ -115,8 +118,7 @@ test('lo que no se puede importar del DSL se lista en un aviso (y el resto se im
 });
 
 test('un DSL inválido muestra el motivo con su línea y no toca el diagrama actual', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await openEditor(page);
   const before = await page.locator('.react-flow__node').count();
 
   await importDsl(page, dslFile('roto.dsl', 'workspace "x" {\n  model {\n    s = softwareSystem "sin cerrar\n  }\n}\n'));
@@ -127,10 +129,9 @@ test('un DSL inválido muestra el motivo con su línea y no toca el diagrama act
 });
 
 test('con cambios sin guardar, importar un DSL pide confirmación antes de abrir el selector', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await openEditor(page);
   await page.getByRole('button', { name: 'Añadir persona' }).click();
-  await page.waitForTimeout(300);
+  await expect(page.locator('.react-flow__node')).toHaveCount(5);
 
   await page.getByText('Archivo', { exact: true }).click();
   await page.getByText('Importar Structurizr DSL…').click();

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
+import { c4Ready, openEditor } from './canvas-helpers';
 
 /** Un .drawio mínimo con formas sueltas (sin metadatos C4): dos cajas y una flecha, más una nota de texto. */
 const SIMPLE_DRAWIO =
@@ -21,8 +22,7 @@ async function importFile(page: Page, file: string | { name: string; mimeType: s
 }
 
 test('Archivo ▸ Importar .drawio carga las formas, avisa de lo omitido y deja el documento sin guardar', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await openEditor(page);
 
   await importFile(page, { name: 'mi-tienda.drawio', mimeType: 'application/xml', buffer: Buffer.from(SIMPLE_DRAWIO) });
 
@@ -43,8 +43,7 @@ test('Archivo ▸ Importar .drawio carga las formas, avisa de lo omitido y deja 
 });
 
 test('un archivo que no es de draw.io muestra el motivo y no toca el diagrama actual', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await openEditor(page);
   const before = await page.locator('.react-flow__node').count();
 
   await importFile(page, { name: 'no-es-drawio.xml', mimeType: 'application/xml', buffer: Buffer.from('<html><body>hola</body></html>') });
@@ -55,10 +54,9 @@ test('un archivo que no es de draw.io muestra el motivo y no toca el diagrama ac
 });
 
 test('con cambios sin guardar, importar pide confirmación antes de abrir el selector', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await openEditor(page);
   await page.getByRole('button', { name: 'Añadir persona' }).click();
-  await page.waitForTimeout(300);
+  await expect(page.locator('.react-flow__node')).toHaveCount(5);
 
   await openMenuItem(page, 'Importar .drawio…');
   const dialog = page.getByRole('dialog');
@@ -79,8 +77,7 @@ test('con cambios sin guardar, importar pide confirmación antes de abrir el sel
 });
 
 test('ida y vuelta: lo exportado con «Exportar .drawio» se importa con todas sus vistas y se navega entre niveles', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await openEditor(page);
 
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Exportar .drawio' }).click()]);
   const exported = await download.path();
@@ -89,10 +86,13 @@ test('ida y vuelta: lo exportado con «Exportar .drawio» se importa con todas s
   await importFile(page, exported!);
   await expect(page.getByText(/importado: 13 elementos, 19 relaciones, 3 vistas/)).toBeVisible();
   await expect(page.locator('.react-flow__node')).toHaveCount(4); // contexto: cliente, banca, mainframe y correo
+  await c4Ready(page);
 
   // Bajar a los niveles inferiores demuestra que las vistas, sus alcances y los padres se importaron.
   await page.locator('.react-flow__node', { hasText: 'Sistema de banca en línea' }).dblclick();
+  await c4Ready(page);
   await expect(page.locator('.react-flow__node', { hasText: 'Aplicación API' })).toBeVisible();
   await page.locator('.react-flow__node', { hasText: 'Aplicación API' }).dblclick();
+  await c4Ready(page);
   await expect(page.locator('.react-flow__node', { hasText: 'Controlador de cuentas' })).toBeVisible();
 });
