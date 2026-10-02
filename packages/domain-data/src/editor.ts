@@ -1,5 +1,9 @@
 import { uniqueId, type EdgeNotation, type EditResult, type EditorGraph, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
-import { ASSET_SHAPES, KIND_COLORS, PIPELINE_SHAPE, columnLine, entityLines, governanceLine, pipelineLine, pipelineNodeId } from './export/render';
+import { DATA_ACTIONS } from './actions';
+import { contractAttachments } from './contract-editor';
+import { inheritance } from './inherit';
+import { containerViolation, readViolation, writeViolation } from './rules';
+import { ASSET_SHAPES, KIND_COLORS, MAX_COLUMNS as MAX_COLUMN_LINES, PIPELINE_SHAPE, columnLine, entityLines, governanceLine, pipelineLine, pipelineNodeId, relationEnds } from './export/render';
 import {
   ASSET_KINDS,
   CARDINALITIES,
@@ -20,7 +24,7 @@ import {
   type DataDocument,
   type Pipeline,
 } from './types';
-import { findView } from './views';
+import { findView, HEAT_VIEWS } from './views';
 
 /**
  * Edición interactiva del módulo de datos. Notación: los contenedores (fuente, base, almacén, lago) como cilindros y zonas,
@@ -61,7 +65,7 @@ const NODE_KIND_NOTATION: NodeNotation[] = [
 /** La relación «pipeline» conecta dos activos creando el pipeline entre ellos, o añade una entrada/salida a uno existente. */
 const EDGE_KIND_NOTATION: EdgeNotation[] = [
   { kind: 'pipeline', label: 'Pipeline (flujo de datos)', stroke: '#475569', line: 'solid', width: 1.5 },
-  ...CARDINALITIES.map((c): EdgeNotation => ({ kind: c, label: `Relación ${c}`, stroke: '#475569', line: 'solid', width: 1.5, arrowEnd: c !== 'N:M' && c !== '1:1' })),
+  ...CARDINALITIES.map((c): EdgeNotation => ({ kind: c, label: `Relación ${c}`, stroke: '#475569', line: 'solid', width: 1.5, arrowEnd: false })),
 ];
 
 const options = (values: readonly string[], labels?: Record<string, string>): Array<{ value: string; label: string }> => values.map((value) => ({ value, label: labels?.[value] ?? value }));
@@ -77,9 +81,13 @@ const assetFields = (doc: DataDocument, kind: string): FieldSpec[] => [
   { key: 'pii', label: 'Datos personales', type: 'boolean' },
   { key: 'retention', label: 'Retención', type: 'text', hint: '7 años' },
   { key: 'external', label: 'Externo', type: 'boolean' },
+  ...(PARENT_KINDS[kind as AssetKind]
+    ? ([{ key: 'parentId', label: 'Contenedor', type: 'select', options: doc.assets.filter((a) => PARENT_KINDS[kind as AssetKind]!.includes(a.kind)).map((a) => ({ value: a.id, label: a.name })), allowEmpty: true, hint: 'Una tabla solo cuelga de una base de datos, un almacén, un lago o una fuente' }] as FieldSpec[])
+    : []),
   ...((ENTITY_KINDS as readonly string[]).includes(kind)
     ? [{ key: 'columnsText', label: 'Columnas (una por línea)', type: 'longtext', hint: 'PK id: uuid · nombre: text (PII) · email?: text' } as FieldSpec]
     : []),
+  { key: 'contractId', label: 'Contrato de datos', type: 'select', options: (doc.contracts ?? []).map((c) => ({ value: c.id, label: `${c.name}${c.version ? ` ${c.version}` : ''}` })), allowEmpty: true, opensAttachment: true },
   { key: 'ref', label: 'Referencia (URN)', type: 'text', hint: 'urn:iark:<módulo>:<id>' },
   { key: 'tags', label: 'Etiquetas', type: 'list' },
 ];
@@ -162,19 +170,44 @@ function entitySize(a: DataAsset): { width: number; height: number } {
   return { width: Math.min(340, Math.max(180, Math.ceil(widest * 6.6 + 28))), height: Math.max(68, 52 + (lines.length - 1) * 15) };
 }
 
+/** Énfasis de las columnas de una ficha: la clave primaria en negrita y las foráneas con acento. */
+function columnEmphasis(a: DataAsset): Array<'key' | 'ref' | undefined> {
+  return (a.columns ?? []).slice(0, MAX_COLUMN_LINES).map((c) => (c.keys?.includes('pk') ? 'key' : c.keys?.includes('fk') ? 'ref' : undefined));
+}
+
+/** Color de cada nivel en el mapa de calor: de verde (público) a rojo (restringido); gris si no está clasificado. */
+const HEAT_COLORS: Record<string, string> = { none: '#adb5bd', public: '#69db7c', internal: '#ffd43b', confidential: '#ff922b', restricted: '#e03131' };
+
+function heatFill(a: DataAsset, mode: string): string {
+  if (mode === 'calor:pii') return hasPii(a) ? HEAT_COLORS.restricted : HEAT_COLORS.public;
+  return HEAT_COLORS[a.classification ?? 'none'];
+}
+
+/** Insignias de gobierno sobre una figura: candado de datos personales, nivel de clasificación, contrato y aviso de falta de responsable. */
+function governanceBadges(a: DataAsset, ownerless: boolean): string[] {
+  return [
+    hasPii(a) ? '🔒 PII' : '',
+    a.classification ? CLASSIFICATION_LABELS[a.classification] : '',
+    a.contractId ? '📄 contrato' : '',
+    ownerless ? '⚠ sin responsable' : '',
+  ].filter(Boolean);
+}
+
 function project(doc: DataDocument, viewId?: string): EditorGraph {
   const view = findView(doc, viewId);
   const shown = new Set(view.assetIds);
   const context = new Set(view.contextIds);
   const assets = new Map(doc.assets.map((a) => [a.id, a]));
   const erd = view.type === 'erd';
+  const { ownerOf } = inheritance(doc);
+  const heat = HEAT_VIEWS.some((v) => v.id === view.id);
 
   const nodes: EditorGraph['nodes'] = doc.assets
     .filter((a) => shown.has(a.id))
     .map((a) => {
       const isEntity = (a.columns?.length ?? 0) > 0 && (ENTITY_KINDS as readonly string[]).includes(a.kind);
       const card = erd && isEntity;
-      const badges = [hasPii(a) ? 'PII' : '', a.classification && a.classification !== 'public' && a.classification !== 'internal' ? CLASSIFICATION_LABELS[a.classification] : ''].filter(Boolean);
+      const badges = governanceBadges(a, !a.external && !ownerOf(a.id));
       return {
         id: a.id,
         kind: a.kind as string,
@@ -183,10 +216,10 @@ function project(doc: DataDocument, viewId?: string): EditorGraph {
         parentId: !erd && a.parentId && shown.has(a.parentId) ? a.parentId : undefined,
         ref: a.ref,
         dashed: a.external || context.has(a.id),
-        fill: context.has(a.id) ? CONTEXT_COLOR : undefined,
+        fill: heat ? heatFill(a, view.id) : context.has(a.id) ? CONTEXT_COLOR : undefined,
         stroke: CLASSIFICATION_STROKE[a.classification ?? ''],
         badges: badges.length ? badges : undefined,
-        ...(card ? { lines: entityLines(a).slice(1), ...entitySize(a) } : {}),
+        ...(card ? { lines: entityLines(a).slice(1), lineEmphasis: columnEmphasis(a), ...entitySize(a) } : {}),
       };
     });
 
@@ -201,7 +234,7 @@ function project(doc: DataDocument, viewId?: string): EditorGraph {
     for (const id of p.outputs) if (assets.has(id) && shown.has(id)) edges.push({ id: flowEdgeId(p.id, 'out', id), kind: 'pipeline', source: pipelineNodeId(p.id), target: id });
   }
   for (const r of doc.relations.filter((r) => view.relationIds.includes(r.id))) {
-    edges.push({ id: r.id, kind: r.cardinality, source: r.sourceId, target: r.targetId, label: [r.cardinality, r.description].filter(Boolean).join(' ') });
+    edges.push({ id: r.id, kind: r.cardinality, source: r.sourceId, target: r.targetId, label: r.description || undefined, ends: relationEnds(r) });
   }
   return { nodes, edges };
 }
@@ -236,9 +269,11 @@ export const dataEditor: EditorSpec<DataDocument> = {
     if (!(ASSET_KINDS as readonly string[]).includes(kind)) return fail(`Tipo de activo desconocido: ${kind}`);
     const k = kind as AssetKind;
     const parent = parentId ? doc.assets.find((a) => a.id === parentId) : undefined;
-    const id = uniqueId(name, [...doc.assets.map((a) => a.id), ...doc.pipelines.map((p) => p.id), ...doc.domains.map((d) => d.id)]);
+    const id = uniqueId(name, [...doc.assets.map((a) => a.id), ...doc.pipelines.map((p) => p.id), ...doc.domains.map((d) => d.id), ...(doc.contracts ?? []).map((c) => c.id)]);
     const created: DataAsset = { id, kind: k, name };
-    if (parent && PARENT_KINDS[k]?.includes(parent.kind)) created.parentId = parent.id;
+    // Si el elegido no puede contener el tipo (una tabla dentro de una tabla), cuelga del contenedor del elegido, como hermana.
+    const container = parent && !containerViolation(k, parent) ? parent : parent?.parentId ? doc.assets.find((a) => a.id === parent.parentId && !containerViolation(k, a)) : undefined;
+    if (container) created.parentId = container.id;
     else if (parent?.domainId) created.domainId = parent.domainId;
     return { ok: true, id, document: { ...doc, assets: [...doc.assets, created] } };
   },
@@ -276,13 +311,22 @@ export const dataEditor: EditorSpec<DataDocument> = {
     if (doc.assets.some((a) => a.id === id)) {
       if (typeof patch.name === 'string' && !patch.name.trim()) return fail('El nombre no puede estar vacío.');
       const { columnsText, ...rest } = patch;
+      const asset = doc.assets.find((a) => a.id === id)!;
+      const newParent = clean(patch.parentId);
+      if ('parentId' in patch && newParent !== undefined) {
+        const parent = doc.assets.find((a) => a.id === newParent);
+        if (!parent) return fail(`No existe el contenedor «${String(newParent)}».`);
+        const why = containerViolation(asset.kind, parent);
+        if (why) return fail(why);
+      }
+      if (patch.contractId !== undefined && clean(patch.contractId) !== undefined && !(doc.contracts ?? []).some((c) => c.id === patch.contractId)) return fail(`No existe el contrato «${String(patch.contractId)}».`);
       const withColumns = columnsText !== undefined ? { ...rest, columns: parseColumns(String(columnsText)) } : rest;
       return {
         ok: true,
         id,
         document: {
           ...doc,
-          assets: doc.assets.map((a) => (a.id === id ? patchObject(a, withColumns, ['name', 'description', 'technology', 'owner', 'steward', 'domainId', 'classification', 'pii', 'retention', 'external', 'ref', 'tags', 'columns']) : a)),
+          assets: doc.assets.map((a) => (a.id === id ? patchObject(a, withColumns, ['name', 'description', 'technology', 'owner', 'steward', 'domainId', 'classification', 'pii', 'retention', 'external', 'ref', 'tags', 'columns', 'parentId', 'contractId']) : a)),
         },
       };
     }
@@ -332,7 +376,10 @@ export const dataEditor: EditorSpec<DataDocument> = {
     if (kind === 'pipeline') {
       if (sp && tp) return 'Dos pipelines no se conectan entre sí: pasan por un activo.';
       if ((sp && !isAsset(targetId)) || (tp && !isAsset(sourceId)) || (!sp && !tp && (!isAsset(sourceId) || !isAsset(targetId)))) return 'El origen o el destino no existe.';
-      return undefined;
+      // Lo que se lee (origen, si no es un pipeline) y lo que se escribe (destino, si no es un pipeline).
+      const read = sp ? undefined : doc.assets.find((a) => a.id === sourceId);
+      const written = tp ? undefined : doc.assets.find((a) => a.id === targetId);
+      return (read && readViolation(read)) || (written && writeViolation(written)) || undefined;
     }
     if (sp || tp) return 'Una relación del modelo entidad-relación une dos entidades, no pipelines.';
     const s = doc.assets.find((a) => a.id === sourceId);
@@ -341,4 +388,7 @@ export const dataEditor: EditorSpec<DataDocument> = {
     if (!ENTITY_KINDS.includes(s.kind) || !ENTITY_KINDS.includes(t.kind)) return `Una relación ${kind} une entidades (tabla, vista, archivo o stream), no ${KIND_LABELS[s.kind].toLowerCase()} con ${KIND_LABELS[t.kind].toLowerCase()}.`;
     return undefined;
   },
+
+  actions: DATA_ACTIONS,
+  attachments: contractAttachments,
 };

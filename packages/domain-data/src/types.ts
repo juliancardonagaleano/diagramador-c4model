@@ -34,6 +34,22 @@ export interface Column {
   description?: string;
 }
 
+/** Formatos de contrato de datos: por ahora solo Open Data Contract (YAML). */
+export const CONTRACT_FORMATS = ['odcs'] as const;
+export type ContractFormat = (typeof CONTRACT_FORMATS)[number];
+
+/** Contrato de datos de un activo (estilo Open Data Contract Standard): texto YAML que se edita y valida como adjunto. */
+export interface DataContract {
+  id: string;
+  name: string;
+  format: ContractFormat;
+  version?: string;
+  description?: string;
+  url?: string;
+  /** Contenido del contrato (el YAML). */
+  content?: string;
+}
+
 export interface Domain {
   id: string;
   name: string;
@@ -64,6 +80,8 @@ export interface DataAsset {
   ref?: string;
   tags?: string[];
   columns?: Column[];
+  /** Contrato de datos del activo (`DataDocument.contracts`). */
+  contractId?: string;
 }
 
 export interface Pipeline {
@@ -98,6 +116,8 @@ export interface DataDocument {
   assets: DataAsset[];
   pipelines: Pipeline[];
   relations: Relation[];
+  /** Contratos de datos (adjuntos con editor propio); se asocian a los activos con `contractId`. */
+  contracts?: DataContract[];
 }
 
 /** Tipos que pueden contener a cada tipo de activo. */

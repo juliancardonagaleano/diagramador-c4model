@@ -105,8 +105,23 @@ export function traceView(doc: DataDocument, assetId: string, direction: Lineage
   });
 }
 
+/** Mapas de calor: el linaje coloreado por clasificación o por datos personales. Solo existen en el lienzo; las exportaciones los dibujan como el linaje. */
+export const HEAT_VIEWS = [
+  { id: 'calor:clasificacion', title: 'Mapa de calor: clasificación' },
+  { id: 'calor:pii', title: 'Mapa de calor: datos personales' },
+] as const;
+
+export function heatViews(doc: DataDocument): Array<{ id: string; title: string }> {
+  return doc.assets.some((a) => a.classification || a.pii || a.columns?.some((c) => c.pii)) ? HEAT_VIEWS.map((v) => ({ ...v })) : [];
+}
+
 export function findView(doc: DataDocument, viewId?: string): DataView {
   const views = listViews(doc);
+  const heat = HEAT_VIEWS.find((v) => v.id === viewId);
+  if (heat) {
+    const base = views.find((v) => v.type === 'lineage') ?? views[0];
+    if (base) return { ...base, id: heat.id, title: heat.title };
+  }
   if (!viewId) {
     if (views.length === 0) throw new Error('El documento no tiene vistas que exportar');
     return views[0];

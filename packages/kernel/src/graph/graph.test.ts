@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { layoutGraph } from './layout';
-import { renderGraphSvg } from './svg';
+import { edgeEndPaths, renderGraphSvg } from './svg';
 
 const nodes = [
   { id: 'a', width: 120, height: 60, groupId: 'g' },
@@ -78,5 +78,17 @@ describe('renderGraphSvg', () => {
     expect(plain).toContain('>nombre: text</text>');
     expect(plain).not.toContain('>email: text</text>');
     expect(plain).toContain('text-anchor="middle" fill="#ffffff"');
+  });
+
+  it('dibuja la pata de gallo en los extremos de una línea en lugar de la punta de flecha', async () => {
+    const layout = await layoutGraph(nodes, edges, [{ id: 'g' }]);
+    const svg = renderGraphSvg(layout, { node: () => ({ fill: '#fff', stroke: '#000', lines: ['x'] }), edge: (id) => (id === 'e1' ? { stroke: '#333', ends: { source: 'one', target: 'many' } } : { stroke: '#333' }) });
+    expect(svg.match(/marker-end="url\(#arrow\)"/g)?.length).toBe(edges.length - 1);
+    expect(svg.match(/stroke-linecap="round"/g)?.length).toBe(2);
+  });
+
+  it('la pata de gallo son tres patas hacia el nodo y «uno» una barra transversal', () => {
+    expect(edgeEndPaths('many', { x: 0, y: 0 }, { x: 1, y: 0 })).toEqual(['M12 0 L0 -6', 'M12 0 L0 0', 'M12 0 L0 6']);
+    expect(edgeEndPaths('one', { x: 0, y: 0 }, { x: 1, y: 0 })).toEqual(['M10 -6 L10 6']);
   });
 });

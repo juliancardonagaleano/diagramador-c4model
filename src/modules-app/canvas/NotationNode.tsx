@@ -41,7 +41,9 @@ function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
           {node.sublabel && <span className="cv-sub">{node.sublabel}</span>}
           <ul className="cv-lines">
             {node.lines.map((line, i) => (
-              <li key={i}>{line}</li>
+              <li key={i} data-emphasis={node.lineEmphasis?.[i]}>
+                {line}
+              </li>
             ))}
           </ul>
         </div>

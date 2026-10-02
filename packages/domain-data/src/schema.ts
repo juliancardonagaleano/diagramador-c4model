@@ -5,6 +5,7 @@ import {
   CARDINALITIES,
   CLASSIFICATIONS,
   COLUMN_KEYS,
+  CONTRACT_FORMATS,
   DATA_DOCUMENT_VERSION,
   ENTITY_KINDS,
   KIND_LABELS,
@@ -48,6 +49,7 @@ export const assetSchema = z.object({
   ref: z.string().optional(),
   tags: z.array(z.string()).optional(),
   columns: z.array(columnSchema).optional(),
+  contractId: idSchema.optional(),
 });
 
 export const pipelineSchema = z.object({
@@ -71,6 +73,16 @@ export const relationSchema = z.object({
   description: z.string().optional(),
 });
 
+export const contractSchema = z.object({
+  id: idSchema,
+  name: z.string().min(1, 'El nombre del contrato no puede estar vacío'),
+  format: z.enum(CONTRACT_FORMATS),
+  version: z.string().optional(),
+  description: z.string().optional(),
+  url: z.string().optional(),
+  content: z.string().optional(),
+});
+
 /** Esquema estructural + reglas de integridad (referencias, jerarquía y relaciones entre entidades). */
 export const dataDocumentSchema = z
   .object({
@@ -80,6 +92,7 @@ export const dataDocumentSchema = z
     assets: z.array(assetSchema).default([]),
     pipelines: z.array(pipelineSchema).default([]),
     relations: z.array(relationSchema).default([]),
+    contracts: z.array(contractSchema).optional(),
   })
   .superRefine((doc, ctx) => {
     const issue = (path: Array<string | number>, message: string): void => void ctx.addIssue({ code: 'custom', path, message });
@@ -112,6 +125,15 @@ export const dataDocumentSchema = z
         if (names.has(c.name)) issue(['assets', i, 'columns', j, 'name'], `Columna duplicada en "${a.id}": "${c.name}"`);
         names.add(c.name);
       });
+    });
+
+    const contracts = new Set<string>();
+    (doc.contracts ?? []).forEach((c, i) => {
+      if (contracts.has(c.id)) issue(['contracts', i, 'id'], `Id de contrato duplicado: "${c.id}"`);
+      contracts.add(c.id);
+    });
+    doc.assets.forEach((a, i) => {
+      if (a.contractId !== undefined && !contracts.has(a.contractId)) issue(['assets', i, 'contractId'], `El activo "${a.id}" referencia un contrato inexistente: "${a.contractId}"`);
     });
 
     const pipelines = new Set<string>();
