@@ -55,6 +55,10 @@ export const resourceSchema = z.object({
   description: z.string().optional(),
   ref: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  monthlyCost: z.number().min(0, 'El coste mensual no puede ser negativo').optional(),
+  region: z.string().optional(),
+  cpuLimit: z.string().optional(),
+  memoryLimit: z.string().optional(),
 });
 
 export const serviceSchema = z.object({
@@ -66,6 +70,8 @@ export const serviceSchema = z.object({
   owner: z.string().optional(),
   repo: z.string().optional(),
   criticality: z.enum(CRITICALITIES).optional(),
+  slo: z.string().optional(),
+  sla: z.string().optional(),
   external: z.boolean().optional(),
   ref: z.string().optional(),
   tags: z.array(z.string()).optional(),
@@ -78,6 +84,9 @@ export const deploymentSchema = z.object({
   hostId: idSchema,
   replicas: z.number().int('Las réplicas deben ser un número entero').min(1, 'Debe haber al menos una réplica').optional(),
   version: z.string().optional(),
+  monthlyCost: z.number().min(0, 'El coste mensual no puede ser negativo').optional(),
+  cpuLimit: z.string().optional(),
+  memoryLimit: z.string().optional(),
 });
 
 export const dependencySchema = z.object({
@@ -107,7 +116,7 @@ export const pipelineSchema = z.object({
 export const platformDocumentSchema = z
   .object({
     version: z.literal(PLATFORM_DOCUMENT_VERSION).default(PLATFORM_DOCUMENT_VERSION),
-    workspace: z.object({ name: z.string().default('Arquitectura de plataforma'), description: z.string().optional() }).default({ name: 'Arquitectura de plataforma' }),
+    workspace: z.object({ name: z.string().default('Arquitectura de plataforma'), description: z.string().optional(), currency: z.string().optional() }).default({ name: 'Arquitectura de plataforma' }),
     environments: z.array(environmentSchema).default([]),
     networks: z.array(networkSchema).default([]),
     resources: z.array(resourceSchema).default([]),

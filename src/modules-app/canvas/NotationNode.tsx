@@ -15,7 +15,7 @@ function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
     const line = node.stroke ?? fill;
     const tint = node.fill ? { background: `color-mix(in srgb, ${node.fill} 14%, transparent)` } : undefined;
     return (
-      <div className="cv-group" style={{ width, height, borderColor: line, ...tint }} data-selected={selected || undefined} data-testid={`node-${node.id}`} data-kind={node.kind}>
+      <div className="cv-group" style={{ width, height, borderColor: line, ...(node.border ? { borderStyle: node.border } : {}), ...tint }} data-selected={selected || undefined} data-testid={`node-${node.id}`} data-kind={node.kind}>
         <Handle type="target" position={Position.Left} />
         <span className="cv-group-title" style={{ color: line }}>
           {notation.glyph} {notation.label}: {node.label}

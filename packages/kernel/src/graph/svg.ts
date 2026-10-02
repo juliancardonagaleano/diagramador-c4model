@@ -58,8 +58,8 @@ export interface SvgOptions {
   title?: string;
   node(id: string): SvgNodeStyle;
   edge(id: string): SvgEdgeStyle;
-  /** Etiqueta del grupo y, opcionalmente, su relleno y su borde (por defecto gris claro). */
-  group?(id: string): { label: string; fill?: string; stroke?: string };
+  /** Etiqueta del grupo y, opcionalmente, su relleno, su borde y el trazo del borde (por defecto gris claro y discontinuo). */
+  group?(id: string): { label: string; fill?: string; stroke?: string; border?: 'solid' | 'dashed' | 'dotted' };
 }
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -113,7 +113,7 @@ export function renderGraphSvg(layout: GraphLayout, options: SvgOptions): string
   for (const g of layout.groups) {
     const style = options.group?.(g.id);
     const label = style?.label ?? g.id;
-    out.push(`<rect x="${g.x}" y="${g.y}" width="${g.width}" height="${g.height}" rx="8" fill="${style?.fill ?? '#f8fafc'}" stroke="${style?.stroke ?? '#94a3b8'}" stroke-dasharray="6 4"/>`);
+    out.push(`<rect x="${g.x}" y="${g.y}" width="${g.width}" height="${g.height}" rx="8" fill="${style?.fill ?? '#f8fafc'}" stroke="${style?.stroke ?? '#94a3b8'}"${style?.border === 'solid' ? ' stroke-width="2"' : style?.border === 'dotted' ? ' stroke-width="2" stroke-dasharray="2 4"' : ' stroke-dasharray="6 4"'}/>`);
     out.push(`<text x="${g.x + 12}" y="${g.y + 22}" font-weight="700" fill="#475569">${esc(fit(label, g.width))}</text>`);
   }
 
