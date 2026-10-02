@@ -1,6 +1,8 @@
 import { parseUrn } from '@iark/kernel';
 import { z } from 'zod';
+import { exposeViolation, glossaryViolation, portViolation, termLinkViolation } from './links';
 import {
+  API_PROTOCOLS,
   ASSET_KINDS,
   CARDINALITIES,
   CLASSIFICATIONS,
@@ -11,6 +13,7 @@ import {
   KIND_LABELS,
   PARENT_KINDS,
   PIPELINE_KINDS,
+  TERM_STATUSES,
   type DataDocument,
 } from './types';
 
@@ -50,6 +53,29 @@ export const assetSchema = z.object({
   tags: z.array(z.string()).optional(),
   columns: z.array(columnSchema).optional(),
   contractId: idSchema.optional(),
+  inputPorts: z.array(idSchema).optional(),
+  outputPorts: z.array(idSchema).optional(),
+  exposes: z.array(idSchema).optional(),
+  freshness: z.string().optional(),
+  sla: z.string().optional(),
+  protocol: z.enum(API_PROTOCOLS).optional(),
+  endpoint: z.string().optional(),
+});
+
+export const termLinkSchema = z.object({
+  assetId: idSchema,
+  column: z.string().min(1, 'El nombre de la columna no puede estar vacío').optional(),
+});
+
+export const termSchema = z.object({
+  id: idSchema,
+  name: z.string().min(1, 'El nombre del término no puede estar vacío'),
+  definition: z.string().optional(),
+  owner: z.string().optional(),
+  status: z.enum(TERM_STATUSES).optional(),
+  glossaryId: idSchema.optional(),
+  synonyms: z.array(z.string()).optional(),
+  links: z.array(termLinkSchema).optional(),
 });
 
 export const columnRefSchema = z.object({
@@ -105,6 +131,7 @@ export const dataDocumentSchema = z
     pipelines: z.array(pipelineSchema).default([]),
     relations: z.array(relationSchema).default([]),
     contracts: z.array(contractSchema).optional(),
+    terms: z.array(termSchema).optional(),
   })
   .superRefine((doc, ctx) => {
     const issue = (path: Array<string | number>, message: string): void => void ctx.addIssue({ code: 'custom', path, message });
@@ -146,6 +173,50 @@ export const dataDocumentSchema = z
     });
     doc.assets.forEach((a, i) => {
       if (a.contractId !== undefined && !contracts.has(a.contractId)) issue(['assets', i, 'contractId'], `El activo "${a.id}" referencia un contrato inexistente: "${a.contractId}"`);
+    });
+
+    // Catálogo: puertos de los productos, activos que sirven las APIs y términos del glosario.
+    const ports = (a: (typeof doc.assets)[number], i: number, field: 'inputPorts' | 'outputPorts' | 'exposes', rule: (owner: typeof a, asset: typeof a) => string | undefined): void => {
+      const seen = new Set<string>();
+      (a[field] ?? []).forEach((id, j) => {
+        const target = assets.get(id);
+        if (!target) issue(['assets', i, field, j], `El activo "${a.id}" referencia un activo inexistente en ${field}: "${id}"`);
+        else if (rule(a, target)) issue(['assets', i, field, j], rule(a, target)!);
+        if (seen.has(id)) issue(['assets', i, field, j], `El activo "${a.id}" repite "${id}" en ${field}`);
+        seen.add(id);
+      });
+    };
+    doc.assets.forEach((a, i) => {
+      for (const field of ['inputPorts', 'outputPorts'] as const) if (a[field] !== undefined && a.kind !== 'data-product') issue(['assets', i, field], `Solo un producto de datos tiene ${field}, pero "${a.id}" es de tipo "${a.kind}"`);
+      if (a.exposes !== undefined && a.kind !== 'data-api') issue(['assets', i, 'exposes'], `Solo una API de datos tiene exposes, pero "${a.id}" es de tipo "${a.kind}"`);
+      if (a.kind === 'data-product') {
+        ports(a, i, 'inputPorts', portViolation);
+        ports(a, i, 'outputPorts', portViolation);
+        (a.outputPorts ?? []).forEach((id, j) => {
+          if ((a.inputPorts ?? []).includes(id)) issue(['assets', i, 'outputPorts', j], `El producto "${a.id}" no puede consumir y publicar el mismo activo: "${id}"`);
+        });
+      } else if (a.kind === 'data-api') ports(a, i, 'exposes', exposeViolation);
+    });
+
+    const terms = new Map<string, NonNullable<typeof doc.terms>[number]>();
+    (doc.terms ?? []).forEach((t, i) => {
+      if (terms.has(t.id)) issue(['terms', i, 'id'], `Id de término duplicado: "${t.id}"`);
+      terms.set(t.id, t);
+      if (assets.has(t.id)) issue(['terms', i, 'id'], `El término "${t.id}" repite el id de un activo`);
+      if (t.glossaryId !== undefined) {
+        const glossary = assets.get(t.glossaryId);
+        if (!glossary) issue(['terms', i, 'glossaryId'], `El término "${t.id}" referencia un glosario inexistente: "${t.glossaryId}"`);
+        else if (glossaryViolation(glossary)) issue(['terms', i, 'glossaryId'], glossaryViolation(glossary)!);
+      }
+      const linked = new Set<string>();
+      (t.links ?? []).forEach((l, j) => {
+        const asset = assets.get(l.assetId);
+        if (!asset) issue(['terms', i, 'links', j, 'assetId'], `El término "${t.id}" enlaza un activo inexistente: "${l.assetId}"`);
+        else if (termLinkViolation(asset)) issue(['terms', i, 'links', j, 'assetId'], termLinkViolation(asset)!);
+        const key = `${l.assetId}#${l.column ?? ''}`;
+        if (linked.has(key)) issue(['terms', i, 'links', j], `El término "${t.id}" enlaza dos veces "${l.assetId}${l.column ? `.${l.column}` : ''}"`);
+        linked.add(key);
+      });
     });
 
     const pipelines = new Set<string>();

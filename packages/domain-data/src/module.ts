@@ -47,14 +47,15 @@ const drawioExporter: Exporter<DataDocument> = {
 /**
  * Módulo de arquitectura de datos: activos (fuentes, bases, almacenes, lagos, streams, tablas, informes, modelos)
  * agrupados en dominios, el linaje entre ellos por pipelines, el modelo entidad-relación y el gobierno del dato
- * (responsables, clasificación, datos personales, retención). Sus activos pueden apuntar a elementos de otros módulos
- * por URN (`ref`), p. ej. un almacén del mapa de integración.
+ * (responsables, clasificación, datos personales, retención). El catálogo suma productos de datos (con puertos de
+ * entrada y salida y su SLA), APIs de datos y glosarios de términos de negocio enlazados a columnas y activos. Sus
+ * activos pueden apuntar a elementos de otros módulos por URN (`ref`), p. ej. un almacén del mapa de integración.
  */
 export const dataModule: DomainModule<DataDocument> = {
   id: 'data',
   name: 'Arquitectura de datos',
   version: '0.1.0',
-  description: 'Linaje, modelo entidad-relación y gobierno del dato: dominios, pipelines, clasificación y datos personales; exporta a Mermaid, SVG y draw.io.',
+  description: 'Linaje, modelo entidad-relación, gobierno del dato y catálogo (productos de datos, APIs y glosario): dominios, pipelines, clasificación y datos personales; exporta a Mermaid, SVG y draw.io.',
   documentVersion: DATA_DOCUMENT_VERSION,
   schema: dataDocumentSchema as unknown as DomainModule<DataDocument>['schema'],
   jsonSchema: dataJsonSchema,
@@ -66,12 +67,13 @@ export const dataModule: DomainModule<DataDocument> = {
     ...doc.domains.map((d) => ({ id: d.id, name: d.name, kind: 'domain' })),
     ...doc.assets.map((a) => ({ id: a.id, name: a.name, kind: a.kind })),
     ...doc.pipelines.map((p) => ({ id: p.id, name: p.name, kind: 'pipeline' })),
+    ...(doc.terms ?? []).map((t) => ({ id: t.id, name: t.name, kind: 'term' })),
   ],
   views: (doc): ViewRef[] => [...listViews(doc), ...heatViews(doc), ...columnViews(doc)].map((v) => ({ id: v.id, title: v.title })),
   traceViews: [
-    { prefix: 'lineage', label: 'Linaje completo', applies: (e) => e.kind !== 'domain' && e.kind !== 'pipeline' },
-    { prefix: 'upstream', label: 'Origen (aguas arriba)', applies: (e) => e.kind !== 'domain' && e.kind !== 'pipeline' },
-    { prefix: 'downstream', label: 'Impacto (aguas abajo)', applies: (e) => e.kind !== 'domain' && e.kind !== 'pipeline' },
+    { prefix: 'lineage', label: 'Linaje completo', applies: (e) => e.kind !== 'domain' && e.kind !== 'pipeline' && e.kind !== 'term' },
+    { prefix: 'upstream', label: 'Origen (aguas arriba)', applies: (e) => e.kind !== 'domain' && e.kind !== 'pipeline' && e.kind !== 'term' },
+    { prefix: 'downstream', label: 'Impacto (aguas abajo)', applies: (e) => e.kind !== 'domain' && e.kind !== 'pipeline' && e.kind !== 'term' },
   ],
   cliCommands: dataCommands,
   editor: dataEditor,

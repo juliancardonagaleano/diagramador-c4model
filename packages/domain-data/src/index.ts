@@ -17,3 +17,7 @@ export { DATA_ACTIONS } from './actions';
 export { contractAttachments } from './contract-editor';
 export { checkContract, contractFromAsset, contractTemplate, contractToJson, reformatContract, summarizeContract, ODCS_VERSION } from './contract';
 export { readViolation, writeViolation, containerViolation } from './rules';
+export { listLinks, termLinkAt, linkId, linkLabel, LINK_LABELS, portViolation, exposeViolation, termLinkViolation, pruneCatalog, type DataLink, type LinkKind } from './links';
+export { catalogIssues } from './catalog';
+export { CATALOG_ACTIONS } from './catalog-actions';
+export { TERM_KIND } from './catalog-editor';

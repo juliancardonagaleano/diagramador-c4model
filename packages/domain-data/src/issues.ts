@@ -1,7 +1,8 @@
 import type { ModuleIssue } from '@iark/kernel';
+import { catalogIssues } from './catalog';
 import { inheritance } from './inherit';
 import { findLineageCycles, indexLineage } from './lineage';
-import { CLASSIFICATION_LABELS, CLASSIFICATION_RANK, ENTITY_KINDS, KIND_LABELS, hasPii, type Column, type ColumnRef, type DataAsset, type DataDocument, type Pipeline } from './types';
+import { CLASSIFICATION_LABELS, CLASSIFICATION_RANK, ENTITY_KINDS, KIND_LABELS, hasPii, isCatalogKind, type Column, type ColumnRef, type DataAsset, type DataDocument, type Pipeline } from './types';
 
 const CONFIDENTIAL = CLASSIFICATION_RANK.confidential;
 
@@ -77,7 +78,7 @@ export function analyzeData(doc: DataDocument): ModuleIssue[] {
     }
     if (pii && !a.retention) issues.push({ severity: 'info', elementId: a.id, message: `${label(a)} contiene datos personales y no declara política de retención.` });
 
-    if (!a.external && !ownerOf(a.id)) {
+    if (!a.external && !ownerOf(a.id) && !isCatalogKind(a.kind)) {
       issues.push({
         severity: pii || (rank ?? 0) >= CONFIDENTIAL ? 'warning' : 'info',
         elementId: a.id,
@@ -86,7 +87,7 @@ export function analyzeData(doc: DataDocument): ModuleIssue[] {
     }
 
     if (isDerived(a) && !producers.has(a.id)) issues.push({ severity: 'warning', elementId: a.id, message: `${label(a)} no tiene origen: ningún pipeline lo escribe.` });
-    if (!participates(a) && a.kind !== 'source') {
+    if (!participates(a) && a.kind !== 'source' && !isCatalogKind(a.kind)) {
       issues.push({ severity: 'info', elementId: a.id, message: `${label(a)} no participa en ningún pipeline ni relación.` });
     }
     if (doc.domains.length > 0 && !a.parentId && !domainOf(a.id)) {
@@ -144,5 +145,6 @@ export function analyzeData(doc: DataDocument): ModuleIssue[] {
     }
   }
 
+  issues.push(...catalogIssues(doc, sensitivity));
   return issues;
 }

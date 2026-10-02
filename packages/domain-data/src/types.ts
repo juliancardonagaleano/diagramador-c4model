@@ -1,13 +1,28 @@
 /**
  * Documento del módulo de datos: activos de datos (fuentes, bases, almacenes, lagos, flujos, tablas, informes, modelos)
  * agrupados en dominios, los pipelines que los transforman (linaje) y las relaciones entre entidades (modelo
- * entidad-relación). Incluye gobierno: responsable, clasificación, datos personales y retención. No guarda coordenadas:
- * los diagramas se calculan al exportar.
+ * entidad-relación). Incluye gobierno: responsable, clasificación, datos personales y retención. Además del dato en
+ * sí, el catálogo: productos de datos (con puertos de entrada y salida y su SLA), APIs de datos y glosarios de términos
+ * de negocio enlazados a columnas y activos. No guarda coordenadas: los diagramas se calculan al exportar.
  */
 export const DATA_DOCUMENT_VERSION = '1.0' as const;
 
-export const ASSET_KINDS = ['source', 'database', 'warehouse', 'lake', 'stream', 'table', 'view', 'file', 'report', 'model'] as const;
+export const ASSET_KINDS = ['source', 'database', 'warehouse', 'lake', 'stream', 'table', 'view', 'file', 'report', 'model', 'data-product', 'glossary', 'data-api'] as const;
 export type AssetKind = (typeof ASSET_KINDS)[number];
+
+/**
+ * Tipos del catálogo, que describen cómo se ofrece y se entiende el dato más que el dato en sí: el producto de datos y la
+ * API de datos se conectan por puertos a otros activos; el glosario agrupa términos de negocio.
+ */
+export const CATALOG_KINDS = ['data-product', 'glossary', 'data-api'] as const satisfies readonly AssetKind[];
+
+/** Protocolos con los que una API de datos sirve sus activos. */
+export const API_PROTOCOLS = ['rest', 'graphql', 'grpc', 'odata', 'sql', 'events'] as const;
+export type ApiProtocol = (typeof API_PROTOCOLS)[number];
+
+/** Estado de un término del glosario. Sin estado, un término es un borrador. */
+export const TERM_STATUSES = ['draft', 'approved', 'deprecated'] as const;
+export type TermStatus = (typeof TERM_STATUSES)[number];
 
 /** De menos a más sensible. */
 export const CLASSIFICATIONS = ['public', 'internal', 'confidential', 'restricted'] as const;
@@ -82,6 +97,41 @@ export interface DataAsset {
   columns?: Column[];
   /** Contrato de datos del activo (`DataDocument.contracts`). */
   contractId?: string;
+  /** Producto de datos: activos que consume (puertos de entrada). */
+  inputPorts?: string[];
+  /** Producto de datos: activos que publica (puertos de salida). */
+  outputPorts?: string[];
+  /** API de datos: activos que sirve. */
+  exposes?: string[];
+  /** Producto de datos: cada cuánto se actualiza o qué antigüedad máxima tienen sus datos (`24 h`, `15 min`). */
+  freshness?: string;
+  /** Producto de datos: nivel de servicio comprometido (`99,5 % de disponibilidad, soporte L-V`). */
+  sla?: string;
+  /** API de datos: protocolo con el que se consume. */
+  protocol?: ApiProtocol;
+  /** API de datos: dirección o identificador del servicio (`https://api.acme.com/ventas/v1`). */
+  endpoint?: string;
+}
+
+/** Un activo (y, si se indica, una de sus columnas) al que se enlaza un término del glosario. */
+export interface TermLink {
+  assetId: string;
+  column?: string;
+}
+
+/** Término de negocio de un glosario: lo que significa y dónde se materializa en los datos. */
+export interface GlossaryTerm {
+  id: string;
+  name: string;
+  definition?: string;
+  /** Quien responde por la definición. */
+  owner?: string;
+  status?: TermStatus;
+  /** Glosario (activo de tipo `glossary`) al que pertenece. */
+  glossaryId?: string;
+  synonyms?: string[];
+  /** Activos y columnas que implementan el término. */
+  links?: TermLink[];
 }
 
 /** Una columna de un activo (`assetId` + nombre de la columna). */
@@ -134,6 +184,8 @@ export interface DataDocument {
   relations: Relation[];
   /** Contratos de datos (adjuntos con editor propio); se asocian a los activos con `contractId`. */
   contracts?: DataContract[];
+  /** Términos de negocio de los glosarios (activos de tipo `glossary`), enlazados a activos y columnas. */
+  terms?: GlossaryTerm[];
 }
 
 /** Tipos que pueden contener a cada tipo de activo. */
@@ -157,7 +209,19 @@ export const KIND_LABELS: Record<AssetKind, string> = {
   file: 'Archivo',
   report: 'Informe',
   model: 'Modelo',
+  'data-product': 'Producto de datos',
+  glossary: 'Glosario',
+  'data-api': 'API de datos',
 };
+
+export const TERM_LABEL = 'Término';
+
+export const TERM_STATUS_LABELS: Record<TermStatus, string> = { draft: 'borrador', approved: 'aprobado', deprecated: 'obsoleto' };
+
+export const API_PROTOCOL_LABELS: Record<ApiProtocol, string> = { rest: 'REST', graphql: 'GraphQL', grpc: 'gRPC', odata: 'OData', sql: 'SQL (JDBC/ODBC)', events: 'Eventos (AsyncAPI)' };
+
+/** ¿El activo es de un tipo del catálogo (producto, glosario o API de datos)? */
+export const isCatalogKind = (kind: AssetKind): boolean => (CATALOG_KINDS as readonly string[]).includes(kind);
 
 export const PIPELINE_LABELS: Record<PipelineKind, string> = {
   batch: 'ETL por lotes',

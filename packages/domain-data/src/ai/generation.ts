@@ -1,7 +1,7 @@
 import type { AiSpec } from '@iark/kernel';
 import { z } from 'zod';
 import { formatDataIssues, validateDataDocument } from '../schema';
-import { ASSET_KINDS, CARDINALITIES, CLASSIFICATIONS, COLUMN_KEYS, DATA_DOCUMENT_VERSION, PIPELINE_KINDS, type DataDocument } from '../types';
+import { API_PROTOCOLS, ASSET_KINDS, CARDINALITIES, CLASSIFICATIONS, COLUMN_KEYS, DATA_DOCUMENT_VERSION, PIPELINE_KINDS, TERM_STATUSES, type DataDocument } from '../types';
 
 // Lo que produce el modelo: todos los campos presentes (null si no aplican), como exige la salida estructurada.
 const nullable = <T extends z.ZodType>(t: T) => t.nullable();
@@ -37,6 +37,24 @@ const generatedAsset = z.object({
   retention: nullable(z.string()),
   external: nullable(z.boolean()),
   columns: nullable(z.array(generatedColumn)),
+  inputPorts: nullable(z.array(z.string())),
+  outputPorts: nullable(z.array(z.string())),
+  exposes: nullable(z.array(z.string())),
+  freshness: nullable(z.string()),
+  sla: nullable(z.string()),
+  protocol: nullable(z.enum(API_PROTOCOLS)),
+  endpoint: nullable(z.string()),
+});
+
+const generatedTerm = z.object({
+  id: z.string(),
+  name: z.string(),
+  definition: nullable(z.string()),
+  owner: nullable(z.string()),
+  status: nullable(z.enum(TERM_STATUSES)),
+  glossaryId: nullable(z.string()),
+  synonyms: nullable(z.array(z.string())),
+  links: nullable(z.array(z.object({ assetId: z.string(), column: nullable(z.string()) }))),
 });
 
 const generatedColumnRef = z.object({ assetId: z.string(), column: z.string() });
@@ -75,6 +93,7 @@ export const generatedDataSchema = z.object({
   assets: z.array(generatedAsset),
   pipelines: z.array(generatedPipeline),
   relations: z.array(generatedRelation),
+  terms: z.array(generatedTerm),
 });
 
 export type GeneratedData = z.infer<typeof generatedDataSchema>;
@@ -89,7 +108,9 @@ function dropNulls<T>(value: T): T {
 }
 
 export function generatedToData(generated: GeneratedData): { ok: true; document: DataDocument } | { ok: false; issues: string } {
-  const result = validateDataDocument({ version: DATA_DOCUMENT_VERSION, ...dropNulls(generated) });
+  // Sin términos, el documento no los declara (el campo es opcional).
+  const { terms, ...rest } = dropNulls(generated);
+  const result = validateDataDocument({ version: DATA_DOCUMENT_VERSION, ...rest, ...(terms.length > 0 ? { terms } : {}) });
   return result.ok ? result : { ok: false, issues: formatDataIssues(result.issues) };
 }
 
@@ -110,6 +131,15 @@ Activos (kind):
   (una "table" también puede estar en una "source"; un "file", en un "lake" o una "source"; una "view", en database,
   warehouse o lake). Los demás tipos dejan parentId en null.
 - "report": informe o cuadro de mando. "model": modelo de aprendizaje automático o modelo semántico.
+- "data-product": producto de datos (data mesh): agrupa y ofrece datos como un servicio con dueño. Sus puertos son
+  activos ya declarados: "inputPorts" (lo que consume: fuentes, tablas, otros productos) y "outputPorts" (lo que publica:
+  tablas, vistas, archivos, informes, APIs). Un activo no es entrada y salida del mismo producto. "owner" es su dueño;
+  "freshness" la frescura o antigüedad máxima de sus datos ("24 h", "15 min") y "sla" el nivel de servicio comprometido.
+- "data-api": API de datos. "exposes" lista los activos que sirve (tablas, vistas, productos…); "protocol" es "rest",
+  "graphql", "grpc", "odata", "sql" o "events"; "endpoint", la dirección del servicio si se conoce.
+- "glossary": glosario de negocio. No participa en pipelines ni relaciones: sus términos van en "terms".
+- Los puertos, "exposes", "freshness", "sla", "protocol" y "endpoint" solo aplican a "data-product" (puertos, frescura,
+  SLA) y "data-api" (exposes, protocol, endpoint); en el resto de activos déjalos en null.
 - Ids únicos en kebab-case ASCII. owner = responsable del dato y steward = custodio, solo si se mencionan.
 - Agrupa por dominios ("domains", p. ej. Ventas, Clientes) cuando la descripción hable de áreas de negocio y asigna
   domainId a los activos de nivel superior.
@@ -117,6 +147,12 @@ Activos (kind):
 Gobierno: classification ("public", "internal", "confidential", "restricted") según la sensibilidad indicada. Marca
 pii = true (a nivel de activo o de columna) cuando haya datos personales; un activo con datos personales es como mínimo
 "confidential". Añade retention si se menciona un plazo de conservación.
+
+Glosario ("terms"): cada término de negocio tiene id único en kebab-case (distinto del de cualquier activo), name, definition (una frase), owner (quien responde
+por la definición), status ("draft", "approved" o "deprecated"), glossaryId (id de un activo "glossary") y synonyms. "links"
+enlaza el término con los activos (assetId) y, si procede, la columna (column; null = todo el activo) donde se materializa:
+usa columnas que existan en "columns" de ese activo. Un término sin enlaces es un término sin implementar: enlázalo siempre que
+la descripción diga dónde vive. Si no hay glosario, deja "terms" vacío.
 
 Pipelines (linaje): cada pipeline lee uno o más activos (inputs) y escribe uno o más (outputs), nunca el mismo en ambos.
 - kind: "batch" (ETL por lotes), "elt", "cdc" (captura de cambios), "streaming", "replication", "api" (extracción por
@@ -157,6 +193,13 @@ export function toGenerated(doc: DataDocument): GeneratedData {
       retention: n(a.retention),
       external: n(a.external),
       columns: a.columns ? a.columns.map((c) => ({ name: c.name, type: n(c.type), keys: n(c.keys), nullable: n(c.nullable), pii: n(c.pii), description: n(c.description) })) : null,
+      inputPorts: n(a.inputPorts),
+      outputPorts: n(a.outputPorts),
+      exposes: n(a.exposes),
+      freshness: n(a.freshness),
+      sla: n(a.sla),
+      protocol: n(a.protocol),
+      endpoint: n(a.endpoint),
     })),
     pipelines: doc.pipelines.map((p) => ({
       id: p.id,
@@ -172,6 +215,16 @@ export function toGenerated(doc: DataDocument): GeneratedData {
       mappings: p.mappings ? p.mappings.map((m) => ({ from: { ...m.from }, to: { ...m.to }, transform: n(m.transform) })) : null,
     })),
     relations: doc.relations.map((r) => ({ id: r.id, sourceId: r.sourceId, targetId: r.targetId, cardinality: r.cardinality, description: n(r.description) })),
+    terms: (doc.terms ?? []).map((t) => ({
+      id: t.id,
+      name: t.name,
+      definition: n(t.definition),
+      owner: n(t.owner),
+      status: n(t.status),
+      glossaryId: n(t.glossaryId),
+      synonyms: n(t.synonyms),
+      links: t.links ? t.links.map((l) => ({ assetId: l.assetId, column: n(l.column) })) : null,
+    })),
   };
 }
 
