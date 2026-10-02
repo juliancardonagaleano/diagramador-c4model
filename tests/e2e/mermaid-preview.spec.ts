@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test';
+import { canvasReady, openEditor } from './canvas-helpers';
 
 /** Ancho natural de la imagen ya decodificada: 0 si el navegador no pudo leer el SVG (imagen rota). */
 const naturalWidth = (img: Locator) => img.evaluate((el: HTMLImageElement) => (el.complete ? el.naturalWidth : 0));
@@ -11,8 +12,7 @@ test.describe('vista previa renderizada de Mermaid', () => {
     page.on('request', (r) => {
       if (/mermaid\.core/.test(r.url())) libraryRequests.push(r.url());
     });
-    await page.goto('/', { waitUntil: 'networkidle' });
-    await page.waitForSelector('.react-flow__node');
+    await openEditor(page);
     expect(libraryRequests).toEqual([]);
 
     await page.getByText('Archivo', { exact: true }).click();
@@ -42,8 +42,8 @@ test.describe('vista previa renderizada de Mermaid', () => {
   test('banco de trabajo: exportar ▸ Mermaid ▸ Ver dibuja el diagrama junto al texto', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
-    await page.goto('/modulos.html?module=platform', { waitUntil: 'networkidle' });
-    await expect(page.getByTestId('module-canvas')).toBeVisible({ timeout: 20000 });
+    await page.goto('/modulos.html?module=platform', { waitUntil: 'domcontentloaded' });
+    await canvasReady(page);
     await page.getByRole('tab', { name: 'Exportar' }).click();
     await page.locator('[data-format="json"]').getByRole('button', { name: 'Ver' }).click();
     await expect(page.getByTestId('export-preview')).toBeVisible();

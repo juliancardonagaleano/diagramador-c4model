@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { c4Ready, openEditor } from './canvas-helpers';
 
 test('autolayout, direcciones y navegación C1 → C2 → C3', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await openEditor(page);
 
   // Autolayout en C1: 0 cruces, 0 solapes, dirección ↓ centrada por defecto.
   await page.getByRole('button', { name: 'Autolayout', exact: true }).click();
-  await page.waitForTimeout(1200);
+  await c4Ready(page);
   const positions = await page.$$eval('.react-flow__node', (els) => els.map((e) => (e as HTMLElement).style.transform));
   expect(new Set(positions).size, 'autolayout deja posiciones distintas para todos los nodos').toBe(positions.length);
   const qualityText = (await page.getByTestId('layout-quality').textContent()) ?? '';
@@ -24,12 +24,12 @@ test('autolayout, direcciones y navegación C1 → C2 → C3', async ({ page }) 
 
   // Navegación C1 → C2 con doble clic en el sistema.
   await page.locator('.react-flow__node', { hasText: 'Sistema de banca en línea' }).dblclick();
-  await page.waitForTimeout(700);
+  await c4Ready(page, 'contenedores');
   await expect(page.locator('.c4-boundary')).toHaveCount(1);
 
   // C2 por defecto: izquierda→derecha (el boundary es más ancho que alto).
   await page.getByRole('button', { name: 'Autolayout', exact: true }).click();
-  await page.waitForTimeout(1200);
+  await c4Ready(page);
   const boundaryBox = await page.locator('.c4-boundary').boundingBox();
   expect(boundaryBox).not.toBeNull();
   expect(boundaryBox!.width, `C2 se distribuye izquierda→derecha (${Math.round(boundaryBox!.width)}×${Math.round(boundaryBox!.height)})`).toBeGreaterThan(boundaryBox!.height);
@@ -41,7 +41,9 @@ test('autolayout, direcciones y navegación C1 → C2 → C3', async ({ page }) 
   await page.getByRole('button', { name: 'Dirección y distribución del autolayout' }).click();
   await page.getByText('Derecha → izquierda').click();
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(1200);
+  // El menú debe haberse cerrado del todo: si no, el clic siguiente en su botón alterna el menú que aún se cierra y no lo reabre.
+  await expect(page.getByText('Derecha → izquierda')).toBeHidden();
+  await c4Ready(page);
   const q3 = (await page.getByTestId('layout-quality').textContent()) ?? '';
   expect(q3).toMatch(/←/);
   const clienteBox = await page.locator('.react-flow__node', { hasText: 'Cliente personal' }).boundingBox();
@@ -55,7 +57,8 @@ test('autolayout, direcciones y navegación C1 → C2 → C3', async ({ page }) 
   await page.getByText('Automática (C1 ↓, C2/C3 →)').click();
   await page.keyboard.press('Escape');
   await page.mouse.click(5, 5);
-  await page.waitForTimeout(1200);
+  await expect(page.getByText('Automática (C1 ↓, C2/C3 →)')).toBeHidden();
+  await c4Ready(page);
   await expect(page.locator('.c4-breadcrumb')).toHaveAttribute('data-level', 'C2');
   await expect(page.locator('.c4-shape.shape-database')).toHaveCount(1);
   await expect(page.locator('.c4-shape.shape-browser')).toHaveCount(1);
@@ -68,29 +71,27 @@ test('autolayout, direcciones y navegación C1 → C2 → C3', async ({ page }) 
 
   // C2 → C3 con doble clic en la API y vuelta con "Subir nivel".
   await page.locator('.react-flow__node', { hasText: 'Aplicación API' }).dblclick();
-  await page.waitForTimeout(700);
+  await c4Ready(page, 'componentes-api');
   await expect(page.locator('.c4-breadcrumb')).toHaveAttribute('data-level', 'C3');
   await page.getByRole('button', { name: 'Subir nivel' }).click();
-  await page.waitForTimeout(500);
+  await c4Ready(page, 'contenedores');
   await expect(page.locator('.c4-breadcrumb')).toHaveAttribute('data-level', 'C2');
 });
 
 test('volver a añadir a una vista C2 un elemento (botón del ojo) recoloca la vista y la exportación sigue funcionando', async ({ page }) => {
   // Antes: la vista quedaba con nodos posicionados y uno sin posición, ELK (modo interactivo) lanzaba
   // UnsupportedGraphException en vistas con boundary, el autolayout fallaba y "Exportar .drawio" también.
-  await page.goto('/', { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await openEditor(page);
   await page.locator('.react-flow__node', { hasText: 'Sistema de banca en línea' }).dblclick();
-  await page.waitForTimeout(1200);
+  await c4Ready(page, 'contenedores');
   await expect(page.locator('.c4-breadcrumb')).toHaveAttribute('data-level', 'C2');
   const before = await page.locator('.react-flow__node').count();
 
   const eye = page.locator('.c4-card[data-element-id="db"] .c4-card-header button');
   await eye.click(); // quitar "Base de datos" de la vista
-  await page.waitForTimeout(400);
   await expect(page.locator('.react-flow__node')).toHaveCount(before - 1);
-  await eye.click(); // volver a añadirla, sin posición
-  await page.waitForTimeout(1800);
+  await eye.click(); // volver a añadirla, sin posición: la vista se recoloca y se encuadra de nuevo
+  await c4Ready(page);
   await expect(page.locator('.react-flow__node')).toHaveCount(before);
   await expect(page.locator('.react-flow__node', { hasText: 'Base de datos' })).toHaveCount(1);
 

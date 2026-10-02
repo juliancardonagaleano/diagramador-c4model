@@ -1,19 +1,17 @@
 import { test, expect } from '@playwright/test';
+import { c4Ready, openEditor } from './canvas-helpers';
 
 test('menú Ver, tema y exportación a .drawio', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await openEditor(page);
 
   // Conmutar a tarjetas estilo drawdb desde el menú Ver.
   await page.getByText('Ver', { exact: true }).click();
   await page.getByText('Tarjetas (estilo drawdb)').click();
-  await page.waitForTimeout(300);
-  expect(await page.locator('.c4-node').count()).toBeGreaterThan(0);
+  await expect(page.locator('.c4-node')).not.toHaveCount(0);
   await expect(page.locator('.c4-shape-svg')).toHaveCount(0);
   await page.getByText('Ver', { exact: true }).click();
   await page.getByText('Notación C4 clásica').click();
-  await page.waitForTimeout(300);
-  expect(await page.locator('.c4-shape-svg').count()).toBeGreaterThan(0);
+  await expect(page.locator('.c4-shape-svg')).not.toHaveCount(0);
 
   // Exportar .drawio (descarga) en ambas notaciones.
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Exportar .drawio' }).click()]);
@@ -29,7 +27,7 @@ test('menú Ver, tema y exportación a .drawio', async ({ page }) => {
   expect(xml2.includes('fillColor=#F4F4F5') && !xml2.includes('mxgraph.c4.person2')).toBe(true);
   await page.keyboard.press('Escape');
   await page.mouse.click(5, 5);
-  await page.waitForTimeout(300);
+  await expect(page.getByText('Exportar .drawio (tarjetas)')).toBeHidden(); // el menú Archivo, cerrado
 
   // Tema oscuro.
   await page.getByRole('button', { name: 'Tema oscuro' }).click();
@@ -37,12 +35,11 @@ test('menú Ver, tema y exportación a .drawio', async ({ page }) => {
 });
 
 test('Nuevo diagrama / Cargar ejemplo / Abrir JSON piden confirmación si hay cambios sin guardar', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await openEditor(page);
 
   // Genera cambios sin guardar.
   await page.getByRole('button', { name: 'Añadir persona' }).click();
-  await page.waitForTimeout(300);
+  await expect(page.locator('.react-flow__node')).toHaveCount(5);
 
   await page.getByText('Archivo', { exact: true }).click();
   await page.getByText('Nuevo diagrama').click();
@@ -53,28 +50,28 @@ test('Nuevo diagrama / Cargar ejemplo / Abrir JSON piden confirmación si hay ca
   // Semi UI pone aria-label="cancel"/"confirm" (fijo, en inglés) en los botones del modal de
   // confirmación, que pisa el nombre accesible sobre el texto visible; se localizan por texto.
   await dialog.locator('button', { hasText: 'Cancelar' }).click();
-  await page.waitForTimeout(200);
+  // Esperar a que el diálogo y el menú estén cerrados: si no, el clic siguiente en "Archivo" alterna el menú que aún se cierra.
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText('Nuevo diagrama')).toBeHidden();
   await expect(page.locator('.react-flow__node')).toHaveCount(5);
 
   // Confirmar sí lo descarta.
   await page.getByText('Archivo', { exact: true }).click();
   await page.getByText('Nuevo diagrama').click();
   await page.getByRole('dialog').locator('button', { hasText: 'Continuar' }).click();
-  await page.waitForTimeout(300);
   await expect(page.locator('.react-flow__node')).toHaveCount(0);
 });
 
 test('navegar a vistas sin colocar y exportar .drawio no cuentan como cambios sin guardar', async ({ page }) => {
-  await page.goto('/', { waitUntil: 'networkidle' });
-  await page.waitForSelector('.react-flow__node');
+  await openEditor(page);
   const header = page.locator('header');
   await expect(header).not.toContainText('Cambios sin guardar');
 
   // Bajar a C2/C3 dispara el autolayout inicial de cada vista: no es una edición del usuario.
   await page.locator('.react-flow__node', { hasText: 'Sistema de banca en línea' }).dblclick();
-  await page.waitForTimeout(1200);
+  await c4Ready(page, 'contenedores');
   await page.locator('.react-flow__node', { hasText: 'Aplicación API' }).dblclick();
-  await page.waitForTimeout(1200);
+  await c4Ready(page, 'componentes-api');
   await expect(header).not.toContainText('Cambios sin guardar');
 
   // Exportar coloca las vistas que faltan, pero tampoco marca el documento como modificado ni añade un paso de deshacer.

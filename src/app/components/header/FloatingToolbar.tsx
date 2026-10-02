@@ -5,6 +5,7 @@ import { useActions } from '../../hooks/useActions';
 import { isEmbedMode, useDocumentStore, useTemporalStore } from '../../store/documentStore';
 import { ELEMENT_TYPE_LABELS, type ElementType, type LayoutDirection, type LayoutDirectionOption, type LayoutDistribution } from '@core/model/types';
 import { formatQuality } from '@core/layout/quality';
+import { useFitCamera } from '../canvas/camera';
 
 const ADD_BUTTONS: Array<{ type: ElementType; glyph: string }> = [
   { type: 'person', glyph: '👤' },
@@ -30,7 +31,7 @@ export const DISTRIBUTIONS: Array<{ value: LayoutDistribution; label: string }> 
 ];
 
 export function FloatingToolbar({ onEmbedSave }: { onEmbedSave?: (exit: boolean) => void }) {
-  const { zoomIn, zoomOut, zoomTo, fitView, screenToFlowPosition } = useReactFlow();
+  const { zoomIn, zoomOut, zoomTo, screenToFlowPosition } = useReactFlow();
   const zoom = useFlowStore((s) => s.transform[2]);
   const readOnly = useDocumentStore((s) => s.readOnly);
   const theme = useDocumentStore((s) => s.ui.theme);
@@ -45,6 +46,11 @@ export function FloatingToolbar({ onEmbedSave }: { onEmbedSave?: (exit: boolean)
   const pastStates = useTemporalStore((t) => t.pastStates.length);
   const futureStates = useTemporalStore((t) => t.futureStates.length);
   const actions = useActions();
+  const { fit, fitAfter } = useFitCamera();
+
+  // Recoloca la vista y, cuando termina, encuadra; el encuadre queda anotado desde el clic (ver `camera.ts`).
+  const autoLayoutAndFit = (direction?: LayoutDirectionOption, distribution?: LayoutDistribution) =>
+    fitAfter(actions.autoLayout(direction, distribution), { padding: 0.15, duration: 300 }, 30);
 
   const addAt = (type: ElementType) => {
     const rect = document.querySelector('.react-flow')?.getBoundingClientRect();
@@ -64,7 +70,7 @@ export function FloatingToolbar({ onEmbedSave }: { onEmbedSave?: (exit: boolean)
         position="bottomLeft"
         render={
           <Dropdown.Menu>
-            <Dropdown.Item onClick={() => fitView({ padding: 0.15, duration: 300 })}>Ajustar a la ventana</Dropdown.Item>
+            <Dropdown.Item onClick={() => fit({ padding: 0.15, duration: 300 })}>Ajustar a la ventana</Dropdown.Item>
             <Dropdown.Divider />
             {zoomLevels.map((z) => (
               <Dropdown.Item key={z} onClick={() => zoomTo(z, { duration: 200 })}>
@@ -86,7 +92,7 @@ export function FloatingToolbar({ onEmbedSave }: { onEmbedSave?: (exit: boolean)
         <Button icon={<IconMinus />} theme="borderless" type="tertiary" aria-label="Alejar" onClick={() => zoomOut({ duration: 150 })} />
       </Tooltip>
       <Tooltip content="Ajustar a la ventana">
-        <Button icon={<IconExpand />} theme="borderless" type="tertiary" aria-label="Ajustar a la ventana" onClick={() => fitView({ padding: 0.15, duration: 300 })} />
+        <Button icon={<IconExpand />} theme="borderless" type="tertiary" aria-label="Ajustar a la ventana" onClick={() => fit({ padding: 0.15, duration: 300 })} />
       </Tooltip>
       <Divider layout="vertical" margin="6px" />
       <Tooltip content="Deshacer (Ctrl+Z)">
@@ -118,7 +124,7 @@ export function FloatingToolbar({ onEmbedSave }: { onEmbedSave?: (exit: boolean)
           aria-label="Autolayout"
           loading={layoutBusy}
           disabled={readOnly || !activeViewId}
-          onClick={() => void actions.autoLayout().then(() => setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 30))}
+          onClick={() => autoLayoutAndFit()}
         >
           Autolayout
         </Button>
@@ -138,14 +144,14 @@ export function FloatingToolbar({ onEmbedSave }: { onEmbedSave?: (exit: boolean)
           <Dropdown.Menu>
             <Dropdown.Title>Dirección</Dropdown.Title>
             {DIRECTIONS.map((d) => (
-              <Dropdown.Item key={d.value} active={d.value === direction} onClick={() => void actions.autoLayout(d.value).then(() => setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 30))}>
+              <Dropdown.Item key={d.value} active={d.value === direction} onClick={() => autoLayoutAndFit(d.value)}>
                 <span className="inline-block w-5 font-mono">{d.glyph}</span> {d.label}
               </Dropdown.Item>
             ))}
             <Dropdown.Divider />
             <Dropdown.Title>Distribución</Dropdown.Title>
             {DISTRIBUTIONS.map((d) => (
-              <Dropdown.Item key={d.value} active={d.value === distribution} onClick={() => void actions.autoLayout(undefined, d.value).then(() => setTimeout(() => fitView({ padding: 0.15, duration: 300 }), 30))}>
+              <Dropdown.Item key={d.value} active={d.value === distribution} onClick={() => autoLayoutAndFit(undefined, d.value)}>
                 {d.label}
               </Dropdown.Item>
             ))}
