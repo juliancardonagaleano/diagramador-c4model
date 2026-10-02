@@ -4,8 +4,14 @@ import { defineConfig } from '@playwright/test';
  * Pruebas de extremo a extremo. Usa el Chromium preinstalado del entorno (o
  * `CHROMIUM_PATH` si se indica) en vez de descargar uno propio.
  * Requiere `npm run build:app` previo; sirve `dist/app` con `vite preview`.
+ *
+ * El puerto es configurable con `E2E_PORT` (por defecto 4173), para que varios
+ * checkouts o worktrees corran e2e a la vez. Ojo: `reuseExistingServer` reutiliza
+ * lo que ya escuche en ese puerto, así que dos checkouts con el MISMO puerto
+ * probarían el build (`dist/app`) del primero que arrancó, no el propio. Usa un
+ * `E2E_PORT` distinto por checkout, o cierra el servidor ajeno antes de correr.
  */
-const PORT = 4173;
+const PORT = Number(process.env.E2E_PORT ?? 4173);
 
 export default defineConfig({
   testDir: 'tests/e2e',

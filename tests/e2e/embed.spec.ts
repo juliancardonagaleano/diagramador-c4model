@@ -3,7 +3,8 @@ import { test, expect } from '@playwright/test';
 test('protocolo embebido: handshake, export, setView, autosave, guardar y salir, origen no autorizado', async ({ page }) => {
   const hostErrors: string[] = [];
   page.on('pageerror', (e) => hostErrors.push(e.message));
-  await page.goto('/examples/embed-host.html', { waitUntil: 'networkidle' });
+  // Con iframes, `networkidle` a veces no se notifica aunque todo esté cargado y el `goto` agota el tiempo de la prueba: se espera por condiciones observables.
+  await page.goto('/examples/embed-host.html', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => document.getElementById('state')?.textContent === 'cargado', null, { timeout: 20000 });
 
   const frame = page.frames().find((f) => f.url().includes('embed=1'));
@@ -66,7 +67,8 @@ test('protocolo embebido: handshake, export, setView, autosave, guardar y salir,
 });
 
 test('un mensaje del anfitrión con JSON roto produce un evento de error, no un silencio', async ({ page }) => {
-  await page.goto('/examples/embed-host.html', { waitUntil: 'networkidle' });
+  // Con iframes, `networkidle` a veces no se notifica aunque todo esté cargado y el `goto` agota el tiempo de la prueba: se espera por condiciones observables.
+  await page.goto('/examples/embed-host.html', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => document.getElementById('state')?.textContent === 'cargado', null, { timeout: 20000 });
 
   await page.evaluate(() => {

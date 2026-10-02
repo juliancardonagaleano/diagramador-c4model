@@ -4,7 +4,8 @@ test.describe('shell de la suite (federación por manifiesto)', () => {
   test('descubre los módulos del manifiesto, monta el que se elige y muestra sus capacidades', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
-    await page.goto('/suite.html', { waitUntil: 'networkidle' });
+    // Con iframes, `networkidle` a veces no se notifica aunque todo esté cargado y el `goto` agota el tiempo de la prueba: se espera por condiciones observables.
+    await page.goto('/suite.html', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('status')).toContainText('6 módulos');
     const nav = page.getByRole('navigation', { name: 'Módulos' });
     await expect(nav.getByRole('button')).toHaveCount(6);
@@ -74,7 +75,8 @@ test.describe('Web Component <iark-module>', () => {
   test('dos widgets sin JavaScript de integración: URL directa con documento por propiedad, y descubierto por manifiesto', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
-    await page.goto('/examples/web-component-host.html', { waitUntil: 'networkidle' });
+    // Con iframes, `networkidle` a veces no se notifica aunque todo esté cargado y el `goto` agota el tiempo de la prueba: se espera por condiciones observables.
+    await page.goto('/examples/web-component-host.html', { waitUntil: 'domcontentloaded' });
     const frameOf = (module: string) => page.frames().find((f) => f.url().includes('embed=1') && f.url().includes(`module=${module}`));
     await expect.poll(() => frameOf('security')?.url(), { timeout: 20000 }).toBeTruthy();
     await expect.poll(() => frameOf('data')?.url(), { timeout: 20000 }).toBeTruthy();

@@ -104,9 +104,18 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
 
   // Al cambiar de módulo o de vista se encuadra el dibujo una vez que ELK lo haya colocado; después la cámara no se toca.
   const fitPending = useRef(true);
+  // Qué estructura (módulo + vista + grafo) tiene ya su autolayout aplicado, y para qué vista terminó el primer encuadre.
+  // Se comparan al renderizar, no en un efecto, así que en cuanto la estructura cambia el lienzo deja de estar «asentado».
+  const [laidFor, setLaidFor] = useState('');
+  const [fittedFor, setFittedFor] = useState('');
+  const layoutKey = `${key}\u0000${signature}`;
+  const layoutKeyRef = useRef(layoutKey);
+  layoutKeyRef.current = layoutKey;
+  const settled = laidFor === layoutKey && fittedFor === key;
   useEffect(() => {
     setMoved(readPositions(key));
     setSelection(NO_SELECTION);
+    setFittedFor('');
     fitPending.current = true;
   }, [key]);
 
@@ -120,11 +129,14 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     const g = graphRef.current;
     if (!g) return;
     const seq = ++layoutSeq.current;
+    const wanted = layoutKeyRef.current;
+    const apply = (result: GraphLayout): void => {
+      if (seq !== layoutSeq.current) return;
+      setLayout(result);
+      setLaidFor(wanted);
+    };
     const own = spec.layout && documentRef.current !== undefined ? await spec.layout(documentRef.current, viewId) : undefined;
-    if (own) {
-      if (seq === layoutSeq.current) setLayout(own);
-      return;
-    }
+    if (own) return apply(own);
     const kinds = new Map(spec.nodeKinds.map((k) => [k.kind, k]));
     const parents = new Set(g.nodes.filter((n) => n.parentId).map((n) => n.parentId as string));
     const result = await layoutGraph(
@@ -133,7 +145,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
       g.nodes.filter((n) => parents.has(n.id)).map((n) => ({ id: n.id, groupId: n.parentId })),
       { direction: 'RIGHT' },
     );
-    if (seq === layoutSeq.current) setLayout(result);
+    apply(result);
   }, [spec, viewId]);
   useEffect(() => {
     void relayout();
@@ -147,15 +159,22 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
   const nodes = useMemo(() => built.nodes.map((n) => ({ ...n, selected: selection.has(n.id) })), [built.nodes, selection]);
   const edges = useMemo(() => built.edges.map((e) => ({ ...e, selected: selection.has(e.id), data: { ...e.data, onPick: pick } })), [built.edges, selection, pick]);
 
+  // La cámara cuenta como asentada al acabar la animación o, si React Flow la interrumpe sin avisar, poco después.
+  const settleCamera = useCallback((fit: Promise<unknown>, duration: number, forKey: string): void => {
+    const done = (): void => setFittedFor(forKey);
+    void Promise.race([fit, new Promise((resolve) => window.setTimeout(resolve, duration + 300))]).then(done, done);
+  }, []);
+
   useEffect(() => {
     if (!layout || !fitPending.current) return;
-    fitPending.current = false;
     const timer = window.setTimeout(() => {
+      // Solo aquí se da por hecho: si llega otro autolayout antes de los 60 ms, este efecto se cancela y el siguiente encuadra.
+      fitPending.current = false;
       const targets = focusId && graph ? focusNodes(graph, focusId) : [];
       if (focusId && targets.length > 0) {
         setSelection(new Set([focusId]));
-        void flow.fitView({ nodes: targets.map((id) => ({ id })), padding: 1.2, duration: 250, maxZoom: 1 });
-      } else void flow.fitView({ padding: 0.15, duration: 200, maxZoom: 1 });
+        settleCamera(flow.fitView({ nodes: targets.map((id) => ({ id })), padding: 1.2, duration: 250, maxZoom: 1 }), 250, key);
+      } else settleCamera(flow.fitView({ padding: 0.15, duration: 200, maxZoom: 1 }), 200, key);
     }, 60);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -256,8 +275,10 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
   const autoLayout = useCallback(() => {
     setMoved(new Map());
     writePositions(key, new Map());
-    void relayout().then(() => flow.fitView({ padding: 0.15, duration: 250 }));
-  }, [flow, key, relayout]);
+    setLaidFor('');
+    setFittedFor('');
+    void relayout().then(() => settleCamera(flow.fitView({ padding: 0.15, duration: 250 }), 250, key));
+  }, [flow, key, relayout, settleCamera]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -327,7 +348,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
   }
 
   return (
-    <div className="cv-root" ref={wrapper} data-testid="module-canvas">
+    <div className="cv-root" ref={wrapper} data-testid="module-canvas" data-view={viewId ?? ''} data-layout={settled ? 'ready' : 'pending'}>
       <div className="cv-toolbar" role="toolbar" aria-label="Herramientas del lienzo">
         {mainViews.length > 1 && (
           <>

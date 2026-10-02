@@ -1,4 +1,5 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { canvasReady, selectView } from './canvas-helpers';
 
 async function open(page: Page, module = 'integration'): Promise<string[]> {
   const errors: string[] = [];
@@ -6,19 +7,8 @@ async function open(page: Page, module = 'integration'): Promise<string[]> {
   await page.goto(`/modulos.html?module=${module}`, { waitUntil: 'networkidle' });
   await expect(page.getByTestId('module-canvas')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
+  await canvasReady(page);
   return errors;
-}
-
-/** Caja del elemento una vez que la cámara ha terminado de encuadrar el dibujo. */
-async function settled(locator: Locator): Promise<{ x: number; y: number; width: number; height: number }> {
-  let last = (await locator.boundingBox())!;
-  for (let i = 0; i < 20; i++) {
-    await locator.page().waitForTimeout(150);
-    const next = (await locator.boundingBox())!;
-    if (Math.abs(next.x - last.x) < 0.5 && Math.abs(next.y - last.y) < 0.5) return next;
-    last = next;
-  }
-  return last;
 }
 
 const docText = async (page: Page): Promise<string> => {
@@ -86,7 +76,7 @@ test.describe('lienzo interactivo de módulos', () => {
   test('el mapa numera las interacciones por su orden y un flujo, por la posición de sus pasos', async ({ page }) => {
     await open(page);
     await expect(page.locator('.cv-mark-num')).toHaveCount(6);
-    await page.getByTestId('canvas-view').selectOption('flow:crear-pedido');
+    await selectView(page, 'flow:crear-pedido');
     await expect(page.locator('.cv-mark-num')).toHaveText(['1', '2', '3', '4', '5', '6']);
   });
 });
@@ -106,7 +96,7 @@ test.describe('integración: notación EIP, zonas, contratos', () => {
 
   test('la vista de un sistema muestra solo a él y a sus vecinos', async ({ page }) => {
     await open(page);
-    await page.getByTestId('canvas-view').selectOption('system:pedidos');
+    await selectView(page, 'system:pedidos');
     await expect(page.getByTestId('node-pedidos-mcp')).toBeVisible();
     await expect(page.getByTestId('node-asistente')).toBeVisible();
     await expect(page.getByTestId('node-erp')).toHaveCount(0);
@@ -132,14 +122,21 @@ test.describe('integración: notación EIP, zonas, contratos', () => {
   test('un patrón se puede pasar de insignia a nodo intermedio y volver', async ({ page }) => {
     await open(page);
     const nodes = await page.locator('.react-flow__node').count();
+    // La línea de la relación pasa por encima de su etiqueta (su zona de clic es una trazo invisible de 20 px) y Playwright
+    // rechaza el clic sin `force`; con él cae sobre ese trazo y React Flow selecciona la misma relación. Es seguro porque
+    // `open` espera a que el dibujo esté asentado: con `force` Playwright no espera a que el elemento deje de moverse.
     await page.getByTestId('edge-label-fact-pagos').click({ force: true });
+    await expect(page.getByTestId('action-expand-pattern')).toBeEnabled();
     await page.getByTestId('action-expand-pattern').click();
     await expect(page.locator('.react-flow__node')).toHaveCount(nodes + 1);
+    // El nodo nuevo aparece en una posición provisional y ELK lo recoloca: hasta entonces un clic caería donde ya no está.
+    await canvasReady(page);
     await expect(page.locator('[data-shape="diamond"]')).toHaveCount(2);
     await expect(page.getByTestId('edge-mark-fact-pagos-1')).toHaveCount(0);
     await page.getByTestId('node-cortacircuitos').click();
     await page.getByTestId('action-collapse-pattern').click();
     await expect(page.locator('.react-flow__node')).toHaveCount(nodes);
+    await canvasReady(page);
     await expect(page.getByTestId('edge-mark-fact-pagos-1')).toBeVisible();
   });
 
@@ -180,7 +177,7 @@ test.describe('selección y arrastre', () => {
   test('arrastrar un nodo lo mueve', async ({ page }) => {
     await open(page, 'security');
     const node = page.getByTestId('node-cliente');
-    const before = await settled(node);
+    const before = (await node.boundingBox())!;
     await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
     await page.mouse.down();
     await page.mouse.move(before.x + before.width / 2 + 70, before.y + before.height / 2 + 50, { steps: 8 });
@@ -210,8 +207,8 @@ test.describe('selección y arrastre', () => {
 
   test('Mayús + arrastrar selecciona los elementos de un recuadro y Ctrl + clic quita uno', async ({ page }) => {
     await open(page, 'security');
-    const a = await settled(page.getByTestId('node-cliente'));
-    const b = await settled(page.getByTestId('node-pedidos-db'));
+    const a = (await page.getByTestId('node-cliente').boundingBox())!;
+    const b = (await page.getByTestId('node-pedidos-db').boundingBox())!;
     const pane = (await page.locator('.react-flow__pane').boundingBox())!;
     const left = Math.min(a.x, b.x) - 12;
     const top = Math.min(a.y, b.y) - 12;
@@ -238,7 +235,7 @@ test.describe('lienzo empresarial', () => {
     await expect(page.locator('[data-testid="node-gestion-comercial"].cv-group')).toBeVisible();
     await expect(page.locator('[data-testid="node-ventas-online"][data-kind="capability"]')).toBeVisible();
     await page.screenshot({ path: 'test-results/canvas-enterprise-capabilities.png' });
-    await page.getByTestId('canvas-view').selectOption('landscape');
+    await selectView(page, 'landscape');
     await expect(page.locator('[data-shape="bar"]').first()).toBeVisible();
     await expect(page.locator('[data-shape="chevron"]').first()).toBeVisible();
     await expect(page.locator('.react-flow__edge').first()).toBeVisible();
@@ -259,20 +256,20 @@ test.describe('lienzo empresarial', () => {
 test.describe('lienzo de plataforma', () => {
   test('la vista del entorno anida redes y clústeres con las instancias dentro, y la topología usa figuras por clase de recurso', async ({ page }) => {
     const errors = await open(page, 'platform');
-    await page.getByTestId('canvas-view').selectOption('env:prod');
+    await selectView(page, 'env:prod');
     await expect(page.locator('[data-testid="node-vpc-prod"].cv-group')).toBeVisible();
     await expect(page.locator('[data-testid="node-k8s-prod"].cv-group')).toBeVisible();
     await expect(page.locator('[data-testid="node-i:pedidos-prod"]')).toBeVisible();
     await expect(page.locator('[data-shape="cylinder"]').first()).toBeVisible();
     await page.screenshot({ path: 'test-results/canvas-platform-prod.png' });
-    await page.getByTestId('canvas-view').selectOption('delivery');
+    await selectView(page, 'delivery');
     await expect(page.locator('[data-testid="node-p:infraestructura"].cv-group')).toBeVisible();
     expect(errors).toEqual([]);
   });
 
   test('un servicio añadido en un entorno aparece dentro del clúster y se edita como instancia', async ({ page }) => {
     await open(page, 'platform');
-    await page.getByTestId('canvas-view').selectOption('env:prod');
+    await selectView(page, 'env:prod');
     await page.locator('[data-testid="node-k8s-prod"] .cv-group-title').click();
     await page.getByTestId('add-worker').click();
     const instance = page.locator('.react-flow__node', { hasText: 'Worker nuevo' });
@@ -292,7 +289,7 @@ test.describe('lienzo de seguridad', () => {
     await expect(page.locator('[data-testid="node-pedidos-db"][data-shape="pipe"]')).toBeVisible();
     await expect(page.locator('[data-testid="node-cliente"][data-shape="actor"]')).toBeVisible();
     await page.screenshot({ path: 'test-results/canvas-security-dfd.png' });
-    await page.getByTestId('canvas-view').selectOption('threats');
+    await selectView(page, 'threats');
     await expect(page.locator('[data-testid="node-exfiltracion-db"][data-shape="hexagon"]')).toBeVisible();
     await page.screenshot({ path: 'test-results/canvas-security-threats.png' });
     expect(errors).toEqual([]);
@@ -300,7 +297,7 @@ test.describe('lienzo de seguridad', () => {
 
   test('una amenaza añadida con un activo seleccionado recae sobre él y su categoría STRIDE se elige en las propiedades', async ({ page }) => {
     await open(page, 'security');
-    await page.getByTestId('canvas-view').selectOption('threats');
+    await selectView(page, 'threats');
     await page.locator('[data-testid="node-pedidos-db"]').click();
     await page.getByTestId('add-threat').click();
     const inspector = page.getByTestId('inspector');
