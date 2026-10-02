@@ -1,12 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { XMLParser } from 'fast-xml-parser';
-import type { Box, EdgeRoute } from '@iark/kernel';
+import type { Box, EdgeRoute, GraphLayout } from '@iark/kernel';
 import { describe, expect, it } from 'vitest';
 import { enterpriseEditor } from './editor';
 import { fromMermaid } from './import/fromMermaid';
 import { toDrawio } from './export/drawio';
 import { toMermaid } from './export/mermaid';
 import { layoutValueStreams, toSvg, type RenderedEdge } from './export/render';
+import { refineOrder } from './export/valueStreamRoutes';
 import { dependencyGraph, reach, stageCapabilities, streamStages } from './graph';
 import { analyzeEnterprise } from './issues';
 import { enterpriseJsonSchema, validateEnterpriseDocument } from './schema';
@@ -374,6 +375,27 @@ const crossingsOf = (d: EnterpriseDocument): number => {
   return edgeCrossings(layout.edges, edges);
 };
 
+/** El rótulo de un recuadro ocupa su esquina superior izquierda: hasta 28 px de alto y, a 6,2 px por carácter de «❯ Flujo de valor: nombre», hasta donde llegue. */
+const LABEL_BOTTOM = 28;
+const labelBox = (group: Box, name: string): Box => ({ id: `rótulo:${group.id}`, x: group.x + 12, y: group.y + 4, width: Math.ceil((name.length + 18) * 6.2), height: LABEL_BOTTOM - 4 });
+
+/** ¿Pasa el tramo (horizontal o vertical) por el interior de la caja? Rozar su borde o acabar en él, como al llegar a un nodo, no cuenta. */
+function crossesBox(a: Point, b: Point, box: Box): boolean {
+  return Math.min(a.x, b.x) < box.x + box.width && Math.max(a.x, b.x) > box.x && Math.min(a.y, b.y) < box.y + box.height && Math.max(a.y, b.y) > box.y;
+}
+
+/** Tramos de las aristas que atraviesan un nodo o el rótulo de un recuadro, como «arista → nodo». */
+function routeHits({ layout, titles }: { layout: GraphLayout; titles: Map<string, string> }): string[] {
+  const obstacles = [...layout.nodes, ...layout.groups.map((g) => labelBox(g, titles.get(g.id) ?? ''))];
+  const found: string[] = [];
+  for (const route of layout.edges) {
+    for (let i = 1; i < route.points.length; i += 1) {
+      for (const box of obstacles) if (crossesBox(route.points[i - 1], route.points[i], box)) found.push(`${route.id} → ${box.id}`);
+    }
+  }
+  return found;
+}
+
 /**
  * La colocación anterior, solo para comparar: cada capacidad bajo su primera etapa, en el orden de aparición y empujada a la
  * derecha si choca con la anterior, y cada arista con un codo a poca altura de la etapa (las que suben, en diagonal).
@@ -444,17 +466,22 @@ function random(seed: number): () => number {
   };
 }
 
-/** Entre 1 y 3 flujos de 2 a 7 etapas; cada etapa tiene 1 o 2 capacidades, de las cuales un 30 % ya las habilita otra etapa (en el mismo flujo o en otro). */
-function sharedCapabilities(next: () => number): EnterpriseDocument {
+/**
+ * Entre 1 y `flows` flujos de 2 a 7 etapas; cada etapa tiene 1 o 2 capacidades, de las cuales un `share` de ellas (por defecto un 30 %) ya
+ * las habilita otra etapa (en el mismo flujo o en otro). Con `empty`, ese porcentaje de los flujos no tiene etapas.
+ */
+function sharedCapabilities(next: () => number, { flows = 3, share = 0.3, empty = 0 }: { flows?: number; share?: number; empty?: number } = {}): EnterpriseDocument {
   const streams: string[][] = [];
   let stage = 0;
-  for (let i = 0, n = 1 + Math.floor(next() * 3); i < n; i += 1) streams.push(Array.from({ length: 2 + Math.floor(next() * 6) }, () => `e${stage++}`));
+  for (let i = 0, n = 1 + Math.floor(next() * flows); i < n; i += 1) {
+    streams.push(empty > 0 && next() < empty ? [] : Array.from({ length: 2 + Math.floor(next() * 6) }, () => `e${stage++}`));
+  }
   const enables: Record<string, string[]> = {};
   const add = (cap: string, id: string): void => void (enables[cap] = [...new Set([...(enables[cap] ?? []), id])]);
   for (const id of streams.flat()) {
     for (let i = 0, n = 1 + Math.floor(next() * 1.8); i < n; i += 1) {
       const known = Object.keys(enables);
-      add(known.length > 0 && next() < 0.3 ? known[Math.floor(next() * known.length)] : `c${known.length}`, id);
+      add(known.length > 0 && next() < share ? known[Math.floor(next() * known.length)] : `c${known.length}`, id);
     }
   }
   return streamsDoc(streams, enables);
@@ -534,7 +561,8 @@ describe('flujos de valor: colocación sin cruces', () => {
         expect(last).toEqual({ x: to.x + to.width / 2, y: up ? to.y + to.height : to.y });
         expect(route.sides).toEqual(up ? { source: 'top', target: 'bottom' } : { source: 'bottom', target: 'top' });
         for (let i = 1; i < route.points.length; i += 1) expect(route.points[i].x === route.points[i - 1].x || route.points[i].y === route.points[i - 1].y).toBe(true);
-        expect(route.points.length === 2 ? first.x === last.x : route.points.length === 4).toBe(true);
+        // Las que bajan van rectas o con un codo; las que suben, rectas o con uno o más (por un pasillo libre): siempre un número par de puntos.
+        expect(route.points.length === 2 ? first.x === last.x : up ? route.points.length % 2 === 0 : route.points.length === 4).toBe(true);
       }
       for (const group of layout.groups) {
         const members = d.valueStages.filter((s) => s.streamId === group.id).map((s) => boxes.get(s.id)!);
@@ -603,15 +631,251 @@ describe('flujos de valor: colocación sin cruces', () => {
     const d = streamsDoc([['p0', 'p1'], [], ['q0', 'q1']], { pedidos: ['p0'], clientes: ['p1', 'q0'], propia: ['q1'] });
     const { layout } = layoutValueStreams(d);
     const box = (id: string): Box => layout.nodes.find((n) => n.id === id)!;
+    const group = (id: string): Box => layout.groups.find((g) => g.id === id)!;
     expect(layout.nodes.some((n) => n.id === 'flujo-1')).toBe(true); // el flujo vacío es un nodo suelto
     expect(layout.nodes.filter((n) => n.id === 'clientes')).toHaveLength(1);
     expect(box('clientes').y).toBeLessThan(box('q0').y);
     expect(box('propia').y).toBeGreaterThan(box('q1').y);
     const up = layout.edges.find((e) => e.id === 'clientes--enables--q0')!;
     expect(up.sides).toEqual({ source: 'top', target: 'bottom' });
-    // Las pistas de las que suben quedan en el hueco entre los recuadros, no dentro de ninguno.
-    const lane = up.points[1].y;
-    for (const g of layout.groups) expect(lane <= g.y || lane >= g.y + g.height).toBe(true);
+    // Sale de q0, que queda bajo el rótulo del flujo, así que gira bajo el rótulo hacia un pasillo a la derecha del flujo vacío, sube por él
+    // y gira en el hueco que queda bajo el primer flujo para llegar a «clientes» por debajo.
+    expect(up.points).toHaveLength(6);
+    const [out, strip, aisle, lane] = [up.points[0], up.points[1], up.points[2], up.points[3]];
+    expect(out).toEqual({ x: box('q0').x + box('q0').width / 2, y: box('q0').y });
+    expect(strip.y).toBeGreaterThanOrEqual(group('flujo-2').y + LABEL_BOTTOM);
+    expect(strip.y).toBeLessThan(box('q0').y);
+    expect(aisle.x).toBeGreaterThan(box('flujo-1').x + box('flujo-1').width);
+    expect(lane.y).toBeGreaterThanOrEqual(group('flujo-0').y + group('flujo-0').height);
+    expect(lane.y).toBeLessThanOrEqual(box('flujo-1').y);
+    expect(up.points[5]).toEqual({ x: box('clientes').x + box('clientes').width / 2, y: box('clientes').y + box('clientes').height });
     expect(crossingsOf(d)).toBe(0);
+    expect(routeHits(layoutValueStreams(d))).toEqual([]);
+  });
+});
+
+// --- Rutas de más de un codo -----------------------------------------------------------------------------------------------
+
+const shared = parse(JSON.parse(readFileSync('tests/fixtures/empresa-flujos-compartidos.json', 'utf8')));
+const SHARED_EDGE = 'gestion-clientes--enables--acompanar';
+
+/** Entre 3 y 5 flujos, alguno sin etapas, con capacidades que habilitan etapas de varios flujos (muchas veces no adyacentes). */
+const acrossFlows = (next: () => number): EnterpriseDocument => sharedCapabilities(next, { flows: 3, share: 0.35, empty: 0.15 });
+
+describe('flujos de valor: rutas que suben por un pasillo libre', () => {
+  it('la métrica de pisadas cuenta los tramos que atraviesan un nodo o un rótulo, y no los que los bordean o acaban en su borde', () => {
+    const box = (id: string, x: number, y: number, width: number, height: number): Box => ({ id, x, y, width, height });
+    const layout = (points: Array<[number, number]>): { layout: GraphLayout; titles: Map<string, string> } => ({
+      layout: { nodes: [box('n', 100, 100, 80, 60)], groups: [box('g', 0, 0, 400, 300)], edges: [{ id: 'e', points: points.map(([x, y]) => ({ x, y })) }], width: 400, height: 300 },
+      titles: new Map([['g', 'Flujo']]),
+    });
+    expect(routeHits(layout([[140, 50], [140, 200]]))).toEqual(['e → n']); // atraviesa el nodo
+    expect(routeHits(layout([[140, 160], [140, 250]]))).toEqual([]); // sale por su borde inferior
+    expect(routeHits(layout([[140, 250], [140, 160]]))).toEqual([]); // llega a su borde inferior
+    expect(routeHits(layout([[100, 50], [100, 250]]))).toEqual([]); // roza su lado
+    expect(routeHits(layout([[60, 130], [300, 130]]))).toEqual(['e → n']); // lo cruza en horizontal
+    expect(routeHits(layout([[30, 0], [30, 250]]))).toEqual(['e → rótulo:g']); // el rótulo, arriba a la izquierda
+    expect(routeHits(layout([[300, 0], [300, 250]]))).toEqual([]);
+    expect(routeHits(layout([[0, 40], [380, 40]]))).toEqual([]); // bajo el rótulo
+  });
+
+  it('la capacidad compartida por el primer y el tercer flujo sube por un pasillo a la derecha del segundo, sin pisar nada ni cortarse con otra', async () => {
+    const result = layoutValueStreams(shared);
+    const { layout, edges } = result;
+    const box = (id: string): Box => layout.nodes.find((n) => n.id === id)!;
+    const group = (id: string): Box => layout.groups.find((g) => g.id === id)!;
+    const route = layout.edges.find((e) => e.id === SHARED_EDGE)!;
+    expect(edges.get(SHARED_EDGE)).toMatchObject({ source: 'acompanar', target: 'gestion-clientes' });
+    // «Acompañar» es la primera etapa del tercer flujo, bajo el rótulo: sale hacia arriba, gira bajo el rótulo, sube por el pasillo y gira
+    // en el hueco que hay entre el primer y el segundo flujo para llegar por debajo a la capacidad.
+    expect(route.points).toHaveLength(6);
+    const [out, strip, bottom, aisleTop, lane, end] = [route.points[0], route.points[1], route.points[2], route.points[3], route.points[4], route.points[5]];
+    expect(out).toEqual({ x: box('acompanar').x + box('acompanar').width / 2, y: box('acompanar').y });
+    expect(strip.y).toBeGreaterThanOrEqual(group('atender').y + LABEL_BOTTOM);
+    expect(strip.y).toBeLessThan(box('acompanar').y);
+    expect(bottom.x).toBeGreaterThan(group('emitir').x + group('emitir').width);
+    expect(bottom).toEqual({ x: aisleTop.x, y: strip.y });
+    expect(lane.y).toBeGreaterThanOrEqual(group('captar').y + group('captar').height);
+    expect(lane.y).toBeLessThanOrEqual(group('emitir').y);
+    expect(end).toEqual({ x: box('gestion-clientes').x + box('gestion-clientes').width / 2, y: box('gestion-clientes').y + box('gestion-clientes').height });
+    for (let i = 1; i < route.points.length; i += 1) expect(route.points[i].x === route.points[i - 1].x || route.points[i].y === route.points[i - 1].y).toBe(true);
+    // El pasillo cabe en el dibujo, y no hay pisadas ni cruces.
+    expect(layout.width).toBeGreaterThan(bottom.x);
+    expect(routeHits(result)).toEqual([]);
+    expect(edgeCrossings(layout.edges, edges)).toBe(0);
+    // Las demás aristas siguen con un solo codo como antes.
+    for (const other of layout.edges.filter((e) => e.id !== SHARED_EDGE)) expect(other.points.length).toBeLessThanOrEqual(4);
+  });
+
+  it('el SVG y draw.io pintan la ruta tal cual: el SVG, con sus seis puntos; draw.io, con los cuatro intermedios y los lados por los que sale y llega', async () => {
+    const route = layoutValueStreams(shared).layout.edges.find((e) => e.id === SHARED_EDGE)!;
+    const svg = await toSvg(shared, 'value-stream');
+    const d = route.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x} ${p.y}`).join(' ');
+    expect(svg).toContain(`<path d="${d}"`);
+    const xml = await toDrawio(shared);
+    const cell = xml.match(new RegExp(`<mxCell id="e-${SHARED_EDGE}"[^>]*>(.*?)</mxCell>`))!;
+    expect(cell[0]).toContain('exitX=0.5;exitY=0;');
+    expect(cell[0]).toContain('entryX=0.5;entryY=1;');
+    expect(cell[0].match(/<mxPoint /g)).toHaveLength(4);
+    expect(cell[0]).toContain(`<mxPoint x="${route.points[1].x}" y="${route.points[1].y}"/>`);
+    // Las que bajan salen por abajo y llegan por arriba.
+    expect(xml).toMatch(/id="e-marketing--enables--atraer"[^>]*exitX=0.5;exitY=1;[^>]*entryX=0.5;entryY=0;/);
+  });
+
+  it('las aristas que salen de una misma etapa comparten pasillo y las de etapas distintas del mismo flujo suben por pasillos distintos', () => {
+    // «x» la habilitan «p0» y dos etapas del último flujo (a dos de distancia, con otro flujo de por medio) y «y», «p1» y la última de ellas. La primera
+    // etapa de ese flujo queda bajo el rótulo y sube por un pasillo lateral; la segunda queda a la derecha de todo y sube recta.
+    const d = streamsDoc([['p0', 'p1'], ['m0'], ['q0', 'q1']], { x: ['p0', 'q0', 'q1'], y: ['p1', 'q1'], z: ['m0'] });
+    const result = layoutValueStreams(d);
+    const route = (id: string): Array<{ x: number; y: number }> => result.layout.edges.find((e) => e.id === id)!.points;
+    // El pasillo es la columna del tramo vertical más largo.
+    const aisle = (id: string): number => {
+      const points = route(id);
+      const long = points.slice(1).map((p, i) => ({ x: p.x, length: Math.abs(p.y - points[i].y), flat: p.x !== points[i].x })).filter((s) => !s.flat);
+      return long.sort((a, b) => b.length - a.length)[0].x;
+    };
+    expect(aisle('x--enables--q1')).toBe(aisle('y--enables--q1')); // dos aristas de «q1»: un solo pasillo
+    expect(aisle('x--enables--q0')).not.toBe(aisle('x--enables--q1')); // y otra etapa, otro pasillo
+    expect(route('x--enables--q0')).toHaveLength(6);
+    expect(routeHits(result)).toEqual([]);
+    expect(edgeCrossings(result.layout.edges, result.edges)).toBe(0);
+  });
+
+  it('sin capacidades compartidas, o con un solo flujo, la colocación no cambia: un solo codo, sin franja bajo el rótulo y con el recuadro del tamaño de siempre', () => {
+    const { layout } = layoutValueStreams(doc);
+    expect(layout.groups).toEqual([{ id: 'pedido-a-entrega', x: 0, y: 0, width: 1274, height: 244 }]);
+    expect(layout.nodes.find((n) => n.id === 'pedir')).toEqual({ id: 'pedir', x: 435, y: 38, width: 186, height: 76 });
+    expect(layout.edges.find((e) => e.id === 'cobros--enables--pedir')!.points).toEqual([{ x: 528, y: 114 }, { x: 528, y: 131 }, { x: 637, y: 131 }, { x: 637, y: 158 }]);
+    expect(layout.width).toBe(1274);
+    expect(routeHits(layoutValueStreams(doc))).toEqual([]);
+  });
+
+  it('con una subida que no estorba el rótulo (la etapa queda a su derecha) sube recta, sin pasillo', () => {
+    // La etapa de más a la derecha de un flujo ancho no tiene el rótulo encima.
+    const d = streamsDoc([['p0', 'p1'], ['q0', 'q1', 'q2', 'q3', 'q4']], { arriba: ['p0', 'q4'], otra: ['q0'] });
+    const result = layoutValueStreams(d);
+    const route = result.layout.edges.find((e) => e.id === 'arriba--enables--q4')!;
+    expect(route.points).toHaveLength(4);
+    const stage = result.layout.nodes.find((n) => n.id === 'q4')!;
+    expect(route.points[0].x).toBe(stage.x + stage.width / 2);
+    expect(route.points[1].x).toBe(route.points[0].x);
+    expect(routeHits(result)).toEqual([]);
+  });
+
+  it('ninguna arista atraviesa un nodo ni el rótulo de un recuadro, con flujos adyacentes o no, vacíos de por medio y capacidades compartidas (casos con semilla)', () => {
+    const next = random(17);
+    let withAisle = 0;
+    let withLeft = 0;
+    let withGap = 0;
+    for (let i = 0; i < 300; i += 1) {
+      const d = acrossFlows(next);
+      const result = layoutValueStreams(d);
+      const hits = routeHits(result);
+      expect(hits, JSON.stringify(d.relations.map((r) => r.id))).toEqual([]);
+      const { layout } = result;
+      for (const route of layout.edges) {
+        for (let k = 1; k < route.points.length; k += 1) expect(route.points[k].x === route.points[k - 1].x || route.points[k].y === route.points[k - 1].y).toBe(true);
+        for (const p of route.points) {
+          expect(p.x).toBeGreaterThanOrEqual(0);
+          expect(p.x).toBeLessThanOrEqual(layout.width);
+        }
+      }
+      if (layout.edges.some((e) => e.points.length > 4)) withAisle += 1;
+      // Un pasillo a la izquierda de los flujos queda dentro del lienzo: todo se desplaza para dejarle sitio.
+      if (layout.edges.some((e) => e.points.some((p) => p.x < Math.min(...layout.groups.map((g) => g.x))))) withLeft += 1;
+      // Los que suben llegan por debajo de la capacidad y salen por encima de la etapa.
+      const boxes = new Map(layout.nodes.map((n) => [n.id, n]));
+      for (const route of layout.edges) {
+        const { source, target } = result.edges.get(route.id)!;
+        if (boxes.get(target)!.y < boxes.get(source)!.y) {
+          const [first, last] = [route.points[0], route.points[route.points.length - 1]];
+          expect(first.y).toBe(boxes.get(source)!.y);
+          expect(last.y).toBe(boxes.get(target)!.y + boxes.get(target)!.height);
+        }
+      }
+      if (d.valueStreams.some((s) => !d.valueStages.some((x) => x.streamId === s.id))) withGap += 1;
+    }
+    // La prueba no es vacía: muchas colocaciones tienen rutas con varios codos y flujos sin etapas de por medio.
+    expect(withAisle).toBeGreaterThan(100);
+    expect(withLeft).toBeGreaterThan(10);
+    expect(withGap).toBeGreaterThan(30);
+  });
+
+  it('con capacidades compartidas por flujos no adyacentes las rutas largas no cuestan más cruces que la colocación anterior (casos con semilla)', () => {
+    const next = random(29);
+    for (let i = 0; i < 150; i += 1) {
+      const d = acrossFlows(next);
+      const before = previousLayout(d);
+      expect(crossingsOf(d), JSON.stringify(d.relations.map((r) => r.id))).toBeLessThanOrEqual(edgeCrossings(before.routes, before.ends));
+    }
+  });
+
+  it('con rutas largas el resultado es determinista: el mismo documento da la misma colocación', () => {
+    for (const seed of [4, 8, 15]) {
+      const d = acrossFlows(random(seed));
+      const again = parse(JSON.parse(JSON.stringify(d)));
+      expect(JSON.stringify(layoutValueStreams(again))).toBe(JSON.stringify(layoutValueStreams(d)));
+    }
+    expect(JSON.stringify(layoutValueStreams(shared))).toBe(JSON.stringify(layoutValueStreams(parse(JSON.parse(readFileSync('tests/fixtures/empresa-flujos-compartidos.json', 'utf8'))))));
+  });
+});
+
+describe('flujos de valor: orden de las capacidades por búsqueda local', () => {
+  /** Etapas e0..e5 de un flujo y cinco capacidades que habilitan varias de ellas: el baricentro las ordena con 14 cruces y la búsqueda local deja 9. */
+  const dense = (): EnterpriseDocument => streamsDoc([['e0', 'e1', 'e2', 'e3', 'e4', 'e5']], { c0: ['e2', 'e3'], c1: ['e0', 'e4', 'e5'], c2: ['e2', 'e5'], c3: ['e3'], c4: ['e3'] });
+  const crossingsWith = (d: EnterpriseDocument, refine: boolean): number => {
+    const { layout, edges } = layoutValueStreams(d, { refine });
+    return edgeCrossings(layout.edges, edges);
+  };
+  const orderOf = (d: EnterpriseDocument, refine: boolean): string[] =>
+    layoutValueStreams(d, { refine }).layout.nodes.filter((n) => d.capabilities.some((c) => c.id === n.id)).sort((a, b) => a.x - b.x).map((n) => n.id);
+
+  it('mejora el orden por baricentro cuando hay etapas no contiguas', () => {
+    const d = dense();
+    expect(crossingsWith(d, false)).toBe(14);
+    expect(crossingsWith(d, true)).toBe(9);
+    expect(orderOf(d, true)).not.toEqual(orderOf(d, false));
+    // Sigue siendo una permutación de las mismas capacidades.
+    expect([...orderOf(d, true)].sort()).toEqual([...orderOf(d, false)].sort());
+  });
+
+  it('nunca da más cruces que el baricentro simple y casi siempre hay casos donde da menos (flujos con capacidades compartidas, con semilla)', () => {
+    let fewer = 0;
+    for (const [seed, options] of [[7, {}], [21, { flows: 5, share: 0.25 }], [33, { flows: 5, share: 0.5 }], [5, { flows: 5, share: 0.3, empty: 0.2 }]] as const) {
+      const next = random(seed);
+      for (let i = 0; i < 100; i += 1) {
+        const d = sharedCapabilities(next, options);
+        const [simple, refined] = [crossingsWith(d, false), crossingsWith(d, true)];
+        expect(refined, JSON.stringify(d.relations.map((r) => r.id))).toBeLessThanOrEqual(simple);
+        if (refined < simple) fewer += 1;
+      }
+    }
+    expect(fewer).toBeGreaterThan(10);
+  });
+
+  it('es estable: si el baricentro ya es el mejor orden, no se mueve nada, y en los empates se queda el del documento', () => {
+    const tidy = streamsDoc([['e0', 'e1', 'e2']], { a: ['e0'], b: ['e1'], c: ['e2'] });
+    expect(orderOf(tidy, true)).toEqual(['a', 'b', 'c']);
+    expect(layoutValueStreams(tidy)).toEqual(layoutValueStreams(tidy, { refine: false }));
+    const tie = streamsDoc([['e0', 'e1']], { b: ['e0'], a: ['e0'], c: ['e0'] });
+    expect(orderOf(tie, true)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('refineOrder: nunca empeora el orden de partida, no se mueve en los empates, respeta el tope de pasadas y da siempre lo mismo', () => {
+    const next = random(3);
+    for (let i = 0; i < 200; i += 1) {
+      const n = 2 + Math.floor(next() * 7);
+      const cost = Array.from({ length: n }, () => Array.from({ length: n }, () => Math.floor(next() * 4)));
+      const order = Array.from({ length: n }, (_, k) => k);
+      const total = (o: number[]): number => o.reduce((sum, a, p) => sum + o.slice(p + 1).reduce((s, b) => s + cost[a][b], 0), 0);
+      const refined = refineOrder(order, (a, b) => cost[a][b]);
+      expect(total(refined)).toBeLessThanOrEqual(total(order));
+      expect([...refined].sort((a, b) => a - b)).toEqual(order);
+      expect(refineOrder(order, (a, b) => cost[a][b])).toEqual(refined);
+      expect(refineOrder(order, (a, b) => cost[a][b], 0)).toEqual(order);
+    }
+    expect(refineOrder([0, 1, 2, 3], () => 1)).toEqual([0, 1, 2, 3]);
+    // Un par al revés se corrige con una sola pasada.
+    expect(refineOrder([0, 1], (a, b) => (a < b ? 1 : 0))).toEqual([1, 0]);
   });
 });

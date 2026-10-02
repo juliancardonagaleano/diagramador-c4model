@@ -1,6 +1,6 @@
 import { indexElements, KIND_LABELS, type Capability, type EnterpriseDocument } from '../types';
 import { listViews } from '../views';
-import { drawioShapeStyle } from '@iark/kernel';
+import { drawioShapeStyle, type PortSide } from '@iark/kernel';
 import { EDGE_STYLES, ELEMENT_ICONS, ELEMENT_SHAPES, INK, IMPORTANCE_STROKE, capabilityPaint, edgeLabel, elementLines, graphNodeStyle, layoutView, supportingApplications } from './render';
 
 /** Icono del tipo como imagen SVG incrustada (draw.io acepta `image=data:image/svg+xml,<base64>` sin el `;base64`). */
@@ -17,6 +17,14 @@ function edgeStyle(kind: keyof typeof EDGE_STYLES): string {
   const end = e.head === 'none' ? 'endArrow=none;' : e.head === 'open' ? 'endArrow=open;endFill=0;' : 'endArrow=block;';
   const start = e.tail === 'diamond' ? 'startArrow=diamondThin;startFill=1;' : e.tail === 'dot' ? 'startArrow=oval;startFill=1;' : '';
   return `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${e.stroke};strokeWidth=${e.width ?? 1.5};${end}${start}${e.dashed ? 'dashed=1;' : ''}`;
+}
+
+/** Centro de cada lado de un nodo en las coordenadas relativas de draw.io (0 a 1), para fijar por dónde sale y entra una arista cuya colocación lo decide. */
+const SIDE_POINT: Record<PortSide, [number, number]> = { top: [0.5, 0], right: [1, 0.5], bottom: [0.5, 1], left: [0, 0.5] };
+function portStyle(sides: { source: PortSide; target: PortSide } | undefined): string {
+  if (!sides) return '';
+  const at = (prefix: 'exit' | 'entry', side: PortSide): string => `${prefix}X=${SIDE_POINT[side][0]};${prefix}Y=${SIDE_POINT[side][1]};${prefix}Dx=0;${prefix}Dy=0;`;
+  return at('exit', sides.source) + at('entry', sides.target);
 }
 
 /** Exporta todas las vistas (mapa de capacidades, paisaje y unidades) a un `.drawio`, una página por vista, ya colocadas. */
@@ -61,7 +69,7 @@ export async function toDrawio(doc: EnterpriseDocument): Promise<string> {
       const { relation, source, target } = edges.get(e.id)!;
       const points = e.points.slice(1, -1).map((p) => `<mxPoint x="${p.x}" y="${p.y}"/>`).join('');
       cells.push(
-        `<mxCell id="e-${esc(e.id)}" value="${esc(edgeLabel(relation) ?? '')}" style="${edgeStyle(relation.kind)}" edge="1" parent="1" source="n-${esc(source)}" target="n-${esc(target)}"><mxGeometry relative="1" as="geometry">${points ? `<Array as="points">${points}</Array>` : ''}</mxGeometry></mxCell>`,
+        `<mxCell id="e-${esc(e.id)}" value="${esc(edgeLabel(relation) ?? '')}" style="${edgeStyle(relation.kind)}${portStyle(e.sides)}" edge="1" parent="1" source="n-${esc(source)}" target="n-${esc(target)}"><mxGeometry relative="1" as="geometry">${points ? `<Array as="points">${points}</Array>` : ''}</mxGeometry></mxCell>`,
       );
     }
     pages.push(
