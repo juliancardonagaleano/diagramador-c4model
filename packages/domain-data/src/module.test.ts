@@ -198,7 +198,7 @@ describe('vistas', () => {
 
   it('el ERD dibuja fichas sueltas (sin contenedores) y el linaje no repite lo que solo es entidad', () => {
     const erd = findView(doc, 'erd');
-    expect(erd.assetIds).toEqual(['crm-clientes', 'erp-pedidos', 'erp-lineas', 'dwh-dim-cliente', 'dwh-fact-ventas']);
+    expect(erd.assetIds).toEqual(['crm-clientes', 'erp-pedidos', 'erp-lineas', 'bronze-clientes', 'bronze-pedidos', 'silver-ventas', 'dwh-dim-cliente', 'dwh-fact-ventas']);
     expect(erd.relationIds).toEqual(['pedido-lineas', 'cliente-ventas']);
     expect(findView(doc, 'lineage').assetIds).toContain('crm');
     const onlyEntities = parse({ assets: [{ id: 'a', kind: 'table', name: 'A' }, { id: 'b', kind: 'table', name: 'B' }], relations: [{ id: 'r', sourceId: 'a', targetId: 'b', cardinality: '1:N' }] });
@@ -286,7 +286,7 @@ describe('importación de Mermaid', () => {
     const { document, warnings } = fromMermaid(toMermaid(doc, { viewId: 'erd' }));
     expect(warnings).toEqual([]);
     expect(document.workspace.name).toBe('Modelo entidad-relación - Plataforma de datos de ventas');
-    expect(document.assets.map((a) => a.id)).toEqual(['crm-clientes', 'erp-pedidos', 'erp-lineas', 'dwh-dim-cliente', 'dwh-fact-ventas']);
+    expect(document.assets.map((a) => a.id)).toEqual(['crm-clientes', 'erp-pedidos', 'erp-lineas', 'bronze-clientes', 'bronze-pedidos', 'silver-ventas', 'dwh-dim-cliente', 'dwh-fact-ventas']);
     const lineas = document.assets.find((a) => a.id === 'erp-lineas')!;
     expect(lineas.name).toBe('líneas de pedido');
     expect(lineas.columns?.[0]).toEqual({ name: 'pedido_id', type: 'bigint', keys: ['pk', 'fk'] });

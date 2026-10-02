@@ -305,6 +305,65 @@
               "boolean",
               "null"
             ]
+          },
+          "mappings": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "object",
+                      "properties": {
+                        "assetId": {
+                          "type": "string"
+                        },
+                        "column": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "assetId",
+                        "column"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "to": {
+                      "type": "object",
+                      "properties": {
+                        "assetId": {
+                          "type": "string"
+                        },
+                        "column": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "assetId",
+                        "column"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "transform": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "to",
+                    "transform"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -317,7 +376,8 @@
           "schedule",
           "description",
           "owner",
-          "anonymizes"
+          "anonymizes",
+          "mappings"
         ],
         "additionalProperties": false
       }

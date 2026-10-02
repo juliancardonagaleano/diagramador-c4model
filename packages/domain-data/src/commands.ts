@@ -2,7 +2,7 @@ import type { CommandSpec } from '@iark/kernel';
 import { DataImportError } from './import/fromMermaid';
 import { fromIntegrationJson } from './import/fromIntegration';
 import { inheritance } from './inherit';
-import { traceLineage, type LineageDirection, type LineageStep } from './lineage';
+import { columnImpact, parseColumnRef, traceLineage, type ColumnStep, type LineageDirection, type LineageStep } from './lineage';
 import { formatDataIssues, validateDataDocument } from './schema';
 import { CLASSIFICATION_LABELS, KIND_LABELS, hasPii, type DataDocument } from './types';
 
@@ -57,6 +57,30 @@ export const dataCommands: CommandSpec[] = [
         const owners = [...new Set([start.id, ...downstream.map((s) => s.assetId)].map((id) => ownerOf(id)).filter(Boolean))];
         out.push(`Responsables a avisar: ${owners.length > 0 ? owners.join(', ') : 'ninguno declarado'}`);
       }
+      return out.join('\n').trimEnd();
+    },
+  },
+  {
+    name: 'column-impact',
+    description: 'Impacto de una columna: de qué columnas sale (aguas arriba) y qué columnas, activos, informes y modelos dependen de ella (aguas abajo), según los mapeos de los pipelines',
+    input: { description: 'documento de datos en JSON' },
+    args: [{ name: 'columna', description: 'activo.columna (id del activo, punto y nombre de la columna)', required: true }],
+    run: ({ args, input }) => {
+      const doc = readData(input);
+      const ref = parseColumnRef(args[0], doc.assets.map((a) => a.id));
+      if (!ref) throw new DataImportError(`«${args[0]}» no es un activo y una columna: usa «<activo>.<columna>». Activos: ${doc.assets.map((a) => a.id).join(', ')}.`);
+      const assets = new Map(doc.assets.map((a) => [a.id, a]));
+      const pipelines = new Map(doc.pipelines.map((p) => [p.id, p]));
+      const { ownerOf } = inheritance(doc);
+      const { upstream, downstream, assetIds, consumerIds } = columnImpact(doc, ref);
+      const section = (title: string, steps: ColumnStep[]): string[] => [
+        `${title}: ${steps.length === 0 ? 'ninguna' : `${steps.length} columna(s)`}`,
+        ...steps.map((s) => `${'  '.repeat(s.depth)}- ${assets.get(s.assetId)?.name ?? s.assetId}.${s.column} · pipeline «${pipelines.get(s.pipelineId)?.name ?? s.pipelineId}»${s.transform ? ` · ${s.transform}` : ''}`),
+      ];
+      const out = [`Impacto de la columna ${assets.get(ref.assetId)!.name}.${ref.column}`, '', ...section('Aguas arriba (de qué columnas sale)', upstream), '', ...section('Aguas abajo (se ve afectada si cambia)', downstream), ''];
+      out.push(`Informes y modelos afectados: ${consumerIds.length > 0 ? consumerIds.map((id) => assets.get(id)!.name).join(', ') : 'ninguno'}`);
+      const owners = [...new Set(assetIds.map((id) => ownerOf(id)).filter(Boolean))];
+      out.push(`Responsables a avisar: ${owners.length > 0 ? owners.join(', ') : 'ninguno declarado'}`);
       return out.join('\n').trimEnd();
     },
   },

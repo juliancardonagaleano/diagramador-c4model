@@ -1,7 +1,7 @@
 import type { ModuleIssue } from '@iark/kernel';
 import { inheritance } from './inherit';
 import { findLineageCycles, indexLineage } from './lineage';
-import { CLASSIFICATION_LABELS, CLASSIFICATION_RANK, KIND_LABELS, hasPii, type DataAsset, type DataDocument } from './types';
+import { CLASSIFICATION_LABELS, CLASSIFICATION_RANK, ENTITY_KINDS, KIND_LABELS, hasPii, type Column, type ColumnRef, type DataAsset, type DataDocument, type Pipeline } from './types';
 
 const CONFIDENTIAL = CLASSIFICATION_RANK.confidential;
 
@@ -9,6 +9,42 @@ const CONFIDENTIAL = CLASSIFICATION_RANK.confidential;
 export function sensitivity(asset: DataAsset): number | undefined {
   if (asset.classification) return CLASSIFICATION_RANK[asset.classification];
   return hasPii(asset) ? CONFIDENTIAL : undefined;
+}
+
+type AssetLabel = (a: DataAsset) => string;
+
+/**
+ * Linaje de columnas de un pipeline: un mapeo a (o desde) una columna que el activo no declara y datos personales que
+ * llegan a una columna no marcada como tal (salvo que el pipeline anonimice). Los informes y modelos sin columnas
+ * declaradas aceptan cualquier nombre, porque describen indicadores y no tablas.
+ */
+function mappingIssues(p: Pipeline, assets: Map<string, DataAsset>, label: AssetLabel): ModuleIssue[] {
+  const issues: ModuleIssue[] = [];
+  const column = (r: ColumnRef): { asset?: DataAsset; column?: Column; missing: boolean } => {
+    const asset = assets.get(r.assetId);
+    const found = asset?.columns?.find((c) => c.name === r.column);
+    const free = !!asset && !found && (asset.columns?.length ?? 0) === 0 && !ENTITY_KINDS.includes(asset.kind);
+    return { asset, column: found, missing: !!asset && !found && !free };
+  };
+  const reported = new Set<string>();
+  for (const m of p.mappings ?? []) {
+    const from = column(m.from);
+    const to = column(m.to);
+    for (const [ref, c] of [[m.from, from], [m.to, to]] as const) {
+      const key = `${ref.assetId}.${ref.column}`;
+      if (!c.missing || reported.has(key)) continue;
+      reported.add(key);
+      issues.push({ severity: 'warning', elementId: p.id, message: `El pipeline «${p.name}» mapea la columna «${ref.column}», que ${label(c.asset!)} no declara.` });
+    }
+    if (!p.anonymizes && from.column?.pii && to.asset && to.column && !to.column.pii) {
+      issues.push({
+        severity: 'warning',
+        elementId: to.asset.id,
+        message: `La columna «${to.column.name}» de ${label(to.asset)} recibe datos personales de «${m.from.column}» (${label(from.asset!)}) por el pipeline «${p.name}» pero no está marcada como PII. Si anonimiza los datos, márcalo con anonymizes.`,
+      });
+    }
+  }
+  return issues;
 }
 
 /**
@@ -69,6 +105,7 @@ export function analyzeData(doc: DataDocument): ModuleIssue[] {
     if (!p.schedule && ['batch', 'elt', 'replication', 'api'].includes(p.kind)) {
       issues.push({ severity: 'info', elementId: p.id, message: `El pipeline «${p.name}» no declara su frecuencia (schedule).` });
     }
+    issues.push(...mappingIssues(p, assets, label));
     if (p.anonymizes) continue;
     for (const inId of p.inputs) {
       const input = assets.get(inId);

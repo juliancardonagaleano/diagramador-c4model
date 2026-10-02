@@ -134,6 +134,13 @@ function maskTarget(doc: DataDocument, id: string | undefined): { asset: DataAss
   return { asset, pipelines };
 }
 
+/** El pipeline lee `to` en lugar de `from`, y sus mapeos de columnas parten de él. */
+function rewired(p: Pipeline, from: string, to: string): Pipeline {
+  const next: Pipeline = { ...p, inputs: [...new Set(p.inputs.map((x) => (x === from ? to : x)))] };
+  if (p.mappings) next.mappings = p.mappings.map((m) => (m.from.assetId === from ? { ...m, from: { ...m.from, assetId: to } } : m));
+  return next;
+}
+
 const MASK: EditorAction<DataDocument> = {
   id: 'mask',
   label: 'Enmascarar',
@@ -166,6 +173,7 @@ const MASK: EditorAction<DataDocument> = {
       outputs: [maskedId],
       description: `Anonimiza los datos personales de «${asset.name}» antes de que los lean otros pipelines.`,
       anonymizes: true,
+      ...(asset.columns?.length ? { mappings: asset.columns.map((c) => ({ from: { assetId: asset.id, column: c.name }, to: { assetId: maskedId, column: c.name }, transform: c.pii ? 'anonimiza' : 'copia' })) } : {}),
     };
     const rewire = new Set(pipelines.map((p) => p.id));
     return {
@@ -174,7 +182,7 @@ const MASK: EditorAction<DataDocument> = {
       document: {
         ...doc,
         assets: [...doc.assets, masked],
-        pipelines: [...doc.pipelines.map((p) => (rewire.has(p.id) ? { ...p, inputs: [...new Set(p.inputs.map((x) => (x === asset.id ? maskedId : x)))] } : p)), pipeline],
+        pipelines: [...doc.pipelines.map((p) => (rewire.has(p.id) ? rewired(p, asset.id, maskedId) : p)), pipeline],
       },
     };
   },

@@ -84,6 +84,20 @@ export interface DataAsset {
   contractId?: string;
 }
 
+/** Una columna de un activo (`assetId` + nombre de la columna). */
+export interface ColumnRef {
+  assetId: string;
+  column: string;
+}
+
+/** Linaje a nivel de columna: la columna `from` (de una entrada del pipeline) alimenta la columna `to` (de una salida). */
+export interface ColumnMapping {
+  from: ColumnRef;
+  to: ColumnRef;
+  /** Cómo se obtiene (`copia`, `sha256(valor)`, `suma por mes`). */
+  transform?: string;
+}
+
 export interface Pipeline {
   id: string;
   name: string;
@@ -99,6 +113,8 @@ export interface Pipeline {
   owner?: string;
   /** Anonimiza o enmascara los datos personales: sus salidas pueden tener una clasificación menor que sus entradas. */
   anonymizes?: boolean;
+  /** Mapeos columna origen → columna destino (opcional): linaje a nivel de columna. */
+  mappings?: ColumnMapping[];
 }
 
 export interface Relation {

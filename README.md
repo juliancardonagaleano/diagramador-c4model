@@ -308,12 +308,14 @@ Documento JSON (ejemplo completo en [`examples/ventas-datos.json`](examples/vent
 |---|---|
 | `domains` | áreas de negocio que agrupan activos (Ventas, Clientes…), con su responsable |
 | `assets` | `source`, `database`, `warehouse`, `lake`, `stream`, `table`, `view`, `file`, `report` y `model`; una tabla, vista o archivo puede colgar de su base, almacén o lago (`parentId`). Gobierno: `owner`, `steward`, `classification` (`public`…`restricted`), `pii`, `retention`; y `columns` (tipo, `pk`/`fk`/`uk`, `pii`) |
-| `pipelines` | de una o varias entradas a una o varias salidas: `batch`, `elt`, `cdc`, `streaming`, `replication`, `api` o `manual`, con `tool`, `schedule` y `anonymizes` |
+| `pipelines` | de una o varias entradas a una o varias salidas: `batch`, `elt`, `cdc`, `streaming`, `replication`, `api` o `manual`, con `tool`, `schedule` y `anonymizes`; opcionalmente `mappings` (linaje de columnas: `{ from: { assetId, column }, to: { assetId, column }, transform }`, de una entrada a una salida del pipeline) |
 | `relations` | entre entidades (tablas, vistas, archivos, streams): `1:1`, `1:N`, `N:1` o `N:M` |
 
 No se guardan coordenadas: las vistas se derivan del modelo. `lineage` es el linaje completo, `erd` el modelo entidad-relación (fichas con sus columnas) y `domain:<id>` una por dominio, con los activos vecinos en discontinuo. El linaje de un activo concreto se pide por su id: `lineage:<activo>` (todo), `upstream:<activo>` (de dónde vienen sus datos) y `downstream:<activo>` (qué depende de él). Un pipeline cuyas entradas y salidas están en un mismo contenedor se dibuja dentro de él.
 
-`validate` comprueba la estructura y aplica reglas de **gobierno** que siguen el linaje: datos personales sin clasificar o clasificados por debajo de confidencial, un activo derivado de otro más sensible con una clasificación menor (salvo que su pipeline anonimice), activos sin responsable (más grave con datos personales), informes o modelos sin pipeline que los escriba, pipelines por lotes sin frecuencia, ciclos de linaje y relaciones N:M sin tabla intermedia.
+**Linaje a nivel de columna** (opcional y retrocompatible: sin `mappings` nada cambia). Un pipeline puede declarar qué columna de sus entradas alimenta qué columna de sus salidas; el panel de propiedades del pipeline los edita como líneas de texto, `activo.columna -> activo.columna : transformación`. La vista `column:<activo>.<columna>` (también en el selector, una por cada columna de origen) dibuja un impacto de columna: fichas con solo las columnas afectadas (la de partida con ●), aguas arriba y aguas abajo, hasta los informes y modelos que dependen de ella (los informes y modelos sin columnas declaradas aceptan cualquier nombre de indicador). Funciona en el lienzo, en el SVG y en Mermaid (`--view column:erp-pedidos.total`).
+
+`validate` comprueba la estructura y aplica reglas de **gobierno** que siguen el linaje: datos personales sin clasificar o clasificados por debajo de confidencial, un activo derivado de otro más sensible con una clasificación menor (salvo que su pipeline anonimice), activos sin responsable (más grave con datos personales), informes o modelos sin pipeline que los escriba, un mapeo a una columna que el activo no declara, datos personales que llegan por un mapeo a una columna no marcada como PII (salvo que el pipeline anonimice), pipelines por lotes sin frecuencia, ciclos de linaje y relaciones N:M sin tabla intermedia.
 
 ```bash
 iark validate  datos.json --module data
@@ -323,12 +325,13 @@ iark convert   datos.json --module data --out impacto.svg --view downstream:silv
 iark import    linaje.mmd  --module data --out datos.json                # flowchart (linaje) o erDiagram → documento
 iark generate  "Lago con CRM y ERP, almacén y un panel de ventas" --module data --json datos.json
 iark data lineage silver-ventas datos.json                               # origen e impacto de un activo, con los responsables a avisar
+iark data column-impact erp-pedidos.total datos.json                    # de qué columnas sale y qué columnas, informes y modelos dependen de ella
 iark data catalog datos.json                                             # tabla Markdown de activos con dominio, responsable y clasificación
 iark data pii datos.json                                                 # datos personales y adónde llegan sin anonimizarse
 iark data from-integration mapa.json                                     # almacenes, colas y tópicos de un mapa de integración → activos con URN
 ```
 
-Al importar un `flowchart`, `[( )]` es una base de datos, `([ ])` un stream y el resto tablas; cada arista (`A & B --> C`) es un pipeline (continua = por lotes, punteada = streaming, gruesa = CDC, o el tipo entre corchetes al final de la etiqueta) y un `subgraph` es un contenedor cuyo tipo se toma del prefijo que pone el exportador («Data lake: …»). Del `erDiagram` se conservan tipos, claves y multiplicidad, no la opcionalidad. La interfaz web todavía no edita este módulo.
+Al importar un `flowchart`, `[( )]` es una base de datos, `([ ])` un stream y el resto tablas; cada arista (`A & B --> C`) es un pipeline (continua = por lotes, punteada = streaming, gruesa = CDC, o el tipo entre corchetes al final de la etiqueta) y un `subgraph` es un contenedor cuyo tipo se toma del prefijo que pone el exportador («Data lake: …»). Del `erDiagram` se conservan tipos, claves y multiplicidad, no la opcionalidad.
 
 ## Módulo empresarial
 

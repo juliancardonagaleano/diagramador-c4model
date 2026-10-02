@@ -3,7 +3,8 @@ import { DATA_ACTIONS } from './actions';
 import { contractAttachments } from './contract-editor';
 import { inheritance } from './inherit';
 import { containerViolation, readViolation, writeViolation } from './rules';
-import { ASSET_SHAPES, KIND_COLORS, MAX_COLUMNS as MAX_COLUMN_LINES, PIPELINE_SHAPE, columnLine, entityLines, governanceLine, pipelineLine, pipelineNodeId, relationEnds } from './export/render';
+import { ASSET_SHAPES, KIND_COLORS, MAX_COLUMNS as MAX_COLUMN_LINES, PIPELINE_SHAPE, columnLine, entityLines, governanceLine, impactColumnLines, pipelineLine, pipelineNodeId, relationEnds } from './export/render';
+import { formatColumnRef, parseColumnRef } from './lineage';
 import {
   ASSET_KINDS,
   CARDINALITIES,
@@ -20,11 +21,12 @@ import {
   type Cardinality,
   type Column,
   type ColumnKey,
+  type ColumnMapping,
   type DataAsset,
   type DataDocument,
   type Pipeline,
 } from './types';
-import { findView, HEAT_VIEWS } from './views';
+import { findView, HEAT_VIEWS, type DataView } from './views';
 
 /**
  * Edición interactiva del módulo de datos. Notación: los contenedores (fuente, base, almacén, lago) como cilindros y zonas,
@@ -100,6 +102,7 @@ const PIPELINE_FIELDS: FieldSpec[] = [
   { key: 'description', label: 'Descripción', type: 'longtext' },
   { key: 'owner', label: 'Responsable', type: 'text' },
   { key: 'anonymizes', label: 'Anonimiza los datos personales', type: 'boolean' },
+  { key: 'mappingsText', label: 'Linaje de columnas (una por línea)', type: 'longtext', hint: 'crm-clientes.email -> bronze-clientes.email : copia' },
 ];
 
 const RELATION_FIELDS: FieldSpec[] = [
@@ -141,6 +144,27 @@ export function parseColumns(text: string): Column[] {
       return column;
     })
     .filter((c) => c.name.length > 0);
+}
+
+// ───────────── mapeos de columnas como texto ─────────────
+
+/** Texto editable de los mapeos: `activo.columna -> activo.columna : transformación` por línea. */
+export function mappingsToText(mappings: ColumnMapping[] = []): string {
+  return mappings.map((m) => `${formatColumnRef(m.from)} -> ${formatColumnRef(m.to)}${m.transform ? ` : ${m.transform}` : ''}`).join('\n');
+}
+
+/** Interpreta el texto de los mapeos; `assetIds` resuelve dónde acaba el activo y empieza la columna. Devuelve el primer error si una línea no es válida. */
+export function parseMappings(text: string, assetIds: string[]): { mappings: ColumnMapping[] } | { error: string } {
+  const mappings: ColumnMapping[] = [];
+  for (const line of text.split('\n').map((l) => l.trim()).filter(Boolean)) {
+    const m = /^(.+?)\s*(?:->|→)\s*(.+?)(?:\s+:\s+(.*))?$/.exec(line);
+    const from = m && parseColumnRef(m[1], assetIds);
+    const to = m && parseColumnRef(m[2], assetIds);
+    if (!m || !from || !to) return { error: `Línea de linaje no válida: «${line}». Usa «activo.columna -> activo.columna : transformación» con ids de activos existentes.` };
+    const transform = m[3]?.trim();
+    mappings.push({ from, to, ...(transform ? { transform } : {}) });
+  }
+  return { mappings };
 }
 
 // ───────────── ids del grafo ─────────────
@@ -193,6 +217,13 @@ function governanceBadges(a: DataAsset, ownerless: boolean): string[] {
   ].filter(Boolean);
 }
 
+/** Ficha de un activo en la vista de impacto de una columna: solo las columnas afectadas, con la de partida resaltada. */
+function impactCard(view: DataView, a: DataAsset): Pick<EditorGraph['nodes'][number], 'lines' | 'lineEmphasis' | 'width' | 'height'> {
+  const lines = impactColumnLines(view, a);
+  const widest = Math.max(a.name.length, ...lines.map((l) => l.length));
+  return { lines, lineEmphasis: lines.map((l) => (l.startsWith('●') ? 'key' : 'ref')), width: Math.min(340, Math.max(180, Math.ceil(widest * 6.6 + 28))), height: 60 + lines.length * 15 };
+}
+
 function project(doc: DataDocument, viewId?: string): EditorGraph {
   const view = findView(doc, viewId);
   const shown = new Set(view.assetIds);
@@ -206,7 +237,8 @@ function project(doc: DataDocument, viewId?: string): EditorGraph {
     .filter((a) => shown.has(a.id))
     .map((a) => {
       const isEntity = (a.columns?.length ?? 0) > 0 && (ENTITY_KINDS as readonly string[]).includes(a.kind);
-      const card = erd && isEntity;
+      const impact = view.column?.byAsset[a.id] !== undefined;
+      const card = (erd && isEntity) || impact;
       const badges = governanceBadges(a, !a.external && !ownerOf(a.id));
       return {
         id: a.id,
@@ -219,7 +251,11 @@ function project(doc: DataDocument, viewId?: string): EditorGraph {
         fill: heat ? heatFill(a, view.id) : context.has(a.id) ? CONTEXT_COLOR : undefined,
         stroke: CLASSIFICATION_STROKE[a.classification ?? ''],
         badges: badges.length ? badges : undefined,
-        ...(card ? { lines: entityLines(a).slice(1), lineEmphasis: columnEmphasis(a), ...entitySize(a) } : {}),
+        ...(impact
+          ? impactCard(view, a)
+          : card
+            ? { lines: entityLines(a).slice(1), lineEmphasis: columnEmphasis(a), ...entitySize(a) }
+            : {}),
       };
     });
 
@@ -239,6 +275,14 @@ function project(doc: DataDocument, viewId?: string): EditorGraph {
   return { nodes, edges };
 }
 
+/** Quita de un pipeline los mapeos de columnas que tocan los activos indicados (ya no son entrada ni salida suya). */
+function withoutMappingsOf(p: Pipeline, assetIds: Set<string>): Pipeline {
+  if (!p.mappings) return p;
+  const { mappings, ...rest } = p;
+  const kept = mappings.filter((m) => !assetIds.has(m.from.assetId) && !assetIds.has(m.to.assetId));
+  return kept.length > 0 ? { ...rest, mappings: kept } : rest;
+}
+
 const fail = (reason: string): EditResult<DataDocument> => ({ ok: false, reason });
 
 export const dataEditor: EditorSpec<DataDocument> = {
@@ -253,7 +297,7 @@ export const dataEditor: EditorSpec<DataDocument> = {
     const pid = parsePipelineNode(id);
     if (pid) {
       const p = doc.pipelines.find((x) => x.id === pid);
-      return p ? { type: 'node', kind: PIPELINE_KIND, values: { ...p } } : undefined;
+      return p ? { type: 'node', kind: PIPELINE_KIND, values: { ...p, mappingsText: mappingsToText(p.mappings) } } : undefined;
     }
     const a = doc.assets.find((x) => x.id === id);
     if (a) return { type: 'node', kind: a.kind, values: { ...a, columnsText: columnsToText(a.columns) } };
@@ -306,7 +350,19 @@ export const dataEditor: EditorSpec<DataDocument> = {
       if (!doc.pipelines.some((p) => p.id === pid)) return fail(`No existe «${id}».`);
       if (typeof patch.name === 'string' && !patch.name.trim()) return fail('El nombre no puede estar vacío.');
       if (patch.kind !== undefined && !(PIPELINE_KINDS as readonly string[]).includes(patch.kind as string)) return fail(`Tipo de pipeline desconocido: ${String(patch.kind)}`);
-      return { ok: true, id, document: { ...doc, pipelines: doc.pipelines.map((p) => (p.id === pid ? patchObject(p, patch, ['name', 'kind', 'tool', 'schedule', 'description', 'owner', 'anonymizes']) : p)) } };
+      const { mappingsText, ...rest } = patch;
+      let withMappings: Record<string, unknown> = rest;
+      if (mappingsText !== undefined) {
+        const parsed = parseMappings(String(mappingsText), doc.assets.map((a) => a.id));
+        if ('error' in parsed) return fail(parsed.error);
+        const pipeline = doc.pipelines.find((p) => p.id === pid)!;
+        for (const m of parsed.mappings) {
+          if (!pipeline.inputs.includes(m.from.assetId)) return fail(`«${m.from.assetId}» no es una entrada del pipeline «${pipeline.name}»: el mapeo debe partir de un activo que lee.`);
+          if (!pipeline.outputs.includes(m.to.assetId)) return fail(`«${m.to.assetId}» no es una salida del pipeline «${pipeline.name}»: el mapeo debe llegar a un activo que escribe.`);
+        }
+        withMappings = { ...rest, mappings: parsed.mappings };
+      }
+      return { ok: true, id, document: { ...doc, pipelines: doc.pipelines.map((p) => (p.id === pid ? patchObject(p, withMappings, ['name', 'kind', 'tool', 'schedule', 'description', 'owner', 'anonymizes', 'mappings']) : p)) } };
     }
     if (doc.assets.some((a) => a.id === id)) {
       if (typeof patch.name === 'string' && !patch.name.trim()) return fail('El nombre no puede estar vacío.');
@@ -346,7 +402,7 @@ export const dataEditor: EditorSpec<DataDocument> = {
       if (!p) return fail(`No existe «${id}».`);
       const list = flow.direction === 'in' ? p.inputs : p.outputs;
       if (list.length <= 1) return fail(`Un pipeline necesita al menos una ${flow.direction === 'in' ? 'entrada' : 'salida'}: borra el pipeline entero si sobra.`);
-      const next = { ...p, [flow.direction === 'in' ? 'inputs' : 'outputs']: list.filter((x) => x !== flow.assetId) };
+      const next = withoutMappingsOf({ ...p, [flow.direction === 'in' ? 'inputs' : 'outputs']: list.filter((x) => x !== flow.assetId) }, new Set([flow.assetId]));
       return { ok: true, document: { ...doc, pipelines: doc.pipelines.map((x) => (x.id === p.id ? next : x)) } };
     }
     if (doc.assets.some((a) => a.id === id)) {
@@ -357,7 +413,7 @@ export const dataEditor: EditorSpec<DataDocument> = {
         for (const a of doc.assets) if (a.parentId && gone.has(a.parentId) && !gone.has(a.id)) (gone.add(a.id), (grew = true));
       }
       const pipelines = doc.pipelines
-        .map((p) => ({ ...p, inputs: p.inputs.filter((x) => !gone.has(x)), outputs: p.outputs.filter((x) => !gone.has(x)) }))
+        .map((p) => withoutMappingsOf({ ...p, inputs: p.inputs.filter((x) => !gone.has(x)), outputs: p.outputs.filter((x) => !gone.has(x)) }, gone))
         .filter((p) => p.inputs.length > 0 && p.outputs.length > 0);
       return {
         ok: true,

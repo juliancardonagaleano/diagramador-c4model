@@ -9,7 +9,7 @@ import { fromMermaid } from './import/fromMermaid';
 import { analyzeData } from './issues';
 import { dataDocumentSchema, dataJsonSchema } from './schema';
 import { DATA_DOCUMENT_VERSION, type DataDocument } from './types';
-import { heatViews, listViews } from './views';
+import { columnViews, heatViews, listViews } from './views';
 import { dataEditor } from './editor';
 
 const mermaidImporter: Importer<DataDocument> = {
@@ -67,7 +67,7 @@ export const dataModule: DomainModule<DataDocument> = {
     ...doc.assets.map((a) => ({ id: a.id, name: a.name, kind: a.kind })),
     ...doc.pipelines.map((p) => ({ id: p.id, name: p.name, kind: 'pipeline' })),
   ],
-  views: (doc): ViewRef[] => [...listViews(doc), ...heatViews(doc)].map((v) => ({ id: v.id, title: v.title })),
+  views: (doc): ViewRef[] => [...listViews(doc), ...heatViews(doc), ...columnViews(doc)].map((v) => ({ id: v.id, title: v.title })),
   traceViews: [
     { prefix: 'lineage', label: 'Linaje completo', applies: (e) => e.kind !== 'domain' && e.kind !== 'pipeline' },
     { prefix: 'upstream', label: 'Origen (aguas arriba)', applies: (e) => e.kind !== 'domain' && e.kind !== 'pipeline' },
