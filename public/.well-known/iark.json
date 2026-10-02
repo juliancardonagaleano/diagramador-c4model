@@ -69,7 +69,8 @@
       "description": "Mapa de capacidades, aplicaciones y tecnología con ciclo de vida, impacto y obsolescencia; exporta a Mermaid, SVG y draw.io.",
       "documentVersion": "1.0",
       "importFormats": [
-        "mermaid"
+        "mermaid",
+        "archimate"
       ],
       "exportFormats": [
         "mermaid",
