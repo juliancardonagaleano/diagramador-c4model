@@ -192,10 +192,12 @@ describe('reglas de gobierno', () => {
       'Flujo «Cobro del pedido» envía datos confidenciales al sistema externo «Pasarela de pagos».',
       'Flujo «Confirmación del pedido» cruza la frontera de «Red interna» a «Internet» sin cifrar.',
       'Amenaza «Robo de credenciales de clientes (credential stuffing)» sigue abierta con riesgo crítico (9) sobre actor «Cliente».',
+      'Amenaza «Robo de credenciales de clientes (credential stuffing)» mantiene riesgo residual alto (6) pese a 1 control implementado: refuerza los controles o acepta el riesgo.',
       'Amenaza «Acceso a pedidos de otros clientes (IDOR)» sigue abierta con riesgo alto (6) sobre proceso «Servicio de pedidos».',
       'Amenaza «Publicación de mensajes falsos en el bus de eventos» sigue abierta con riesgo alto (6) sobre proceso «Bus de eventos».',
+      'Proceso «Tienda web» es un activo a proteger y está a un salto de un activo expuesto a una zona no confiable.',
     ]);
-    expect(issues.filter((i) => i.severity === 'info')).toHaveLength(8);
+    expect(issues.filter((i) => i.severity === 'info')).toHaveLength(13);
     expect(issues.every((i) => indexElements(doc).has(i.elementId!))).toBe(true);
   });
 
@@ -271,8 +273,8 @@ describe('reglas de gobierno', () => {
 
 describe('vistas', () => {
   it('lista los flujos de datos y el modelo de amenazas, según lo que tenga el documento', () => {
-    expect(listViews(doc).map((v) => v.id)).toEqual(['dfd', 'threats']);
-    expect(listViews(changed((j) => (j.threats = []))).map((v) => v.id)).toEqual(['dfd']);
+    expect(listViews(doc).map((v) => v.id)).toEqual(['dfd', 'threats', 'heatmap', 'surface']);
+    expect(listViews(changed((j) => (j.threats = []))).map((v) => v.id)).toEqual(['dfd', 'surface']);
     expect(listViews(parse({}))).toEqual([]);
     expect(findView(doc).id).toBe('dfd');
     expect(() => findView(parse({}))).toThrow(/no tiene vistas/);
@@ -294,7 +296,7 @@ describe('vistas', () => {
     expect(findView(doc, 'exposure:pedidos-db').assetIds).toEqual(['cliente', 'waf-lb', 'tienda-web', 'pedidos', 'pedidos-db']);
     expect(findView(doc, 'kafka')).toMatchObject({ id: 'focus:kafka', type: 'focus' });
     expect(traceView(doc, 'kafka', 'focus').assetIds).toContain('cliente');
-    expect(() => findView(doc, 'blast:nada')).toThrow(/No existe la vista «blast:nada»\. Vistas disponibles: dfd, threats, blast:<activo>/);
+    expect(() => findView(doc, 'blast:nada')).toThrow(/No existe la vista «blast:nada»\. Vistas disponibles: dfd, threats, heatmap, surface, heatmap:residual, blast:<activo>/);
     expect(() => traceView(doc, 'interna')).toThrow(/No existe el activo/);
   });
 });
@@ -486,7 +488,7 @@ describe('SVG y draw.io', () => {
   it('draw.io tiene una página por vista, con sus nodos, zonas y flechas', async () => {
     const parsed = new XMLParser({ ignoreAttributes: false }).parse(await toDrawio(doc));
     const pages = ([] as Array<Record<string, unknown>>).concat(parsed.mxfile.diagram);
-    expect(pages.map((p) => p['@_id'])).toEqual(['dfd', 'threats']);
+    expect(pages.map((p) => p['@_id'])).toEqual(['dfd', 'threats', 'heatmap', 'surface']);
     const cells = (i: number) => ([] as Array<Record<string, string>>).concat(parsed.mxfile.diagram[i].mxGraphModel.root.mxCell);
     const dfd = cells(0);
     expect(dfd.filter((c) => c['@_edge']).length).toBe(10);
@@ -606,7 +608,7 @@ describe('módulo', () => {
     const manifest = buildManifest(registry, { name: 'Prueba', version: '0.0.0' });
     expect(manifest.modules[0]).toMatchObject({ id: 'security', importFormats: ['mermaid'], exportFormats: ['mermaid', 'svg', 'drawio'] });
     expect(securityModule.entities!(doc).map((e) => e.kind)).toEqual(expect.arrayContaining(['zone', 'asset', 'threat', 'control']));
-    expect(securityModule.validate(doc).filter((i) => i.severity === 'warning')).toHaveLength(5);
+    expect(securityModule.validate(doc).filter((i) => i.severity === 'warning')).toHaveLength(7);
     expect((securityModule.jsonSchema() as { type: string }).type).toBe('object');
     expect(securityModule.importers[0].detect!('flowchart LR\n a --> b')).toBe(true);
     expect(securityModule.cliCommands!.map((c) => c.name)).toEqual(['risks', 'stride', 'exposure', 'from-integration', 'from-platform']);

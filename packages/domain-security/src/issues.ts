@@ -1,5 +1,6 @@
 import type { ModuleIssue } from '@iark/kernel';
-import { crossings, effectiveClassification } from './graph';
+import { crossings, effectiveClassification, isCrownJewel } from './graph';
+import { surfaceDepths } from './views';
 import {
   ASSET_LABELS,
   DATA_LABELS,
@@ -11,6 +12,7 @@ import {
   classificationRank,
   controlStatusOf,
   indexElements,
+  residualOf,
   riskOf,
   sensitive,
   statusOf,
@@ -124,6 +126,10 @@ export function analyzeSecurity(doc: SecurityDocument): ModuleIssue[] {
       else if (!linked.some((c) => controlStatusOf(c) === 'implemented')) add('warning', t.id, `${label(e)} figura como mitigada pero sus controles están solo previstos.`);
     }
     if (status === 'accepted' && risk.rating === 'critical') add('warning', t.id, `${label(e)} tiene riesgo crítico y está aceptada sin mitigar.`);
+    const residual = residualOf(doc, t);
+    if (residual.implemented > 0 && (residual.rating === 'critical' || residual.rating === 'high')) {
+      add('warning', t.id, `${label(e)} mantiene riesgo residual ${RATING_LABELS[residual.rating]} (${residual.score}) pese a ${residual.implemented} ${residual.implemented === 1 ? 'control implementado' : 'controles implementados'}: refuerza los controles o acepta el riesgo.`);
+    }
     if (status === 'open' && linked.some((c) => controlStatusOf(c) === 'implemented')) {
       add('info', t.id, `${label(e)} sigue abierta pese a tener controles implementados: revisa si ya está mitigada.`);
     }
@@ -133,6 +139,27 @@ export function analyzeSecurity(doc: SecurityDocument): ModuleIssue[] {
   // Si algún control remite a un estándar, los que no lo declaran se salen de la cobertura.
   if (doc.controls.some((c) => c.standard !== undefined)) {
     for (const c of doc.controls) if (c.standard === undefined) add('info', c.id, `${label(at(c.id))} no indica a qué estándar remite (OWASP ASVS, NIST 800-53, ISO 27001, CIS) y queda fuera de la cobertura.`);
+  }
+
+  // Amenazas sin ningún control que remita a un estándar (con la cobertura de estándares en marcha).
+  if (doc.controls.some((c) => c.standard !== undefined)) {
+    for (const t of doc.threats) {
+      if (statusOf(t) === 'accepted') continue;
+      if (!(t.controlIds ?? []).some((id) => controls.get(id)?.standard !== undefined)) add('info', t.id, `${label(at(t.id))} no está cubierta por ningún control que remita a un estándar.`);
+    }
+  }
+
+  // Superficie de ataque: lo que se alcanza desde una zona no confiable.
+  const depths = surfaceDepths(doc);
+  const threatenedAssets = new Set(doc.threats.map((t) => t.targetId));
+  for (const a of doc.assets) {
+    const depth = depths[a.id];
+    if (depth === undefined || depth === 0) continue;
+    const crown = isCrownJewel(doc, a);
+    if (crown && depth <= 2) {
+      add('warning', a.id, `${label(at(a.id))} es un activo a proteger y ${depth === 1 ? 'recibe flujos directamente desde una zona no confiable' : 'está a un salto de un activo expuesto a una zona no confiable'}.`);
+    } else if (crown) add('info', a.id, `${label(at(a.id))} es un activo a proteger y se alcanza a ${depth - 1} saltos de la entrada desde una zona no confiable.`);
+    if (depth === 1 && doc.threats.length > 0 && !threatenedAssets.has(a.id)) add('info', a.id, `${label(at(a.id))} está expuesto a una zona no confiable y no tiene amenazas analizadas.`);
   }
 
   // Con un análisis en marcha, lo que cruza fronteras o guarda datos sensibles debería tener sus amenazas estudiadas.

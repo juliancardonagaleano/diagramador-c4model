@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EditorSpec } from '@iark/kernel';
 import { FAKE_DOC, fakeEditor } from '../testing-editor';
-import { absolutePositions, buildFlow, edgeLabelText, layoutLabelText, movedByDrag, structureKey } from './flow';
+import { absolutePositions, buildFlow, dropTarget, edgeLabelText, layoutLabelText, movedByDrag, structureKey } from './flow';
 
 const spec = fakeEditor as unknown as EditorSpec<unknown>;
 const graph = fakeEditor.project(FAKE_DOC);
@@ -96,5 +96,32 @@ describe('orden de apilado', () => {
     expect(z.get('sistema')).toBe(1);
     expect(z.get('cola')).toBeGreaterThan(z.get('sistema')!);
     expect(z.get('suelto')).toBeGreaterThan(z.get('sistema')!);
+  });
+});
+
+describe('dropTarget', () => {
+  const nodes = [
+    { id: 'celda', position: { x: 0, y: 0 } },
+    { id: 'otra', position: { x: 300, y: 0 } },
+    { id: 'a', position: { x: 20, y: 40 }, parentId: 'celda' },
+    { id: 'b', position: { x: 20, y: 140 }, parentId: 'celda' },
+  ];
+  const sizes = new Map([
+    ['celda', { width: 280, height: 300 }],
+    ['otra', { width: 280, height: 300 }],
+    ['a', { width: 100, height: 60 }],
+    ['b', { width: 100, height: 60 }],
+  ]);
+  it('devuelve el elemento más pequeño que contiene el centro, sin contar el propio nodo', () => {
+    expect(dropTarget(nodes, sizes, 'a')).toBe('celda');
+    const dropped = nodes.map((n) => (n.id === 'a' ? { ...n, position: { x: 330, y: 20 }, parentId: undefined } : n));
+    expect(dropTarget(dropped, sizes, 'a')).toBe('otra');
+    const onB = nodes.map((n) => (n.id === 'a' ? { ...n, position: { x: 20, y: 150 } } : n));
+    expect(dropTarget(onB, sizes, 'a')).toBe('b');
+  });
+  it('no elige un descendiente suyo ni nada si cae fuera', () => {
+    expect(dropTarget(nodes, sizes, 'celda')).toBeUndefined();
+    const far = nodes.map((n) => (n.id === 'a' ? { ...n, position: { x: 900, y: 900 }, parentId: undefined } : n));
+    expect(dropTarget(far, sizes, 'a')).toBeUndefined();
   });
 });

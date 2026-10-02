@@ -1,25 +1,35 @@
 import { layoutGraph, renderGraphSvg, type GraphEdgeInput, type GraphGroupInput, type GraphLayout, type GraphLayoutOptions, type GraphNodeInput, type ShapeKind, type SvgNodeStyle } from '@iark/kernel';
-import { zoneChain } from '../graph';
+import { isCrownJewel, zoneChain } from '../graph';
 import {
   ASSET_LABELS,
   AUTHENTICATION_LABELS,
   CONTROL_LABELS,
   DATA_LABELS,
+  IMPACTS,
+  LIKELIHOODS,
+  LIKELIHOOD_LABELS,
   RATING_LABELS,
+  STANDARD_LABELS,
   STATUS_LABELS,
   STRIDE_LABELS,
   TRUST_LABELS,
+  cellRating,
+  cellScore,
   controlStatusOf,
   flowName,
+  heatCellId,
+  residualOf,
   riskOf,
   sensitive,
   statusOf,
   trustOf,
   type Asset,
   type AssetKind,
+  type ControlStandard,
   type Flow,
   type RiskRating,
   type SecurityDocument,
+  type Threat,
   type TrustLevel,
 } from '../types';
 import { findView, type SecurityView } from '../views';
@@ -40,6 +50,15 @@ export const ASSET_SHAPES: Record<AssetKind, ShapeKind> = { actor: 'actor', exte
 export const FLOW_SHAPE: ShapeKind = 'pill';
 export const THREAT_SHAPE: ShapeKind = 'hexagon';
 export const CONTROL_SHAPE: ShapeKind = 'rounded';
+/** Relleno y borde de cada celda de la matriz de calor según el riesgo de su posición. */
+export const HEAT_CELL_STYLES: Record<RiskRating, { fill: string; stroke: string }> = {
+  low: { fill: '#ebfbee', stroke: RISK_COLORS.low },
+  medium: { fill: '#fff9db', stroke: RISK_COLORS.medium },
+  high: { fill: '#fff4e6', stroke: RISK_COLORS.high },
+  critical: { fill: '#fff5f5', stroke: RISK_COLORS.critical },
+};
+/** Relleno y borde de cada catálogo de la cobertura de estándares. */
+export const STANDARD_STYLE = { fill: '#f3f0ff', stroke: '#845ef7' };
 const FOCUS_STROKE = '#f59f00';
 const ALERT_STROKE = '#e03131';
 const DEFAULT_STROKE = '#0f172a55';
@@ -94,6 +113,10 @@ export interface SceneNode extends SvgNodeStyle {
 }
 
 export interface SceneGroup {
+  /** `zone` (por defecto), `cell` (celda de la matriz de calor) o `catalog` (estándar de la cobertura). */
+  kind?: 'zone' | 'cell' | 'catalog';
+  /** Colores propios (celdas y catálogos); las zonas usan los de su nivel de confianza. */
+  style?: { fill: string; stroke: string };
   label: string;
   /** Título más corto, para cuando el grupo es demasiado estrecho para el completo. */
   short: string;
@@ -154,9 +177,27 @@ function flowScene(doc: SecurityDocument, view: SecurityView): Scene {
       scene.groups.set(z.id, { label: zoneLabel(trustOf(z), z.name), short: z.name, trust: trustOf(z), elementId: z.id, ...(z.parentId ? { groupId: z.parentId } : {}) });
     }
   }
-  for (const a of shown) scene.nodes.set(a.id, { ...assetNode(doc, a, view.focusId), groupId: a.zoneId });
-  for (const f of doc.flows.filter((x) => view.flowIds.includes(x.id))) scene.edges.set(f.id, flowEdge(f));
+  for (const a of shown) scene.nodes.set(a.id, { ...surfaceMark(doc, a, view), groupId: a.zoneId });
+  for (const f of doc.flows.filter((x) => view.flowIds.includes(x.id))) {
+    const edge = flowEdge(f);
+    // Superficie de ataque: los flujos de entrada desde la zona no confiable van en rojo y gruesos.
+    scene.edges.set(f.id, view.entryFlowIds?.includes(f.id) ? { ...edge, stroke: ALERT_STROKE, width: 3.5, label: join('entrada', edge.label) } : edge);
+  }
   return scene;
+}
+
+/** Texto del alcance de un activo en la superficie de ataque. */
+export function surfaceNote(depth: number, crownJewel: boolean): string {
+  const radius = depth === 0 ? 'origen no confiable' : depth === 1 ? 'expuesto: entrada directa' : `alcance: ${depth - 1} ${depth - 1 === 1 ? 'salto' : 'saltos'} tras la entrada`;
+  return crownJewel && depth > 0 ? `${radius} · ★ a proteger` : radius;
+}
+
+/** Un activo en la superficie de ataque: expuesto (borde rojo) o alcanzado, con su radio; en las demás vistas, el activo normal. */
+function surfaceMark(doc: SecurityDocument, a: Asset, view: SecurityView): SceneNode {
+  const base = assetNode(doc, a, view.focusId);
+  const depth = view.depths?.[a.id];
+  if (view.type !== 'surface' || depth === undefined) return base;
+  return { ...base, stroke: depth === 1 ? ALERT_STROKE : depth === 0 ? DEFAULT_STROKE : FOCUS_STROKE, note: join(base.note, surfaceNote(depth, isCrownJewel(doc, a))) };
 }
 
 /** Modelo de amenazas: los controles mitigan amenazas y las amenazas recaen sobre activos o flujos. */
@@ -208,6 +249,134 @@ function threatScene(doc: SecurityDocument, view: SecurityView): Scene {
   return scene;
 }
 
+// --- Matriz de calor: probabilidad (3 filas) × impacto (4 columnas) -----------------------------------------------------------
+
+const CELL_W = 280;
+const CELL_GAP = 12;
+const CELL_TITLE = 36;
+const CELL_PAD = 12;
+const CELL_MIN_H = 96;
+const HEAT_NODE = { width: CELL_W - 2 * CELL_PAD, height: NODE_HEIGHT };
+/** De más a menos probable (la fila de arriba es la de mayor probabilidad). */
+const HEAT_ROWS = [...LIKELIHOODS].reverse();
+
+/** Dónde cae una amenaza: su probabilidad e impacto (inherentes) o los residuales tras los controles implementados. */
+export function heatPlacement(doc: SecurityDocument, t: Threat, mode: 'inherent' | 'residual'): { likelihood: (typeof LIKELIHOODS)[number]; impact: (typeof IMPACTS)[number] } {
+  if (mode === 'residual') {
+    const { likelihood, impact } = residualOf(doc, t);
+    return { likelihood, impact };
+  }
+  return { likelihood: t.likelihood ?? 'medium', impact: t.impact ?? 'medium' };
+}
+
+/** Amenazas de cada celda de la matriz (todas las celdas existen, aunque estén vacías). */
+function heatContents(doc: SecurityDocument, view: SecurityView): Map<string, Threat[]> {
+  const cells = new Map<string, Threat[]>(HEAT_ROWS.flatMap((l) => IMPACTS.map((i) => [heatCellId(l, i), [] as Threat[]] as const)));
+  for (const t of doc.threats.filter((x) => view.threatIds.includes(x.id))) {
+    const { likelihood, impact } = heatPlacement(doc, t, view.mode ?? 'inherent');
+    cells.get(heatCellId(likelihood, impact))!.push(t);
+  }
+  return cells;
+}
+
+function heatScene(doc: SecurityDocument, view: SecurityView): Scene {
+  const scene: Scene = { nodes: new Map(), groups: new Map(), edges: new Map() };
+  const mode = view.mode ?? 'inherent';
+  for (const [cellId, threats] of heatContents(doc, view)) {
+    const [, l, i] = cellId.split(':') as [string, (typeof LIKELIHOODS)[number], (typeof IMPACTS)[number]];
+    const rating = cellRating(l, i);
+    scene.groups.set(cellId, {
+      kind: 'cell',
+      style: HEAT_CELL_STYLES[rating],
+      label: `prob. ${LIKELIHOOD_LABELS[l]} × impacto ${RATING_LABELS[i]} · ${cellScore(l, i)}`,
+      short: `${LIKELIHOOD_LABELS[l]} × ${RATING_LABELS[i]} · ${cellScore(l, i)}`,
+      trust: 'internal',
+      elementId: cellId,
+    });
+    for (const t of threats) {
+      const inherent = riskOf(t);
+      const residual = residualOf(doc, t);
+      const shown = mode === 'residual' ? residual : inherent;
+      const controls = `${residual.implemented} ${residual.implemented === 1 ? 'control' : 'controles'}`;
+      const note = !residual.reduced
+        ? undefined
+        : mode === 'residual'
+          ? `residual ↓ desde ${RATING_LABELS[inherent.rating]} (${inherent.score}) · ${controls}`
+          : `residual ↓ ${RATING_LABELS[residual.rating]} (${residual.score}) con ${controls}`;
+      scene.nodes.set(t.id, {
+        fill: RISK_COLORS[shown.rating],
+        stroke: DEFAULT_STROKE,
+        badge: `Amenaza · ${STRIDE_LABELS[t.category]}`,
+        lines: [t.title, `riesgo ${RATING_LABELS[shown.rating]} (${shown.score}) · ${STATUS_LABELS[statusOf(t)]}`],
+        shape: THREAT_SHAPE,
+        dashed: mode === 'residual' && residual.reduced,
+        cls: 'threat',
+        elementId: t.id,
+        groupId: cellId,
+        ...(note ? { note } : {}),
+      });
+    }
+  }
+  return scene;
+}
+
+/** Colocación propia de la matriz: cuatro columnas de impacto y tres filas de probabilidad, con las amenazas apiladas en cada celda. */
+export function heatLayout(doc: SecurityDocument, view: SecurityView): GraphLayout {
+  const contents = heatContents(doc, view);
+  const nodes: GraphLayout['nodes'] = [];
+  const groups: GraphLayout['groups'] = [];
+  let y = 0;
+  for (const l of HEAT_ROWS) {
+    const stacked = (id: string): number => CELL_TITLE + contents.get(id)!.length * (HEAT_NODE.height + CELL_GAP) - CELL_GAP + CELL_PAD;
+    const rowHeight = Math.max(CELL_MIN_H, ...IMPACTS.map((i) => stacked(heatCellId(l, i))));
+    IMPACTS.forEach((i, col) => {
+      const x = col * (CELL_W + CELL_GAP);
+      const id = heatCellId(l, i);
+      groups.push({ id, x, y, width: CELL_W, height: rowHeight });
+      contents.get(id)!.forEach((t, k) => nodes.push({ id: t.id, x: x + CELL_PAD, y: y + CELL_TITLE + k * (HEAT_NODE.height + CELL_GAP), ...HEAT_NODE }));
+    });
+    y += rowHeight + CELL_GAP;
+  }
+  return { nodes, groups, edges: [], width: IMPACTS.length * (CELL_W + CELL_GAP) - CELL_GAP, height: y - CELL_GAP };
+}
+
+// --- Cobertura de estándares ---------------------------------------------------------------------------------------------------
+
+/** Controles por catálogo (grupos) y amenazas fuera de ellos: cubiertas (control implementado), con cobertura solo prevista o sin cobertura. */
+function standardsScene(doc: SecurityDocument, view: SecurityView): Scene {
+  const scene: Scene = { nodes: new Map(), groups: new Map(), edges: new Map() };
+  const controls = doc.controls.filter((c) => view.controlIds.includes(c.id));
+  for (const c of controls) {
+    const standard = c.standard as ControlStandard;
+    const groupId = `std:${standard}`;
+    if (!scene.groups.has(groupId)) {
+      const count = controls.filter((x) => x.standard === standard).length;
+      scene.groups.set(groupId, { kind: 'catalog', style: STANDARD_STYLE, label: `${STANDARD_LABELS[standard]} · ${count} ${count === 1 ? 'control' : 'controles'}`, short: STANDARD_LABELS[standard], trust: 'internal', elementId: groupId });
+    }
+    const planned = controlStatusOf(c) === 'planned';
+    scene.nodes.set(c.id, { fill: CONTROL_COLOR, stroke: DEFAULT_STROKE, badge: CONTROL_LABELS[c.kind], lines: [c.name, planned ? 'prevista' : ''].filter(Boolean), shape: CONTROL_SHAPE, dashed: planned, cls: 'control', elementId: c.id, groupId });
+  }
+  const catalog = view.standard ? ` en ${STANDARD_LABELS[view.standard]}` : '';
+  for (const t of doc.threats.filter((x) => view.threatIds.includes(x.id))) {
+    const linked = (t.controlIds ?? []).filter((id) => scene.nodes.has(id));
+    const implemented = linked.some((id) => controlStatusOf(doc.controls.find((c) => c.id === id)!) === 'implemented');
+    const risk = riskOf(t);
+    scene.nodes.set(t.id, {
+      fill: RISK_COLORS[risk.rating],
+      stroke: linked.length === 0 ? ALERT_STROKE : DEFAULT_STROKE,
+      badge: `Amenaza · ${STRIDE_LABELS[t.category]}`,
+      lines: [t.title, `riesgo ${RATING_LABELS[risk.rating]} (${risk.score}) · ${STATUS_LABELS[statusOf(t)]}`],
+      shape: THREAT_SHAPE,
+      dashed: !implemented,
+      cls: 'threat',
+      elementId: t.id,
+      note: linked.length === 0 ? `sin cobertura${catalog}` : implemented ? `cubierta${catalog}` : `cobertura prevista${catalog}`,
+    });
+    for (const id of linked) scene.edges.set(`m:${id}:${t.id}`, { kind: 'mitigates', source: id, target: t.id, label: 'mitiga', details: [], stroke: CONTROL_COLOR, dashed: false, width: 1.5, arrow: 'solid' });
+  }
+  return scene;
+}
+
 /** Las amenazas y los controles tienen títulos largos: se les deja más ancho. */
 const sizeOf = (style: SceneNode): { width: number; height: number } => ({
   width: widthFor([...svgStyle(style).lines, ...(style.badge ? [style.badge] : [])], style.shape === 'pill' ? 170 : 190, style.cls === 'threat' || style.cls === 'control' ? 400 : 300),
@@ -216,6 +385,8 @@ const sizeOf = (style: SceneNode): { width: number; height: number } => ({
 
 /** Lo que hay que dibujar en una vista (nodos, zonas y flechas), sin coordenadas. */
 export function buildScene(doc: SecurityDocument, view: SecurityView): Scene {
+  if (view.type === 'heatmap') return heatScene(doc, view);
+  if (view.type === 'standards') return standardsScene(doc, view);
   return view.type === 'threats' ? threatScene(doc, view) : flowScene(doc, view);
 }
 
@@ -239,6 +410,10 @@ const svgStyle = (n: SceneNode): SvgNodeStyle => ({ ...n, lines: n.note ? [...n.
 export async function layoutView(doc: SecurityDocument, viewId?: string, options: GraphLayoutOptions = {}): Promise<RenderedView> {
   const view = findView(doc, viewId);
   const scene = buildScene(doc, view);
+  if (view.type === 'heatmap') {
+    const layout = heatLayout(doc, view);
+    return { view, layout, nodes: scene.nodes, groups: new Map([...scene.groups].map(([id, g]) => [id, g.label])), fittedGroups: new Map([...scene.groups].map(([id, g]) => [id, g.label])), scene, edges: scene.edges };
+  }
   const nodes: GraphNodeInput[] = [...scene.nodes].map(([id, style]) => ({ id, ...sizeOf(style), ...(style.groupId ? { groupId: style.groupId } : {}) }));
   const groups: GraphGroupInput[] = [...scene.groups].map(([id, g]) => ({ id, ...(g.groupId ? { groupId: g.groupId } : {}) }));
   const edges: GraphEdgeInput[] = [...scene.edges].map(([id, e]) => ({ id, source: e.source, target: e.target, label: e.label }));
@@ -247,6 +422,9 @@ export async function layoutView(doc: SecurityDocument, viewId?: string, options
   const fitted = new Map([...scene.groups].map(([id, g]) => [id, g.label.length * 6.4 + 16 > (widths.get(id) ?? Infinity) ? g.short : g.label]));
   return { view, layout, nodes: scene.nodes, groups: new Map([...scene.groups].map(([id, g]) => [id, g.label])), fittedGroups: fitted, scene, edges: scene.edges };
 }
+
+/** Relleno y borde de una zona del dibujo: los propios (celdas, catálogos) o los de su nivel de confianza. */
+export const groupStyle = (g: SceneGroup | undefined): { fill: string; stroke: string } => g?.style ?? ZONE_STYLES[g?.trust ?? 'internal'];
 
 export async function toSvg(doc: SecurityDocument, viewId?: string): Promise<string> {
   const { view, layout, nodes, scene, fittedGroups, edges } = await layoutView(doc, viewId);
@@ -257,6 +435,6 @@ export async function toSvg(doc: SecurityDocument, viewId?: string): Promise<str
       const e = edges.get(id)!;
       return { stroke: e.stroke, dashed: e.dashed, label: e.label, width: e.width };
     },
-    group: (id) => ({ label: fittedGroups.get(id) ?? id, ...ZONE_STYLES[scene.groups.get(id)?.trust ?? 'internal'] }),
+    group: (id) => ({ label: fittedGroups.get(id) ?? id, ...groupStyle(scene.groups.get(id)) }),
   });
 }

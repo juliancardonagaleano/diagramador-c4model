@@ -968,7 +968,7 @@ describe('iark: módulo de seguridad', () => {
   it('validate --module security valida el documento, muestra los avisos de gobierno y devuelve 2 con errores de estructura', () => {
     const ok = run(['validate', sec, '--module', 'security']);
     expect(ok.status).toBe(0);
-    expect(ok.stdout).toMatch(/Documento válido \(módulo security\)\. 0 error\(es\), 5 aviso\(s\)/);
+    expect(ok.stdout).toMatch(/Documento válido \(módulo security\)\. 0 error\(es\), 7 aviso\(s\)/);
     expect(ok.stdout).toMatch(/Flujo «Confirmación del pedido» cruza la frontera de «Red interna» a «Internet» sin cifrar/);
     expect(run(['validate', sec, '--module', 'security', '--strict']).status).toBe(3);
 
@@ -1004,7 +1004,7 @@ describe('iark: módulo de seguridad', () => {
 
     const drawio = join(dir, 'seguridad.drawio');
     expect(run(['convert', sec, '--module', 'security', '--out', drawio]).status).toBe(0);
-    expect([].concat(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram)).toHaveLength(2);
+    expect([].concat(new XMLParser({ ignoreAttributes: false }).parse(readFileSync(drawio, 'utf8')).mxfile.diagram)).toHaveLength(4);
 
     const missing = run(['convert', sec, '--module', 'security', '--to', 'mermaid', '--view', 'nada']);
     expect(missing.status).not.toBe(0);

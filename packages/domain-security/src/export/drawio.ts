@@ -1,7 +1,7 @@
 import { drawioShapeStyle, type SvgNodeStyle } from '@iark/kernel';
 import type { SecurityDocument } from '../types';
 import { listViews } from '../views';
-import { ZONE_STYLES, layoutView } from './render';
+import { groupStyle, layoutView } from './render';
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
 
@@ -16,7 +16,7 @@ export async function toDrawio(doc: SecurityDocument): Promise<string> {
     const { view, layout, nodes, groups, scene, edges } = await layoutView(doc, v.id);
     const cells: string[] = ['<mxCell id="0"/>', '<mxCell id="1" parent="0"/>'];
     for (const g of layout.groups) {
-      const zone = ZONE_STYLES[scene.groups.get(g.id)?.trust ?? 'internal'];
+      const zone = groupStyle(scene.groups.get(g.id));
       cells.push(
         `<mxCell id="n-${esc(g.id)}" value="${esc(groups.get(g.id) ?? g.id)}" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=${zone.fill};strokeColor=${zone.stroke};verticalAlign=top;align=left;spacingLeft=10;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="${g.x}" y="${g.y}" width="${g.width}" height="${g.height}" as="geometry"/></mxCell>`,
       );
