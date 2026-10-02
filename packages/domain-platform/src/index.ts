@@ -3,7 +3,32 @@ export { platformDocumentSchema, platformJsonSchema, validatePlatformDocument, f
 export { analyzePlatform } from './issues';
 export { dependencyGraph, reach, scoped, scopeEnvironment, deploymentEnvironments, callCycles, type DependencyGraph, type Reach, type ReachStep } from './graph';
 export { listViews, findView, traceView, compareView, type PlatformView } from './views';
-export { compareEnvironments, compareReport, resolveComparison, counterpart, summarize, MATCH_NOTES, type MatchedBy, type DiffKind, type EnvironmentComparison, type ServiceDifference, type ResourceDifference, type Presence } from './compare';
+export {
+  compareEnvironments,
+  compareReport,
+  resolveComparison,
+  counterpart,
+  summarize,
+  compareMatrix,
+  matrixReport,
+  summarizeMatrix,
+  resolveEnvironments,
+  comparableEnvironments,
+  isAllEnvironments,
+  columnLetter,
+  MATCH_NOTES,
+  type MatchedBy,
+  type DiffKind,
+  type EnvironmentComparison,
+  type EnvironmentMatrix,
+  type ServiceDifference,
+  type ServiceRow,
+  type ServiceCell,
+  type ResourceDifference,
+  type ResourceRow,
+  type ResourceCell,
+  type Presence,
+} from './compare';
 export { toMermaid } from './export/mermaid';
 export { toSvg, layoutView, buildScene, SERVICE_COLORS, RESOURCE_COLORS } from './export/render';
 export { toDrawio } from './export/drawio';

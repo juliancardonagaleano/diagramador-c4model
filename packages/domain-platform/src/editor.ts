@@ -1,6 +1,7 @@
 import { uniqueId, type EdgeNotation, type EditResult, type EditorAction, type EditorGraph, type EditorNode, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
 import { duplicateEnvironment, findEnvironment, nextEnvironment, promoteDeployments, scaleReplicas, toggleApproval } from './actions';
 import { formatCost } from './costs';
+import { drawMatrix, matrixIsDrawn } from './export/matrix';
 import { DEPENDENCY_STYLES, EXPOSURE_ZONES, EXTERNAL_COLOR, RESOURCE_COLORS, RESOURCE_SHAPES, SERVICE_COLORS, SERVICE_SHAPES, buildScene } from './export/render';
 import { dependencyEnvironmentViolation, exposureViolation, hostViolation, placementViolation } from './rules';
 import {
@@ -411,7 +412,9 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
 
   project(doc, viewId): EditorGraph {
     const view = findView(doc, viewId);
-    const scene = buildScene(doc, view);
+    // La comparación de varios entornos es una matriz: su escena, su leyenda y su colocación vienen de `drawMatrix`.
+    const matrix = matrixIsDrawn(view) ? drawMatrix(doc, view) : undefined;
+    const scene = matrix?.scene ?? buildScene(doc, view);
     const all = indexElements(doc);
     const networks = new Map(doc.networks.map((n) => [n.id, n]));
     const kinds = new Map(NODE_KIND_NOTATION.map((k) => [k.kind, k]));
@@ -447,7 +450,7 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
         kind: n.cls,
         label,
         sublabel: rest[0],
-        badges: [...(n.diff && n.badge ? [n.badge] : []), ...rest.slice(1).filter(Boolean), ...metadataBadges(doc, id, view.type !== 'costs')],
+        badges: [...(n.diff && n.badge ? [n.badge] : []), ...rest.slice(1).filter(Boolean), ...(matrix ? [] : metadataBadges(doc, id, view.type !== 'costs'))],
         parentId: n.groupId,
         ref: shownAsInstance ? undefined : (n.elementId ? (all.get(n.elementId)?.item as { ref?: string } | undefined)?.ref : undefined),
         fill: n.fill,
@@ -459,7 +462,14 @@ export const platformEditor: EditorSpec<PlatformDocument> = {
     return {
       nodes,
       edges: [...scene.edges].map(([id, e]) => ({ id, kind: e.kind, source: e.source, target: e.target, label: e.label })),
+      ...(matrix ? { legend: matrix.legend } : {}),
     };
+  },
+
+  /** Solo la matriz de comparación de varios entornos tiene colocación propia (una cuadrícula); las demás vistas, el autolayout por capas. */
+  layout(doc, viewId) {
+    const view = findView(doc, viewId);
+    return matrixIsDrawn(view) ? drawMatrix(doc, view).layout : undefined;
   },
 
   fields(target, doc) {
