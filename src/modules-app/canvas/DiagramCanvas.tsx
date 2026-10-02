@@ -102,10 +102,9 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     setPrompting(undefined);
   }, [selectionKey, key]);
 
-  // Al cambiar de módulo o de vista se encuadra el dibujo una vez que ELK lo haya colocado; después la cámara no se toca.
-  const fitPending = useRef(true);
   // Qué estructura (módulo + vista + grafo) tiene ya su autolayout aplicado, y para qué vista terminó el primer encuadre.
   // Se comparan al renderizar, no en un efecto, así que en cuanto la estructura cambia el lienzo deja de estar «asentado».
+  // Al cambiar de módulo o de vista se encuadra el dibujo una vez que ELK lo haya colocado; después la cámara no se toca.
   const [laidFor, setLaidFor] = useState('');
   const [fittedFor, setFittedFor] = useState('');
   const layoutKey = `${key}\u0000${signature}`;
@@ -116,7 +115,6 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     setMoved(readPositions(key));
     setSelection(NO_SELECTION);
     setFittedFor('');
-    fitPending.current = true;
   }, [key]);
 
   // El autolayout solo se recalcula cuando cambia la estructura, no al editar un texto de propiedades.
@@ -165,11 +163,15 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     void Promise.race([fit, new Promise((resolve) => window.setTimeout(resolve, duration + 300))]).then(done, done);
   }, []);
 
+  // Se encuadra cuando el autolayout aplicado es el de la estructura que se está viendo y la vista aún no se encuadró. Esa
+  // condición se lee del estado y no de una marca mutable: un encuadre programado para la vista anterior se cancela al cambiar
+  // de vista (`key` está en las dependencias) y un autolayout ajeno (el de la vista anterior, que sigue en `layout` hasta que
+  // llega el nuevo) nunca se encuadra como si fuera el de la vista actual.
+  const layoutReady = layout !== undefined && laidFor === layoutKey;
   useEffect(() => {
-    if (!layout || !fitPending.current) return;
+    if (!layoutReady || fittedFor === key) return;
     const timer = window.setTimeout(() => {
-      // Solo aquí se da por hecho: si llega otro autolayout antes de los 60 ms, este efecto se cancela y el siguiente encuadra.
-      fitPending.current = false;
+      // El retardo deja que React Flow mida los nodos nuevos; si antes cambia el autolayout o la vista, este efecto se cancela y el siguiente encuadra.
       const targets = focusId && graph ? focusNodes(graph, focusId) : [];
       if (focusId && targets.length > 0) {
         setSelection(new Set([focusId]));
@@ -178,7 +180,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     }, 60);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout, flow]);
+  }, [layoutReady, layout, key, fittedFor, flow]);
 
   // Foco pedido cuando la vista ya está colocada (p. ej. desde «Referenciado por» dentro del mismo módulo).
   useEffect(() => {
@@ -277,8 +279,9 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     writePositions(key, new Map());
     setLaidFor('');
     setFittedFor('');
-    void relayout().then(() => settleCamera(flow.fitView({ padding: 0.15, duration: 250 }), 250, key));
-  }, [flow, key, relayout, settleCamera]);
+    // Al llegar el nuevo autolayout, el efecto de encuadre recoloca la cámara (la vista vuelve a estar sin encuadrar).
+    void relayout();
+  }, [key, relayout]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
