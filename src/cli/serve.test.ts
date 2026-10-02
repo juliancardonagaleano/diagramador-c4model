@@ -4,10 +4,15 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { manifestSchema } from '@iark/kernel';
 import { createDefaultRegistry } from './registry';
 import { createSuiteServer } from './serve';
+import { buildCliBundle, BUNDLE_TIMEOUT, PROCESS_TEST_TIMEOUT, type CliBundle } from '../../tests/helpers/cliBundle';
+
+// `iark serve (comando)` arranca el CLI como proceso: se empaqueta una vez y se ejecuta con `node` (en vez de arrancar
+// `tsx` en cada llamada), con margen de sobra por si la máquina está saturada.
+vi.setConfig({ testTimeout: PROCESS_TEST_TIMEOUT, hookTimeout: BUNDLE_TIMEOUT });
 
 const example = (file: string): string => readFileSync(`examples/${file}`, 'utf8');
 const security = example('seguridad-ejemplo.json');
@@ -227,11 +232,21 @@ describe('iark serve: límites, CORS y sitio estático', () => {
 });
 
 describe('iark serve (comando)', () => {
+  let bundle: CliBundle;
+  beforeAll(async () => {
+    bundle = await buildCliBundle('serve');
+  });
+  afterAll(() => bundle?.dispose());
+
   it('arranca en un puerto libre, responde y se detiene con SIGTERM', async () => {
-    const child = spawn('node_modules/.bin/tsx', ['src/cli/index.ts', 'serve', '--port', '0'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [bundle.cli, 'serve', '--port', '0'], { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
     const url = await new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`no arrancó: ${stderr}`)), 20000);
+      // Si el servidor no llega a arrancar, falla poco antes que la prueba, con lo que escribió en stderr y sin dejar el proceso vivo.
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error(`no arrancó: ${stderr}`));
+      }, PROCESS_TEST_TIMEOUT - 10_000);
       child.stderr.on('data', (chunk: Buffer) => {
         stderr += chunk.toString();
         const match = /escuchando en (http:\/\/\S+)/.exec(stderr);
@@ -247,12 +262,12 @@ describe('iark serve (comando)', () => {
     const exited = new Promise<number | null>((resolve) => child.on('exit', resolve));
     child.kill('SIGTERM');
     expect(await exited).toBe(0);
-  }, 40000);
+  });
 
   it('rechaza un puerto inválido y una carpeta de sitio que no existe', async () => {
     const run = (args: string[]) =>
       new Promise<{ code: number | null; stderr: string }>((resolve) => {
-        const child = spawn('node_modules/.bin/tsx', ['src/cli/index.ts', 'serve', ...args], { stdio: ['ignore', 'ignore', 'pipe'] });
+        const child = spawn(process.execPath, [bundle.cli, 'serve', ...args], { stdio: ['ignore', 'ignore', 'pipe'] });
         let stderr = '';
         child.stderr.on('data', (c: Buffer) => (stderr += c.toString()));
         child.on('exit', (code) => resolve({ code, stderr }));
@@ -263,5 +278,5 @@ describe('iark serve (comando)', () => {
     const site = await run(['--port', '0', '--static', '/no/existe']);
     expect(site.code).not.toBe(0);
     expect(site.stderr).toMatch(/no existe/);
-  }, 40000);
+  });
 });
