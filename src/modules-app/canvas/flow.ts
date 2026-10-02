@@ -1,4 +1,4 @@
-import type { Box, EdgeNotation, EditorEdge, EditorGraph, EditorNode, EditorSpec, GraphLayout, NodeNotation, PortSide } from '@iark/kernel';
+import type { Box, EdgeNotation, EdgeRoute, EditorEdge, EditorGraph, EditorNode, EditorSpec, GraphLayout, NodeNotation, Point, PortSide } from '@iark/kernel';
 
 export const FALLBACK_NODE: NodeNotation = { kind: '?', label: 'Elemento', glyph: '□', shape: 'rect', fill: '#475569', width: 180, height: 72 };
 export const FALLBACK_EDGE: EdgeNotation = { kind: '?', label: 'Relación', stroke: '#475569', line: 'solid', width: 1.5 };
@@ -39,6 +39,11 @@ export interface FlowEdgeData extends Record<string, unknown> {
   onPick?(id: string, additive: boolean): void;
   /** Coordenada del tramo central que fija la colocación de la vista (su `y` si la arista sale por arriba o abajo, su `x` si sale de un lado). */
   bend?: number;
+  /**
+   * Recorrido completo que fija la colocación de la vista cuando la arista da más de un codo (sube por un pasillo libre, por ejemplo),
+   * en coordenadas del lienzo. Solo lo lleva mientras los nodos de sus extremos siguen donde la colocación los dejó (o se han movido juntos).
+   */
+  route?: Point[];
 }
 
 export interface FlowEdge {
@@ -131,6 +136,53 @@ export function dropTarget(nodes: readonly Placed[], sizes: ReadonlyMap<string, 
     if (!best || area < best.area) best = { id: n.id, area };
   }
   return best?.id;
+}
+
+/** Punto por el que una ruta sale de un lado de una caja o entra por él: el centro del lado. */
+function anchorOf(box: Pick<Box, 'x' | 'y' | 'width' | 'height'>, side: PortSide): Point {
+  switch (side) {
+    case 'top':
+      return { x: box.x + box.width / 2, y: box.y };
+    case 'bottom':
+      return { x: box.x + box.width / 2, y: box.y + box.height };
+    case 'left':
+      return { x: box.x, y: box.y + box.height / 2 };
+    default:
+      return { x: box.x + box.width, y: box.y + box.height / 2 };
+  }
+}
+
+/**
+ * La ruta de una arista con varios codos, si sigue valiendo: los nodos de sus extremos tienen que seguir donde la dejó la colocación
+ * (o haberse movido lo mismo, como cuando se arrastra el grupo que los contiene, y entonces la ruta los acompaña). Si no, `undefined` y
+ * la arista se traza como siempre entre sus asas.
+ */
+export function routeInPlace(route: EdgeRoute, source: Pick<Box, 'x' | 'y' | 'width' | 'height'>, target: Pick<Box, 'x' | 'y' | 'width' | 'height'>): Point[] | undefined {
+  if (!route.sides || route.points.length < 2) return undefined;
+  const [from, to] = [anchorOf(source, route.sides.source), anchorOf(target, route.sides.target)];
+  const [first, last] = [route.points[0], route.points[route.points.length - 1]];
+  const [dx, dy] = [from.x - first.x, from.y - first.y];
+  if (Math.abs(dx - (to.x - last.x)) > 1 || Math.abs(dy - (to.y - last.y)) > 1) return undefined;
+  return route.points.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+}
+
+/**
+ * La ruta de la colocación anclada a los extremos reales de la arista (los de las asas, que no caen exactamente en el borde de
+ * los nodos): el primer y el último tramo siguen siendo rectos, así que el punto vecino de cada extremo se alinea con él.
+ */
+export function followRoute(points: readonly Point[], source: Point, target: Point): Point[] {
+  const out = points.map((p) => ({ ...p }));
+  const last = out.length - 1;
+  if (last < 1) return out;
+  out[0] = { ...source };
+  out[last] = { ...target };
+  if (last >= 2) {
+    if (points[0].x === points[1].x) out[1].x = source.x;
+    else out[1].y = source.y;
+    if (points[last].x === points[last - 1].x) out[last - 1].x = target.x;
+    else out[last - 1].y = target.y;
+  }
+  return out;
 }
 
 const notationOf = (spec: EditorSpec<unknown>, kind: string): NodeNotation => spec.nodeKinds.find((k) => k.kind === kind) ?? FALLBACK_NODE;
@@ -233,7 +285,9 @@ export function buildFlow(
       const route = anchors.get(e.id);
       const sides = route?.sides;
       const vertical = sides?.source === 'top' || sides?.source === 'bottom';
-      const bend = route && route.points.length >= 4 ? route.points[1][vertical ? 'y' : 'x'] : undefined;
+      // Con un solo codo (cuatro puntos) la vista solo fija dónde gira; con más de uno, el lienzo pinta la ruta entera mientras valga.
+      const several = route && route.points.length > 4 ? routeInPlace(route, absolute.get(e.source)!, absolute.get(e.target)!) : undefined;
+      const bend = route && route.points.length === 4 ? route.points[1][vertical ? 'y' : 'x'] : undefined;
       return {
         id: e.id,
         source: e.source,
@@ -244,7 +298,7 @@ export function buildFlow(
         style: { stroke: notation.stroke, strokeWidth: width, strokeDasharray: DASH[notation.line ?? 'solid'] },
         ...(notation.arrowEnd === false ? {} : { markerEnd: { type: notation.head === 'open' ? ('arrow' as const) : ('arrowclosed' as const), color: notation.stroke } }),
         ...(notation.arrowStart ? { markerStart: { type: 'arrowclosed' as const, color: notation.stroke } } : {}),
-        data: { edge: e, notation, ...(bend !== undefined ? { bend } : {}) },
+        data: { edge: e, notation, ...(bend !== undefined ? { bend } : {}), ...(several ? { route: several } : {}) },
       };
     });
 

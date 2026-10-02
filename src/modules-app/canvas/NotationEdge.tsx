@@ -1,7 +1,7 @@
 import { BaseEdge, EdgeLabelRenderer, Position, getSmoothStepPath, type Edge, type EdgeProps } from '@xyflow/react';
 import { memo } from 'react';
-import { edgeEndPaths, type EdgeEnd, type EdgeMark } from '@iark/kernel';
-import { edgeLabelText, type FlowEdgeData } from './flow';
+import { edgeEndPaths, polylineMidpoint, routePath, type EdgeEnd, type EdgeMark } from '@iark/kernel';
+import { edgeLabelText, followRoute, type FlowEdgeData } from './flow';
 
 export type NotationEdgeType = Edge<FlowEdgeData, 'notation'>;
 
@@ -67,7 +67,11 @@ function NotationEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePositi
   const vertical = sourcePosition === Position.Top || sourcePosition === Position.Bottom;
   const bend = data?.bend;
   const pinned = bend !== undefined && (vertical ? (bend - sourceY) * (bend - targetY) < 0 : (bend - sourceX) * (bend - targetX) < 0);
-  const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, ...(pinned ? { offset: 8, ...(vertical ? { centerY: bend } : { centerX: bend }) } : {}) });
+  // Con más de un codo (sube por un pasillo libre, por ejemplo) la vista fija el recorrido entero y el lienzo lo sigue mientras los nodos no se muevan.
+  const route = data?.route && data.route.length > 4 ? followRoute(data.route, { x: sourceX, y: sourceY }, { x: targetX, y: targetY }) : undefined;
+  const [stepPath, stepLabelX, stepLabelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, ...(pinned ? { offset: 8, ...(vertical ? { centerY: bend } : { centerX: bend }) } : {}) });
+  const middle = route ? polylineMidpoint(route) : undefined;
+  const [path, labelX, labelY] = route && middle ? [routePath(route), middle.x, middle.y] : [stepPath, stepLabelX, stepLabelY];
   const marks = data?.edge.marks ?? [];
   const text = data ? edgeLabelText(data.edge) : '';
   const onPick = data?.onPick;
