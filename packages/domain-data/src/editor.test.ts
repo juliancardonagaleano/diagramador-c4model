@@ -25,18 +25,18 @@ describe('editor de datos', () => {
   });
 
   it('conectar dos activos con «pipeline» crea el pipeline; conectar con un pipeline añade entrada o salida', () => {
-    const a = dataEditor.addEdge(doc, 'pipeline', 'panel-ventas', 'modelo-fuga');
+    const a = dataEditor.addEdge(doc, 'pipeline', 'silver-ventas', 'modelo-fuga');
     expect(a.ok).toBe(true);
     if (!a.ok) return;
     expect(valid(a.document)).toBe(true);
     const created = a.document.pipelines[a.document.pipelines.length - 1];
-    expect(created).toMatchObject({ inputs: ['panel-ventas'], outputs: ['modelo-fuga'] });
+    expect(created).toMatchObject({ inputs: ['silver-ventas'], outputs: ['modelo-fuga'] });
     const b = dataEditor.addEdge(a.document, 'pipeline', 'dwh-dim-cliente', a.id!);
-    expect(b.ok && b.document.pipelines.find((p) => p.id === created.id)?.inputs).toEqual(['panel-ventas', 'dwh-dim-cliente']);
+    expect(b.ok && b.document.pipelines.find((p) => p.id === created.id)?.inputs).toEqual(['silver-ventas', 'dwh-dim-cliente']);
     if (!b.ok) return;
     // quitar la última salida se rechaza; quitar una de dos entradas se acepta
     expect(dataEditor.remove(b.document, `flow:${created.id}:out:modelo-fuga`)).toMatchObject({ ok: false });
-    const c = dataEditor.remove(b.document, `flow:${created.id}:in:panel-ventas`);
+    const c = dataEditor.remove(b.document, `flow:${created.id}:in:silver-ventas`);
     expect(c.ok && c.document.pipelines.find((p) => p.id === created.id)?.inputs).toEqual(['dwh-dim-cliente']);
   });
 

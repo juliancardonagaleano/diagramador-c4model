@@ -1,4 +1,4 @@
-import { layoutGraph, renderGraphSvg, type GraphLayout, type GraphLayoutOptions, type ShapeKind } from '@iark/kernel';
+import { layoutGraph, renderGraphSvg, type EdgeEnd, type GraphLayout, type GraphLayoutOptions, type ShapeKind } from '@iark/kernel';
 import {
   CLASSIFICATION_LABELS,
   KIND_LABELS,
@@ -51,7 +51,7 @@ function widthFor(title: string, rest: string[], min: number): number {
 }
 
 /** Columnas que se dibujan en una ficha del modelo entidad-relación (el resto se resume). */
-const MAX_COLUMNS = 12;
+export const MAX_COLUMNS = 12;
 
 export const pipelineNodeId = (id: string): string => `pipeline:${id}`;
 
@@ -79,6 +79,12 @@ export function governanceLine(a: DataAsset): string {
 
 export function pipelineLine(p: Pipeline): string {
   return [PIPELINE_LABELS[p.kind], p.schedule].filter(Boolean).join(' · ');
+}
+
+/** Extremos de pata de gallo de una relación: `1` = uno, `N` o `M` = varios (`1:N` = un origen, varios destinos). */
+export function relationEnds(r: Relation): { source: EdgeEnd; target: EdgeEnd } {
+  const [from, to] = r.cardinality.split(':');
+  return { source: from === '1' ? 'one' : 'many', target: to === '1' ? 'one' : 'many' };
 }
 
 export function relationLabel(r: Relation): string {
@@ -192,7 +198,7 @@ export async function toSvg(doc: DataDocument, viewId?: string): Promise<string>
     },
     edge: (id) => {
       const { relation, pipeline } = edges.get(id)!;
-      if (relation) return { stroke: '#475569', label: relationLabel(relation) };
+      if (relation) return { stroke: '#475569', label: relationLabel(relation), ends: relationEnds(relation) };
       return { stroke: '#475569', dashed: isDashed(pipeline), width: 1.5 };
     },
     group: (id) => ({ label: `${KIND_LABELS[assets.get(id)!.kind]}: ${assets.get(id)!.name}` }),
