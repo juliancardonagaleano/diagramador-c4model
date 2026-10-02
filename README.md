@@ -351,6 +351,30 @@ iark data engines [motor]                                                # motor
 
 Al importar un `flowchart`, `[( )]` es una base de datos, `([ ])` un stream y el resto tablas; cada arista (`A & B --> C`) es un pipeline (continua = por lotes, punteada = streaming, gruesa = CDC, o el tipo entre corchetes al final de la etiqueta) y un `subgraph` es un contenedor cuyo tipo se toma del prefijo que pone el exportador («Data lake: …»). Del `erDiagram` se conservan tipos, claves, multiplicidad y opcionalidad (`|o`, `o{`, `|{`…).
 
+**Catálogo de datos: productos, APIs y glosario** (opcional y retrocompatible: un documento 1.0 sin estos elementos no cambia ni cambian sus vistas; ejemplo en [`examples/datos-catalogo.json`](examples/datos-catalogo.json)). Tres clases nuevas de activo y un elemento nuevo, el término, para gobernar los datos como producto y no solo como tablas:
+
+| Elemento | Qué es | Campos (todos opcionales) |
+|---|---|---|
+| `data-product` (Producto de datos) | agrupa activos y los ofrece como un servicio con dueño (data mesh) | `inputPorts` (lo que consume) y `outputPorts` (lo que publica), ambos ids de activos; `owner`, `domainId`, `classification`, `freshness` («24 h»), `sla`, `contractId` |
+| `data-api` (API de datos) | expone activos a otras aplicaciones | `exposes` (ids de los activos que sirve), `protocol` (`rest`, `graphql`, `grpc`, `odata`, `sql`, `events`), `endpoint`, `contractId`, `owner` |
+| `glossary` (Glosario) | agrupa términos de negocio; no guarda datos, así que no participa en pipelines ni en relaciones | `owner`, `domainId`, `description` |
+| `terms` (Término, en la raíz del documento) | concepto de negocio con su definición | `name`, `definition`, `status` (`draft`, `approved`, `deprecated`; sin estado, borrador), `owner`, `glossaryId`, `synonyms` y `links`: `{ assetId, column? }` al activo (o a una columna suya) donde se materializa |
+
+Los puertos, lo que sirve una API y los enlaces de un término son referencias a activos, no copias: un activo puede estar a la vez en su base de datos y en un producto. El esquema rechaza un puerto de un activo que no es producto, un activo que es entrada y salida del mismo producto, una API que expone un glosario u otra API, un término enlazado a un glosario, un enlace repetido y referencias a elementos que no existen. Borrar un activo en el editor limpia los puertos, exposiciones y enlaces que lo apuntaban, y borrar un glosario, sus términos.
+
+Vistas nuevas, derivadas del modelo como las demás: `products` (el mapa de productos de datos: productos y APIs con sus puertos de entrada y salida, su frescura, SLA y protocolo) y `glossary` (cada glosario como zona que contiene sus términos, con flechas discontinuas a los activos y columnas que los implementan). Los productos, APIs y glosarios ligados al catálogo dejan de aparecer en el linaje; los de un dominio salen además en su vista `domain:<id>`. El lienzo ofrece los cuatro elementos en la paleta, las relaciones **Publica**, **Consume**, **Expone** y **Define** (al arrastrar, con el motivo si no encajan), la columna de un enlace de término en el panel de propiedades y las acciones **Agrupar en producto…** (crea un producto que publica los activos seleccionados, con su dominio y dueño más comunes, o los añade a uno existente) y **Enlazar término**.
+
+`validate` añade las reglas del catálogo: un producto sin dueño, sin salidas, sin entradas, sin frescura ni SLA o sin contrato; una API sin dueño, sin nada que exponer, **sin contrato** o sin protocolo; un producto o una API que publica datos sensibles con una clasificación menor (o ninguna); un glosario sin términos o sin responsable; un término aprobado sin enlace, sin definición o sin responsable (un borrador, solo como información); un término obsoleto que sigue enlazado, repetido en su glosario, sin glosario o enlazado a una columna que el activo no declara; y un pipeline que lee o escribe un glosario.
+
+```bash
+iark data products datos.json                                            # productos y APIs: dueño, frescura, SLA, puertos, protocolo y contrato
+iark data glossary datos.json                                            # términos con su definición, estado, responsable y activos o columnas enlazados
+iark convert   datos.json --module data --out productos.svg --view products   # mapa de productos (también .mmd y .drawio)
+iark convert   datos.json --module data --out glosario.svg  --view glossary
+```
+
+En Mermaid un producto, una API y un término llevan su clase (`:::dataProduct`, `:::dataApi`, `:::term`; el glosario es un `subgraph` titulado «Glosario: …»), y las flechas se etiquetan «entrada», «salida», «expuesto en» y «define · columna». `iark import` los reconoce (también con los nombres en español) y los devuelve como productos, APIs, términos, puertos, exposiciones y enlaces, no como pipelines. La salida estructurada de `iark generate` incluye los tres tipos y los `terms`; el contrato de un producto o una API se escribe en `contracts` y se enlaza con `contractId`, como el de cualquier activo.
+
 ## Módulo empresarial
 
 Cuarta especialidad de la suite (`--module enterprise`): un subconjunto pequeño de ArchiMate/TOGAF para responder **qué sabe hacer la empresa, con qué aplicaciones y sobre qué tecnología**. Vive en `packages/domain-enterprise`, sin depender del código de los demás módulos; se enlaza con ellos por URN (`urn:iark:integration:<id>`).

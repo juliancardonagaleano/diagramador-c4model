@@ -76,7 +76,10 @@
               "view",
               "file",
               "report",
-              "model"
+              "model",
+              "data-product",
+              "glossary",
+              "data-api"
             ]
           },
           "name": {
@@ -231,6 +234,81 @@
                 "type": "null"
               }
             ]
+          },
+          "inputPorts": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outputPorts": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exposes": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "freshness": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sla": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "protocol": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "rest",
+                  "graphql",
+                  "grpc",
+                  "odata",
+                  "sql",
+                  "events"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -248,7 +326,14 @@
           "pii",
           "retention",
           "external",
-          "columns"
+          "columns",
+          "inputPorts",
+          "outputPorts",
+          "exposes",
+          "freshness",
+          "sla",
+          "protocol",
+          "endpoint"
         ],
         "additionalProperties": false
       }
@@ -463,6 +548,106 @@
         ],
         "additionalProperties": false
       }
+    },
+    "terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "definition": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "approved",
+                  "deprecated"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "glossaryId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "synonyms": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "links": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "assetId": {
+                      "type": "string"
+                    },
+                    "column": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "assetId",
+                    "column"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "definition",
+          "owner",
+          "status",
+          "glossaryId",
+          "synonyms",
+          "links"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [
@@ -470,7 +655,8 @@
     "domains",
     "assets",
     "pipelines",
-    "relations"
+    "relations",
+    "terms"
   ],
   "additionalProperties": false
 }

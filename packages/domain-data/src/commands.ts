@@ -6,7 +6,7 @@ import { fromIntegrationJson } from './import/fromIntegration';
 import { inheritance } from './inherit';
 import { columnImpact, parseColumnRef, traceLineage, type ColumnStep, type LineageDirection, type LineageStep } from './lineage';
 import { formatDataIssues, validateDataDocument } from './schema';
-import { CLASSIFICATION_LABELS, KIND_LABELS, hasPii, type DataDocument } from './types';
+import { API_PROTOCOL_LABELS, CLASSIFICATION_LABELS, KIND_LABELS, TERM_STATUS_LABELS, hasPii, type DataDocument } from './types';
 
 function parseJson(text: string | undefined, what: string): unknown {
   if (!text) throw new DataImportError(`Falta la entrada: indica un archivo JSON o usa --stdin (${what}).`);
@@ -127,6 +127,56 @@ export const dataCommands: CommandSpec[] = [
       if (spread.length === 0) out.push('En ningún sitio: todos los pipelines que los leen anonimizan o no hay pipelines.');
       for (const { a, reach } of spread) out.push(`- ${a.name} → ${reach.map((s) => names.get(s.assetId)).join(', ')}`);
       return out.join('\n');
+    },
+  },
+  {
+    name: 'products',
+    description: 'Productos y APIs de datos (tablas Markdown): dominio, dueño, frescura, SLA, puertos de entrada y salida, activos que sirve cada API, protocolo y contrato',
+    input: { description: 'documento de datos en JSON' },
+    run: ({ input }) => {
+      const doc = readData(input);
+      const assets = new Map(doc.assets.map((a) => [a.id, a]));
+      const domains = new Map(doc.domains.map((d) => [d.id, d.name]));
+      const contracts = new Map((doc.contracts ?? []).map((c) => [c.id, c.name]));
+      const { ownerOf, domainOf } = inheritance(doc);
+      const names = (ids: string[] | undefined): string => cell((ids ?? []).map((id) => assets.get(id)?.name ?? id).join('; ')) || '—';
+      const products = doc.assets.filter((a) => a.kind === 'data-product');
+      const apis = doc.assets.filter((a) => a.kind === 'data-api');
+      if (products.length === 0 && apis.length === 0) return 'No hay productos ni APIs de datos.';
+      const out: string[] = [];
+      if (products.length > 0) {
+        out.push('**Productos de datos**', '', '| Producto | Dominio | Dueño | Frescura | SLA | Entradas | Salidas | APIs | Contrato |', '|---|---|---|---|---|---|---|---|---|');
+        for (const p of products) {
+          const served = apis.filter((api) => (api.exposes ?? []).some((id) => id === p.id || (p.outputPorts ?? []).includes(id))).map((api) => api.id);
+          out.push(
+            `| ${cell(p.name)} | ${cell(domains.get(domainOf(p.id) ?? '')) || '—'} | ${cell(ownerOf(p.id)) || '—'} | ${cell(p.freshness) || '—'} | ${cell(p.sla) || '—'} | ${names(p.inputPorts)} | ${names(p.outputPorts)} | ${names(served)} | ${cell(contracts.get(p.contractId ?? '')) || '—'} |`,
+          );
+        }
+      }
+      if (apis.length > 0) {
+        if (out.length > 0) out.push('');
+        out.push('**APIs de datos**', '', '| API | Protocolo | Dirección | Dueño | Expone | Contrato |', '|---|---|---|---|---|---|');
+        for (const a of apis) {
+          out.push(`| ${cell(a.name)} | ${a.protocol ? API_PROTOCOL_LABELS[a.protocol] : '—'} | ${cell(a.endpoint) || '—'} | ${cell(ownerOf(a.id)) || '—'} | ${names(a.exposes)} | ${cell(contracts.get(a.contractId ?? '')) || '—'} |`);
+        }
+      }
+      return out.join('\n');
+    },
+  },
+  {
+    name: 'glossary',
+    description: 'Glosario de negocio (tabla Markdown): cada término con su definición, estado, responsable y los activos y columnas en los que se materializa',
+    input: { description: 'documento de datos en JSON' },
+    run: ({ input }) => {
+      const doc = readData(input);
+      const terms = doc.terms ?? [];
+      if (terms.length === 0) return 'No hay términos en el glosario.';
+      const assets = new Map(doc.assets.map((a) => [a.id, a]));
+      const rows = terms.map((t) => {
+        const links = (t.links ?? []).map((l) => `${assets.get(l.assetId)?.name ?? l.assetId}${l.column ? `.${l.column}` : ''}`);
+        return `| ${cell(t.name)} | ${cell(assets.get(t.glossaryId ?? '')?.name) || '—'} | ${cell(t.definition) || '—'} | ${TERM_STATUS_LABELS[t.status ?? 'draft']} | ${cell(t.owner) || '—'} | ${cell(links.join('; ')) || '—'} |`;
+      });
+      return ['| Término | Glosario | Definición | Estado | Responsable | Enlazado a |', '|---|---|---|---|---|---|', ...rows].join('\n');
     },
   },
   {

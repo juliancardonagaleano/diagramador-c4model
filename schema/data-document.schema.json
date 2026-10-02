@@ -75,7 +75,10 @@
               "view",
               "file",
               "report",
-              "model"
+              "model",
+              "data-product",
+              "glossary",
+              "data-api"
             ]
           },
           "name": {
@@ -177,6 +180,50 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 120
+          },
+          "inputPorts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "outputPorts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "exposes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "freshness": {
+            "type": "string"
+          },
+          "sla": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "rest",
+              "graphql",
+              "grpc",
+              "odata",
+              "sql",
+              "events"
+            ]
+          },
+          "endpoint": {
+            "type": "string"
           }
         },
         "required": [
@@ -402,6 +449,72 @@
           "id",
           "name",
           "format"
+        ]
+      }
+    },
+    "terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "definition": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "approved",
+              "deprecated"
+            ]
+          },
+          "glossaryId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "synonyms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "assetId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "column": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "assetId"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name"
         ]
       }
     }

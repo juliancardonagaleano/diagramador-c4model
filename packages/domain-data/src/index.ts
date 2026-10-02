@@ -20,3 +20,7 @@ export { BUILTIN_ENGINE_IDS, TYPE_CONCEPTS, registerEngine, listEngines, resolve
 export { toDdl, tableDdl, physicalName, DEFAULT_ENGINE, type DdlOptions, type DdlResult, type DdlTable, type DdlColumn } from './ddl';
 export { checkContract, contractEngine, contractTables, contractFromAsset, contractTemplate, contractToJson, reformatContract, summarizeContract, ODCS_VERSION } from './contract';
 export { readViolation, writeViolation, containerViolation } from './rules';
+export { listLinks, termLinkAt, linkId, linkLabel, LINK_LABELS, portViolation, exposeViolation, termLinkViolation, pruneCatalog, type DataLink, type LinkKind } from './links';
+export { catalogIssues } from './catalog';
+export { CATALOG_ACTIONS } from './catalog-actions';
+export { TERM_KIND } from './catalog-editor';
