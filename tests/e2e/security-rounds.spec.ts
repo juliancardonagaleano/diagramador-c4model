@@ -10,12 +10,21 @@ async function open(page: Page): Promise<string[]> {
 }
 
 test.describe('lienzo de seguridad: fronteras, sugerencias y protección', () => {
-  test('las zonas cruzadas se dibujan como frontera de confianza y los flujos que cruzan llevan marcador', async ({ page }) => {
+  test('las zonas se dibujan sin borde de frontera ni marcador en los flujos que cruzan', async ({ page }) => {
     const errors = await open(page);
-    await expect(page.locator('[data-testid="node-internet"].cv-group')).toContainText('frontera de confianza');
-    await expect(page.locator('[data-testid="node-internet"].cv-group')).toHaveCSS('border-top-color', 'rgb(201, 42, 42)');
-    await expect(page.getByTestId('edge-mark-cliente-navega-0')).toHaveAttribute('title', /Cruza frontera de confianza/);
-    await page.screenshot({ path: '/mnt/project-files/seguridad/ronda-fronteras-dfd.png' });
+    await expect(page.locator('[data-testid="node-internet"].cv-group')).not.toContainText('frontera de confianza');
+    await expect(page.locator('[data-testid="node-internet"].cv-group')).not.toHaveCSS('border-top-color', 'rgb(201, 42, 42)');
+    await expect(page.getByTestId('edge-mark-cliente-navega-0')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('la paleta añade identidad, secreto y canal de confianza con su figura propia', async ({ page }) => {
+    const errors = await open(page);
+    for (const kind of ['identity', 'secret', 'channel']) await page.getByTestId(`add-${kind}`).click();
+    await expect(page.locator('[data-kind="identity"][data-shape="card"]')).toHaveCount(1);
+    await expect(page.locator('[data-kind="secret"][data-shape="diamond"]')).toHaveCount(1);
+    await expect(page.locator('[data-kind="channel"][data-shape="chevron"]')).toHaveCount(1);
+    await page.screenshot({ path: '/mnt/project-files/seguridad/tipos-de-activo.png' });
     expect(errors).toEqual([]);
   });
 

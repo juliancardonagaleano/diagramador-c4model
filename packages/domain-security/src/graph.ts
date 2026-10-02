@@ -110,7 +110,8 @@ export function effectiveClassification(doc: SecurityDocument, asset: Asset): Cl
 
 /** Activos que interesa proteger: los que guardan o tratan datos sensibles y los de una zona restringida. */
 export function isCrownJewel(doc: SecurityDocument, asset: Asset): boolean {
-  if (asset.kind === 'actor' || asset.kind === 'external') return false;
+  if (asset.kind === 'actor' || asset.kind === 'external' || asset.kind === 'channel') return false;
+  if (asset.kind === 'secret') return true;
   const zone = zoneOf(doc, asset);
   return sensitive(asset.classification) || (zone !== undefined && trustOf(zone) === 'restricted');
 }

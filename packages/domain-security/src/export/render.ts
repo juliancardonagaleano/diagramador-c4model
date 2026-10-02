@@ -34,7 +34,7 @@ import {
 } from '../types';
 import { findView, type SecurityView } from '../views';
 
-export const ASSET_COLORS: Record<AssetKind, string> = { actor: '#5f3dc4', external: '#6b7280', process: '#1168bd', datastore: '#d9480f' };
+export const ASSET_COLORS: Record<AssetKind, string> = { actor: '#5f3dc4', external: '#6b7280', process: '#1168bd', datastore: '#d9480f', identity: '#9c36b5', secret: '#a61e4d', channel: '#0b7285' };
 export const RISK_COLORS: Record<RiskRating, string> = { low: '#2f9e44', medium: '#e67700', high: '#d9480f', critical: '#c92a2a' };
 export const CONTROL_COLOR = '#2b8a3e';
 export const FLOW_NODE_COLOR = '#475569';
@@ -46,7 +46,7 @@ export const ZONE_STYLES: Record<TrustLevel, { fill: string; stroke: string }> =
   restricted: { fill: '#ebfbee', stroke: '#51cf66' },
 };
 /** Figuras del diagrama de flujo de datos y del modelo de amenazas: las mismas en el lienzo y en el SVG. */
-export const ASSET_SHAPES: Record<AssetKind, ShapeKind> = { actor: 'actor', external: 'rect', process: 'circle', datastore: 'pipe' };
+export const ASSET_SHAPES: Record<AssetKind, ShapeKind> = { actor: 'actor', external: 'rect', process: 'circle', datastore: 'pipe', identity: 'card', secret: 'diamond', channel: 'chevron' };
 export const FLOW_SHAPE: ShapeKind = 'pill';
 export const THREAT_SHAPE: ShapeKind = 'hexagon';
 export const CONTROL_SHAPE: ShapeKind = 'rounded';
@@ -138,8 +138,17 @@ export function assetLines(a: Asset): string[] {
     a.name,
     a.technology ?? '',
     a.classification ? `datos ${DATA_LABELS[a.classification]}` : '',
-    a.kind === 'datastore' && a.encryptedAtRest !== undefined ? (a.encryptedAtRest ? 'cifrado en reposo' : 'sin cifrar en reposo') : '',
+    (a.kind === 'datastore' || a.kind === 'secret') && a.encryptedAtRest !== undefined ? (a.encryptedAtRest ? 'cifrado en reposo' : 'sin cifrar en reposo') : '',
   ].filter(Boolean);
+}
+
+/** Rasgos propios de las identidades, los secretos y los canales (autenticación, rotación, cifrado), en el rótulo del activo. */
+export function assetFacts(a: Asset): string[] {
+  const auth = a.authentication !== undefined ? [`autenticación: ${AUTHENTICATION_LABELS[a.authentication]}`] : [];
+  if (a.kind === 'identity') return auth;
+  if (a.kind === 'secret') return a.rotation === undefined ? [] : [a.rotation ? 'con rotación' : 'sin rotación'];
+  if (a.kind === 'channel') return [...(a.encrypted === undefined ? [] : [a.encrypted ? 'cifrado' : 'sin cifrar']), ...auth];
+  return [];
 }
 
 function assetNode(doc: SecurityDocument, a: Asset, focus?: string): SceneNode {
@@ -148,7 +157,7 @@ function assetNode(doc: SecurityDocument, a: Asset, focus?: string): SceneNode {
   return {
     fill: ASSET_COLORS[a.kind],
     stroke: a.id === focus ? FOCUS_STROKE : serious ? ALERT_STROKE : DEFAULT_STROKE,
-    badge: ASSET_LABELS[a.kind],
+    badge: [ASSET_LABELS[a.kind], ...assetFacts(a)].join(' · '),
     lines: assetLines(a),
     shape: ASSET_SHAPES[a.kind],
     dashed: a.kind === 'external',

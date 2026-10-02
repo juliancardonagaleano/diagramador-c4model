@@ -84,7 +84,10 @@
               "actor",
               "external",
               "process",
-              "datastore"
+              "datastore",
+              "identity",
+              "secret",
+              "channel"
             ]
           },
           "zoneId": {
@@ -111,6 +114,22 @@
             ]
           },
           "encryptedAtRest": {
+            "type": "boolean"
+          },
+          "authentication": {
+            "type": "string",
+            "enum": [
+              "none",
+              "password",
+              "token",
+              "mtls",
+              "sso"
+            ]
+          },
+          "rotation": {
+            "type": "boolean"
+          },
+          "encrypted": {
             "type": "boolean"
           },
           "ref": {

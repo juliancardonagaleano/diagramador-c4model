@@ -4,7 +4,7 @@ import { securityEditor } from './editor';
 import { analyzeSecurity } from './issues';
 import { securityModule } from './module';
 import { standardsCoverage } from './modeling';
-import type { SecurityDocument } from './types';
+import { STRIDE_BY_ELEMENT, type SecurityDocument } from './types';
 
 const doc = securityModule.schema.parse(example) as SecurityDocument;
 const valid = (d: SecurityDocument): boolean => securityModule.schema.safeParse(d).success;
@@ -92,15 +92,13 @@ describe('editor de seguridad', () => {
       return r.document;
     };
 
-    it('S1: las zonas cruzadas llevan borde discontinuo rojo y los flujos que cruzan, marcador', () => {
+    it('S1: las zonas se dibujan como estaban, sin borde de frontera ni marcador en los flujos que cruzan', () => {
       const g = securityEditor.project(doc, 'dfd');
       const internet = g.nodes.find((n) => n.id === 'internet')!;
-      expect(internet).toMatchObject({ stroke: '#c92a2a', dashed: true });
-      expect(internet.label).toContain('no confiable');
-      expect(internet.label).toContain('frontera de confianza');
-      const cross = g.edges.find((e) => e.id === 'cliente-navega')!;
-      expect(cross.marks?.[0].title).toContain('Cruza frontera de confianza');
-      expect(g.edges.find((e) => e.id === 'web-a-pedidos')?.marks).toBeUndefined();
+      expect(internet.label).toBe('Internet · no confiable');
+      expect(internet.stroke).toBeUndefined();
+      expect(internet.dashed).toBeUndefined();
+      expect(g.edges.every((e) => e.marks === undefined)).toBe(true);
     });
 
     it('S2: sugerir amenazas propone STRIDE por tipo y cruce, sin repetir lo modelado, y se aceptan o descartan', () => {
@@ -156,6 +154,91 @@ describe('editor de seguridad', () => {
       expect(t.controlIds?.length).toBe((threat.controlIds?.length ?? 0) + 1);
       expect(mitigated.controls.length).toBe(doc.controls.length + 1);
       expect(valid(mitigated)).toBe(true);
+    });
+  });
+  describe('tipos de activo: identidad, secreto y canal de confianza', () => {
+    const withKinds = (): SecurityDocument => {
+      let d = doc;
+      for (const [kind, name, zone] of [['identity', 'Keycloak', 'interna'], ['secret', 'Clave de firma', 'datos'], ['channel', 'VPN a proveedor', 'dmz']] as const) {
+        const r = securityEditor.addNode(d, kind, name, zone);
+        if (!r.ok) throw new Error(r.reason);
+        d = r.document;
+      }
+      return d;
+    };
+
+    it('se crean en la zona, validan con el esquema y se dibujan con su figura distintiva', () => {
+      const d = withKinds();
+      expect(valid(d)).toBe(true);
+      const g = securityEditor.project(d, 'dfd');
+      expect(g.nodes.find((n) => n.id === 'keycloak')).toMatchObject({ kind: 'identity', parentId: 'interna' });
+      expect(g.nodes.find((n) => n.id === 'clave-de-firma')).toMatchObject({ kind: 'secret', parentId: 'datos' });
+      expect(g.nodes.find((n) => n.id === 'vpn-a-proveedor')).toMatchObject({ kind: 'channel' });
+      expect(securityEditor.nodeKinds.map((k) => k.kind)).toEqual(expect.arrayContaining(['identity', 'secret', 'channel']));
+    });
+
+    it('sus campos propios se editan y se limpian al cambiar de clase', () => {
+      const d = withKinds();
+      const set = (id: string, patch: Record<string, unknown>): SecurityDocument => {
+        const r = securityEditor.update(d, id, patch);
+        if (!r.ok) throw new Error(r.reason);
+        return r.document;
+      };
+      expect(set('clave-de-firma', { rotation: 'yes', encryptedAtRest: 'yes' }).assets.find((a) => a.id === 'clave-de-firma')).toMatchObject({ rotation: true, encryptedAtRest: true });
+      expect(set('vpn-a-proveedor', { encrypted: 'yes', authentication: 'mtls' }).assets.find((a) => a.id === 'vpn-a-proveedor')).toMatchObject({ encrypted: true, authentication: 'mtls' });
+      const back = securityEditor.update(set('clave-de-firma', { rotation: 'yes' }), 'clave-de-firma', { kind: 'process' });
+      expect(back.ok && back.document.assets.find((a) => a.id === 'clave-de-firma')?.rotation).toBeUndefined();
+      expect(securityEditor.fields({ type: 'node', kind: 'secret' }, d).map((f) => f.key)).toEqual(expect.arrayContaining(['rotation', 'encryptedAtRest']));
+      expect(securityEditor.fields({ type: 'node', kind: 'channel' }, d).map((f) => f.key)).toEqual(expect.arrayContaining(['encrypted', 'authentication']));
+      expect(securityEditor.fields({ type: 'node', kind: 'identity' }, d).map((f) => f.key)).toContain('authentication');
+    });
+
+    it('reglas de conexión: un secreto solo con procesos e identidades; un canal no con otro canal', () => {
+      const d = withKinds();
+      expect(securityEditor.canConnect!(d, 'flow', 'clave-de-firma', 'cliente')).toMatch(/secreto/);
+      expect(securityEditor.canConnect!(d, 'flow', 'pedidos-db', 'clave-de-firma')).toMatch(/secreto/);
+      expect(securityEditor.canConnect!(d, 'flow', 'clave-de-firma', 'pedidos')).toBeUndefined();
+      expect(securityEditor.canConnect!(d, 'flow', 'keycloak', 'clave-de-firma')).toBeUndefined();
+      expect(securityEditor.canConnect!(d, 'flow', 'cliente', 'vpn-a-proveedor')).toBeUndefined();
+      expect(securityEditor.canConnect!(d, 'flow', 'clave-de-firma', 'vpn-a-proveedor')).toMatch(/secreto/);
+    });
+
+    it('avisos: secreto sin protección ni rotación, identidad débil y canal sin cifrar', () => {
+      const d = withKinds();
+      const messages = analyzeSecurity(d).map((i) => i.message);
+      expect(messages.some((m) => /Clave de firma/.test(m) && /cifrado/.test(m))).toBe(true);
+      expect(messages.some((m) => /Clave de firma/.test(m) && /rota/.test(m))).toBe(true);
+      expect(messages.some((m) => /Keycloak/.test(m) && /autentica/.test(m))).toBe(true);
+      expect(messages.some((m) => /VPN a proveedor/.test(m) && /cifra el tráfico/.test(m))).toBe(true);
+      const ok = (id: string, patch: Record<string, unknown>) => (x: SecurityDocument) => {
+        const r = securityEditor.update(x, id, patch);
+        if (!r.ok) throw new Error(r.reason);
+        return r.document;
+      };
+      const fixed = [ok('clave-de-firma', { encryptedAtRest: 'yes', rotation: 'yes' }), ok('keycloak', { authentication: 'sso' }), ok('vpn-a-proveedor', { encrypted: 'yes', authentication: 'mtls' })].reduce((x, f) => f(x), d);
+      const after = analyzeSecurity(fixed).filter((i) => ['clave-de-firma', 'keycloak', 'vpn-a-proveedor'].includes(i.elementId ?? ''));
+      expect(after.filter((i) => i.severity === 'warning')).toEqual([]);
+    });
+
+    it('STRIDE por tipo y retrocompatibilidad: un documento sin estos tipos sigue válido', () => {
+      expect(STRIDE_BY_ELEMENT.channel).toEqual(['spoofing', 'tampering', 'information-disclosure']);
+      expect(STRIDE_BY_ELEMENT.secret).not.toContain('spoofing');
+      expect(STRIDE_BY_ELEMENT.identity).toHaveLength(6);
+      expect(valid(doc)).toBe(true);
+      const bad = { ...doc, assets: [...doc.assets, { id: 'x', name: 'X', kind: 'process', zoneId: 'interna', rotation: true }] };
+      expect(valid(bad as SecurityDocument)).toBe(false);
+    });
+
+    it('Mermaid conserva el tipo por la clase y se exporta con la insignia de sus rasgos', async () => {
+      const d = withKinds();
+      const text = securityModule.exporters.find((e) => e.id === 'mermaid')!.export(d, {} as never);
+      const out = typeof text === 'string' ? text : await text;
+      expect(out).toContain(':::identity');
+      expect(out).toContain(':::secret');
+      expect(out).toContain(':::channel');
+      const back = securityModule.importers[0].import(out as string, { name: 'x', fallbackName: 'x' } as never);
+      const kinds = (back as { document?: SecurityDocument }).document?.assets.map((a) => a.kind) ?? [];
+      expect(kinds).toEqual(expect.arrayContaining(['identity', 'secret', 'channel']));
     });
   });
 });
