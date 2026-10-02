@@ -1,4 +1,4 @@
-import { layoutGraph, renderGraphSvg, type Box, type GraphLayout, type GraphLayoutOptions, type ShapeKind, type SvgEdgeStyle, type SvgLegend, type SvgNodeStyle } from '@iark/kernel';
+import { layoutGraph, renderGraphSvg, type Box, type EdgeRoute, type GraphLayout, type Point, type GraphLayoutOptions, type ShapeKind, type SvgEdgeStyle, type SvgLegend, type SvgNodeStyle } from '@iark/kernel';
 import { applicationsByCapability, capabilityChildren, stageCapabilities, streamStages } from '../graph';
 import {
   CRITICALITY_LABELS,
@@ -360,26 +360,108 @@ const STAGE_H = 76;
 const CAPABILITY_H = 72;
 /** Separación entre chevrones: la punta de uno encaja en la muesca del siguiente. */
 const STAGE_GAP = 4;
+/** Separación entre las pistas horizontales por las que giran las aristas, y holgura entre la primera o la última y las cajas. */
+const TRACK = 10;
+const TRACK_MARGIN = 16;
+/** Alto mínimo del canal entre las etapas y las capacidades que las habilitan. */
+const CHANNEL = 44;
+/** Una capacidad a menos de esto del centro de su etapa se alinea con ella para que la arista baje recta. */
+const SNAP = 8;
+
+/** Arista etapa → capacidad: `ax` y `bx` son los centros de las dos cajas; el tramo horizontal gira en una pista. */
+interface Wire {
+  ax: number;
+  bx: number;
+  source: string;
+  target: string;
+}
+
+/**
+ * Reparte los tramos horizontales de las aristas de un canal en pistas, de la más cercana al origen (0) a la más lejana,
+ * para que no se corten ni se monten. Si el tramo vertical de salida de una arista cae dentro del recorrido horizontal de
+ * otra, la primera tiene que girar antes (en una pista más cercana al origen) para no atravesarla; si es el de llegada
+ * el que cae dentro, después. Dos aristas con el mismo origen (o destino) comparten el tramo vertical; las rectas
+ * (`ax === bx`) no necesitan pista (-1). Cuando las condiciones se contradicen (la capacidad de una etapa queda al otro lado
+ * de la de otra) hay un cruce inevitable: se rompe el ciclo por la arista con menos condiciones pendientes (y, a igualdad, la más a la izquierda).
+ */
+function assignTracks(wires: Wire[]): { levels: number[]; count: number } {
+  const levels = wires.map(() => -1);
+  const bent = wires.flatMap((w, i) => (w.ax === w.bx ? [] : [i]));
+  const lo = (i: number): number => Math.min(wires[i].ax, wires[i].bx);
+  const hi = (i: number): number => Math.max(wires[i].ax, wires[i].bx);
+  const within = (x: number, i: number): boolean => x >= lo(i) && x <= hi(i);
+  const earlier = new Map<number, Set<number>>(bent.map((i) => [i, new Set<number>()]));
+  for (const e of bent) {
+    for (const f of bent) {
+      if (e === f) continue;
+      if (wires[e].source !== wires[f].source && within(wires[e].ax, f)) earlier.get(f)!.add(e);
+      if (wires[e].target !== wires[f].target && within(wires[e].bx, f)) earlier.get(e)!.add(f);
+    }
+  }
+  // Dos tramos horizontales que se tocan no pueden ir en la misma pista, salvo si solo coinciden en el punto donde se unen
+  // al tramo vertical que comparten.
+  const clash = (i: number, j: number): boolean => {
+    const from = Math.max(lo(i), lo(j));
+    const to = Math.min(hi(i), hi(j));
+    if (from > to) return false;
+    return from < to || (wires[i].source !== wires[j].source && wires[i].target !== wires[j].target);
+  };
+  const key = (i: number): [number, number, number] => [lo(i), hi(i), i];
+  const before = (a: [number, number, number], b: [number, number, number]): number => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+  const pending = new Set(bent);
+  while (pending.size > 0) {
+    const waiting = (i: number): number => [...earlier.get(i)!].filter((p) => pending.has(p)).length;
+    const candidates = [...pending].sort((a, b) => waiting(a) - waiting(b) || before(key(a), key(b)));
+    const next = candidates[0];
+    pending.delete(next);
+    let level = Math.max(-1, ...[...earlier.get(next)!].map((p) => levels[p])) + 1;
+    while (bent.some((j) => j !== next && levels[j] === level && clash(next, j))) level += 1;
+    levels[next] = level;
+  }
+  return { levels, count: Math.max(0, ...levels) + (bent.length > 0 ? 1 : 0) };
+}
+
+/**
+ * Posiciones lo más cercanas posible a las deseadas (mínimos cuadrados) que respetan el orden dado y se separan al menos
+ * `gap`: los vecinos que se estorban forman un bloque que se reparte alrededor de la media de lo que querían.
+ */
+function spread(desired: number[], gap: number): number[] {
+  const blocks: Array<{ sum: number; count: number }> = [];
+  desired.forEach((d, k) => {
+    blocks.push({ sum: d - k * gap, count: 1 });
+    while (blocks.length > 1) {
+      const [a, b] = blocks.slice(-2);
+      if (a.sum / a.count <= b.sum / b.count) break;
+      blocks.splice(-2, 2, { sum: a.sum + b.sum, count: a.count + b.count });
+    }
+  });
+  return blocks.flatMap((b) => Array.from({ length: b.count }, () => Math.round(b.sum / b.count))).map((x, k) => x + k * gap);
+}
 
 /**
  * Flujos de valor: cada flujo es un recuadro con sus etapas como chevrones en cadena, de izquierda a derecha, y debajo, en
- * una fila, las capacidades que las habilitan (cada una bajo su primera etapa; si ya la dibuja un flujo anterior, se
- * conserva donde estaba). Un flujo sin etapas es un nodo suelto, para poder rellenarlo.
+ * una fila, las capacidades que las habilitan. Las capacidades se ordenan por el baricentro de sus etapas (la que habilitan
+ * varias queda bajo el centro de ellas; en los empates, el orden del documento) y se reparten lo más cerca posible de él.
+ * Cada arista baja de la etapa a la capacidad con un solo codo, en una pista propia del canal que las separa para que no
+ * se corten; si la capacidad la dibuja un flujo anterior (arriba), sube hasta una pista sobre el recuadro del flujo. Un
+ * flujo sin etapas es un nodo suelto, para poder rellenarlo.
  */
 export function layoutValueStreams(doc: EnterpriseDocument): { layout: GraphLayout; titles: Map<string, string>; edges: Map<string, RenderedEdge> } {
   const stages = streamStages(doc);
   const enabling = stageCapabilities(doc);
   const longest = Math.max(0, ...doc.valueStages.map((x) => x.name.length));
-  const stageW = Math.min(260, Math.max(180, Math.ceil(longest * 7.2 + 56)));
+  // Anchos pares: los centros de etapa y capacidad caen en píxeles enteros y pueden coincidir.
+  const stageW = Math.min(260, Math.max(180, 2 * Math.ceil((longest * 7.2 + 56) / 2)));
   const step = stageW + STAGE_GAP;
   const capW = Math.max(160, stageW - 20);
+  const documentOrder = new Map(doc.capabilities.map((c, i) => [c.id, i]));
+  const enables = doc.relations.filter((r) => r.kind === 'enables').map((relation) => ({ relation, ...drawnEnds(relation) }));
   const placed = new Set<string>();
   const nodes: Box[] = [];
   const groups: Box[] = [];
-  const routes: Array<{ id: string; points: Array<{ x: number; y: number }> }> = [];
+  const routes = new Map<string, EdgeRoute>();
   const titles = new Map<string, string>();
   const spots = new Map<string, Box>();
-  const edges = new Map<string, RenderedEdge>();
   let y = 0;
   let width = 0;
   for (const stream of doc.valueStreams) {
@@ -391,52 +473,93 @@ export function layoutValueStreams(doc: EnterpriseDocument): { layout: GraphLayo
       y += STAGE_H + GAP * 2;
       continue;
     }
-    const stageY = y + TITLE;
+    // Capacidades de este flujo aún sin colocar (las que ya dibuja un flujo anterior se quedan donde estaban), con las
+    // posiciones de las etapas que las habilitan, por baricentro.
+    const mine = new Map<string, number[]>();
     list.forEach((stage, i) => {
-      const box = { id: stage.id, x: PAD + i * step, y: stageY, width: stageW, height: STAGE_H };
+      for (const c of enabling.get(stage.id) ?? []) if (!placed.has(c.id)) mine.set(c.id, [...(mine.get(c.id) ?? []), i]);
+    });
+    const ranked = [...mine]
+      .map(([id, at]) => ({ id, at, bary: at.reduce((a, b) => a + b, 0) / at.length }))
+      .sort((a, b) => a.bary - b.bary || documentOrder.get(a.id)! - documentOrder.get(b.id)!);
+    const centerOf = (i: number): number => PAD + i * step + stageW / 2;
+    const centers = spread(ranked.map((c) => centerOf(c.bary)), capW + GAP);
+    // Una capacidad de una sola etapa que queda casi bajo ella se alinea para que su arista baje recta.
+    ranked.forEach((c, k) => {
+      const near = centerOf(c.at[0]);
+      if (c.at.length > 1 || Math.abs(near - centers[k]) > SNAP) return;
+      if ((k > 0 && near - centers[k - 1] < capW + GAP) || (k < centers.length - 1 && centers[k + 1] - near < capW + GAP)) return;
+      centers[k] = near;
+    });
+    // Si las capacidades se salen por la izquierda, todo el flujo se desplaza.
+    const shift = centers.length > 0 ? Math.max(0, PAD - (centers[0] - capW / 2)) : 0;
+    const chainX = PAD + shift;
+    const stageCenter = new Map(list.map((stage, i) => [stage.id, chainX + i * step + stageW / 2]));
+    const capCenter = new Map(ranked.map((c, k) => [c.id, centers[k] + shift]));
+    const rowW = Math.max(chainX + list.length * step - STAGE_GAP, ...centers.map((c) => c + shift + capW / 2)) + PAD;
+
+    // Aristas de las etapas de este flujo: hacia capacidades de aquí (bajan) o de un flujo anterior (suben).
+    const down: Array<{ id: string; wire: Wire }> = [];
+    const up: Array<{ id: string; wire: Wire }> = [];
+    for (const e of enables) {
+      const ax = stageCenter.get(e.from);
+      if (ax === undefined) continue;
+      const here = capCenter.get(e.to);
+      const above = spots.get(e.to);
+      if (here !== undefined) down.push({ id: e.relation.id, wire: { ax, bx: here, source: e.from, target: e.to } });
+      else if (above) up.push({ id: e.relation.id, wire: { ax, bx: above.x + above.width / 2, source: e.from, target: e.to } });
+    }
+    const downTracks = assignTracks(down.map((d) => d.wire));
+    const upTracks = assignTracks(up.map((d) => d.wire));
+    const channel = ranked.length > 0 ? Math.max(CHANNEL, 2 * TRACK_MARGIN + Math.max(0, downTracks.count - 1) * TRACK) : 0;
+    // Las pistas de las aristas que suben van en el hueco sobre el recuadro; si no caben, el hueco crece.
+    if (upTracks.count > 0) y += Math.max(0, 2 * TRACK_MARGIN + (upTracks.count - 1) * TRACK - GAP * 2);
+
+    const top = y;
+    const stageY = top + TITLE;
+    list.forEach((stage, i) => {
+      const box = { id: stage.id, x: chainX + i * step, y: stageY, width: stageW, height: STAGE_H };
       nodes.push(box);
       spots.set(stage.id, box);
     });
-    // Capacidades de este flujo aún sin colocar, en una fila bajo sus etapas.
-    const capabilities: Array<{ id: string; center: number; stages: string[] }> = [];
-    list.forEach((stage, i) => {
-      for (const c of enabling.get(stage.id) ?? []) {
-        if (placed.has(c.id)) continue;
-        const known = capabilities.find((k) => k.id === c.id);
-        if (known) known.stages.push(stage.id);
-        else capabilities.push({ id: c.id, center: PAD + i * step + stageW / 2, stages: [stage.id] });
-      }
-    });
-    const capY = stageY + STAGE_H + 44;
-    let next = PAD;
-    capabilities.forEach((c) => {
-      const x = Math.max(next, c.center - capW / 2);
-      const box = { id: c.id, x, y: capY, width: capW, height: CAPABILITY_H };
+    const capY = stageY + STAGE_H + channel;
+    ranked.forEach((c, k) => {
+      const box = { id: c.id, x: centers[k] + shift - capW / 2, y: capY, width: capW, height: CAPABILITY_H };
       nodes.push(box);
       spots.set(c.id, box);
       placed.add(c.id);
-      next = x + capW + GAP;
     });
-    const rowW = Math.max(PAD + list.length * step - STAGE_GAP, next - GAP) + PAD;
-    const h = TITLE + STAGE_H + (capabilities.length > 0 ? 44 + CAPABILITY_H : 0) + PAD;
-    groups.push({ id: stream.id, x: 0, y, width: rowW, height: h });
+    const h = TITLE + STAGE_H + (ranked.length > 0 ? channel + CAPABILITY_H : 0) + PAD;
+    groups.push({ id: stream.id, x: 0, y: top, width: rowW, height: h });
     width = Math.max(width, rowW);
+
+    // Las que bajan giran en el canal entre las etapas y las capacidades (las pistas, centradas en él); las que suben, en el hueco sobre el recuadro.
+    const elbow = (wire: Wire, lane: number | undefined): Point[] => (lane === undefined ? [] : [{ x: wire.ax, y: lane }, { x: wire.bx, y: lane }]);
+    down.forEach(({ id, wire }, n) => {
+      const a = spots.get(wire.source)!;
+      const b = spots.get(wire.target)!;
+      const level = downTracks.levels[n];
+      const lane = level < 0 ? undefined : a.y + a.height + (channel - (downTracks.count - 1) * TRACK) / 2 + level * TRACK;
+      routes.set(id, { id, points: [{ x: wire.ax, y: a.y + a.height }, ...elbow(wire, lane), { x: wire.bx, y: b.y }], sides: { source: 'bottom', target: 'top' } });
+    });
+    up.forEach(({ id, wire }, n) => {
+      const a = spots.get(wire.source)!;
+      const b = spots.get(wire.target)!;
+      const level = upTracks.levels[n];
+      const lane = level < 0 ? undefined : top - TRACK_MARGIN - level * TRACK;
+      routes.set(id, { id, points: [{ x: wire.ax, y: a.y }, ...elbow(wire, lane), { x: wire.bx, y: b.y + b.height }], sides: { source: 'top', target: 'bottom' } });
+    });
     y += h + GAP * 2;
   }
-  // Aristas (etapa → capacidad) con un codo bajo la etapa; las de capacidades de otro flujo cruzan en diagonal.
-  let lane = 0;
-  for (const r of doc.relations.filter((x) => x.kind === 'enables')) {
-    const { from, to } = drawnEnds(r);
-    const a = spots.get(from);
-    const b = spots.get(to);
-    if (!a || !b) continue;
-    const ax = a.x + a.width / 2;
-    const bx = b.x + b.width / 2;
-    const mid = a.y + a.height + 8 + (lane++ % 4) * 5;
-    routes.push({ id: r.id, points: b.y > a.y ? [{ x: ax, y: a.y + a.height }, { x: ax, y: mid }, { x: bx, y: mid }, { x: bx, y: b.y }] : [{ x: ax, y: a.y }, { x: bx, y: b.y + b.height }] });
-    edges.set(r.id, { relation: r, source: from, target: to });
+  const edges = new Map<string, RenderedEdge>();
+  const ordered: EdgeRoute[] = [];
+  for (const e of enables) {
+    const route = routes.get(e.relation.id);
+    if (!route) continue;
+    ordered.push(route);
+    edges.set(e.relation.id, { relation: e.relation, source: e.from, target: e.to });
   }
-  return { layout: { nodes, groups, edges: routes, width, height: Math.max(0, y - GAP * 2) }, titles, edges };
+  return { layout: { nodes, groups, edges: ordered, width, height: Math.max(0, y - GAP * 2) }, titles, edges };
 }
 
 // --- Vistas de relaciones: autolayout de izquierda a derecha ----------------------------------------------------------
