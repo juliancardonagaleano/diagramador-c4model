@@ -27,6 +27,8 @@ export interface NodeNotation {
   height: number;
   /** Si el tipo se ofrece en la paleta (por defecto sí). */
   addable?: boolean;
+  /** Icono del tipo en la esquina del nodo: trazados de una caja de 16 × 16 (como `EdgeMark.icon`). */
+  icon?: string[];
 }
 
 export interface EdgeNotation {
@@ -38,6 +40,10 @@ export interface EdgeNotation {
   /** Punta de flecha en el origen (p. ej. petición-respuesta). */
   arrowStart?: boolean;
   arrowEnd?: boolean;
+  /** Adorno en el origen de la línea: rombo (composición) o punto (asignación). */
+  tail?: 'diamond' | 'dot';
+  /** Punta de flecha: `open` es una «V» sin relleno (por defecto, triángulo relleno). */
+  head?: 'open';
 }
 
 export interface EditorNode {
@@ -78,9 +84,17 @@ export interface EditorEdge {
   width?: number;
 }
 
+/** Leyenda de los colores de una vista (p. ej. el criterio de color de un mapa de capacidades). */
+export interface EditorLegend {
+  title: string;
+  items: Array<{ label: string; color: string }>;
+}
+
 export interface EditorGraph {
   nodes: EditorNode[];
   edges: EditorEdge[];
+  /** Leyenda que el lienzo dibuja sobre la vista. */
+  legend?: EditorLegend;
 }
 
 export type FieldSpec =

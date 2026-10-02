@@ -38,7 +38,7 @@ export interface FlowEdge {
   target: string;
   type: 'notation';
   style: { stroke: string; strokeWidth: number; strokeDasharray?: string };
-  markerEnd?: { type: 'arrowclosed'; color: string };
+  markerEnd?: { type: 'arrowclosed' | 'arrow'; color: string };
   markerStart?: { type: 'arrowclosed'; color: string };
   data: FlowEdgeData;
   selected?: boolean;
@@ -183,7 +183,7 @@ export function buildFlow(
         target: e.target,
         type: 'notation',
         style: { stroke: notation.stroke, strokeWidth: width, strokeDasharray: DASH[notation.line ?? 'solid'] },
-        ...(notation.arrowEnd === false ? {} : { markerEnd: { type: 'arrowclosed' as const, color: notation.stroke } }),
+        ...(notation.arrowEnd === false ? {} : { markerEnd: { type: notation.head === 'open' ? ('arrow' as const) : ('arrowclosed' as const), color: notation.stroke } }),
         ...(notation.arrowStart ? { markerStart: { type: 'arrowclosed' as const, color: notation.stroke } } : {}),
         data: { edge: e, notation },
       };

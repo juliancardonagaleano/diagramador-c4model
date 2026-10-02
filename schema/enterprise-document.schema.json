@@ -197,6 +197,28 @@
           "external": {
             "type": "boolean"
           },
+          "annualCost": {
+            "type": "number",
+            "minimum": 0
+          },
+          "users": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "migrate",
+              "replace",
+              "retire"
+            ]
+          },
+          "endOfLife": {
+            "type": "string",
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])(-(0[1-9]|[12]\\d|3[01]))?$"
+          },
           "ref": {
             "type": "string"
           },
@@ -296,7 +318,11 @@
               "supports",
               "realizes",
               "runs-on",
-              "depends-on"
+              "depends-on",
+              "composes",
+              "flows-to",
+              "assigned-to",
+              "triggers"
             ]
           },
           "sourceId": {

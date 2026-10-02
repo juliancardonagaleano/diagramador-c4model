@@ -1,4 +1,4 @@
-import { drawnEnds, type Capability, type EnterpriseDocument } from './types';
+import { dependencyEnds, type Capability, type EnterpriseDocument } from './types';
 
 export interface DependencyGraph {
   /** Elemento → aquello en lo que se apoya (aplicación → tecnología, capacidad → aplicación que la soporta…). */
@@ -17,13 +17,13 @@ export interface ReachStep {
   via: string;
 }
 
-/** Grafo de dependencias con el sentido en que se dibujan las relaciones (ver `drawnEnds`). */
+/** Grafo de dependencias (ver `dependencyEnds`: el sentido en que se dibujan las relaciones, salvo flujo y disparo). */
 export function dependencyGraph(doc: EnterpriseDocument): DependencyGraph {
   const leansOn = new Map<string, string[]>();
   const leanedBy = new Map<string, string[]>();
   const push = (map: Map<string, string[]>, key: string, value: string): void => void map.set(key, [...(map.get(key) ?? []), value]);
   for (const r of doc.relations) {
-    const { from, to } = drawnEnds(r);
+    const { from, to } = dependencyEnds(r);
     push(leansOn, from, to);
     push(leanedBy, to, from);
   }

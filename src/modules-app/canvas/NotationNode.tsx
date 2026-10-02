@@ -34,6 +34,13 @@ function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
     <div className="cv-node" style={{ width, height, color: ink }} data-selected={selected || undefined} data-testid={`node-${node.id}`} data-kind={node.kind} data-shape={notation.shape}>
       <ShapeSvg shape={notation.shape} width={width} height={height} fill={fill} stroke={node.stroke ?? notation.stroke} dashed={node.dashed} />
       <Handle type="target" position={Position.Left} />
+      {notation.icon && notation.icon.length > 0 && (
+        <svg className="cv-type-icon" width={16} height={16} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" data-testid={`icon-${node.id}`}>
+          {notation.icon.map((d, i) => (
+            <path key={i} d={d} />
+          ))}
+        </svg>
+      )}
       {node.lines ? (
         <div className="cv-node-text cv-card-text">
           <span className="cv-kind">{notation.label}</span>

@@ -2,6 +2,7 @@ import {
   Background,
   Controls,
   MiniMap,
+  Panel,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
@@ -30,7 +31,7 @@ export interface DiagramCanvasProps {
   document: unknown | undefined;
   text: string;
   viewId?: string;
-  views: Array<{ id: string; title: string }>;
+  views: Array<{ id: string; title: string; variantOf?: string; variantLabel?: string }>;
   onView(id: string): void;
   readOnly: boolean;
   history: EditHistory;
@@ -80,6 +81,12 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
   const boxSelecting = useRef(false);
 
   const graph = useMemo(() => (document === undefined ? undefined : spec.project(document, viewId)), [spec, document, viewId]);
+
+  // Las variantes de una vista (la misma vista coloreada por otro criterio) no van en «Vista»: tienen su propio selector.
+  const current = views.find((v) => v.id === (viewId ?? views[0]?.id));
+  const baseViewId = current?.variantOf ?? current?.id ?? '';
+  const mainViews = views.filter((v) => !v.variantOf);
+  const variants = baseViewId ? views.filter((v) => v.id === baseViewId || v.variantOf === baseViewId) : [];
   const signature = graph ? structureKey(graph) : '';
 
   const selectedIds = useMemo(() => resolveSelection(graph, selection), [graph, selection]);
@@ -310,14 +317,29 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
   return (
     <div className="cv-root" ref={wrapper} data-testid="module-canvas">
       <div className="cv-toolbar" role="toolbar" aria-label="Herramientas del lienzo">
-        {views.length > 1 && (
+        {mainViews.length > 1 && (
           <>
             <label className="cv-edge-kind">
               Vista
-              <select value={viewId ?? views[0]?.id ?? ''} onChange={(e) => onView(e.target.value)} data-testid="canvas-view">
-                {views.map((v) => (
+              <select value={baseViewId} onChange={(e) => onView(e.target.value)} data-testid="canvas-view">
+                {mainViews.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span className="cv-sep" />
+          </>
+        )}
+        {variants.length > 1 && (
+          <>
+            <label className="cv-edge-kind">
+              Colorear por
+              <select value={current?.id ?? ''} onChange={(e) => onView(e.target.value)} data-testid="canvas-variant">
+                {variants.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.variantLabel ?? v.title}
                   </option>
                 ))}
               </select>
@@ -423,6 +445,19 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
             proOptions={{ hideAttribution: true }}
           >
             <Background gap={20} />
+            {graph?.legend && (
+              <Panel position="top-left" className="cv-legend" data-testid="canvas-legend">
+                <strong>{graph.legend.title}</strong>
+                <ul>
+                  {graph.legend.items.map((item) => (
+                    <li key={item.label}>
+                      <span className="cv-legend-swatch" style={{ background: item.color }} />
+                      {item.label}
+                    </li>
+                  ))}
+                </ul>
+              </Panel>
+            )}
             <Controls showInteractive={false} />
             <MiniMap pannable zoomable nodeColor={(n) => ((n.data as FlowNode['data']).node.fill ?? (n.data as FlowNode['data']).notation.fill)} />
           </ReactFlow>

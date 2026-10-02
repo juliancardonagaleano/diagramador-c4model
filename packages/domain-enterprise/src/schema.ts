@@ -11,6 +11,7 @@ import {
   RELATION_KINDS,
   RELATION_LABELS,
   RELATION_RULES,
+  STRATEGIES,
   TECHNOLOGY_KINDS,
   indexElements,
   type ElementKind,
@@ -58,6 +59,10 @@ export const applicationSchema = z.object({
   lifecycle: z.enum(LIFECYCLES).optional(),
   criticality: z.enum(CRITICALITIES).optional(),
   external: z.boolean().optional(),
+  annualCost: z.number().min(0, 'El coste anual no puede ser negativo').optional(),
+  users: z.number().int('Los usuarios son un número entero').min(0, 'Los usuarios no pueden ser negativos').optional(),
+  strategy: z.enum(STRATEGIES).optional(),
+  endOfLife: z.string().regex(END_OF_LIFE, 'El fin de soporte debe tener la forma AAAA-MM o AAAA-MM-DD').optional(),
   ref: z.string().optional(),
   tags: z.array(z.string()).optional(),
 });

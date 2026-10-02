@@ -1,10 +1,23 @@
+import type { ViewRef } from '@iark/kernel';
 import { capabilityChildren, dependencyGraph, ownership, reach, unitTree, type Reach } from './graph';
-import { indexElements, type EnterpriseDocument } from './types';
+import { indexElements, lifecycleOf, type Application, type EnterpriseDocument, type Technology } from './types';
+
+/** Criterio con el que se colorea el mapa de capacidades. */
+export const CAPABILITY_COLOR_MODES = ['maturity', 'importance', 'criticality', 'lifecycle'] as const;
+export type CapabilityColorMode = (typeof CAPABILITY_COLOR_MODES)[number];
+export const CAPABILITY_COLOR_LABELS: Record<CapabilityColorMode, string> = {
+  maturity: 'Madurez',
+  importance: 'Importancia',
+  criticality: 'Criticidad de las aplicaciones',
+  lifecycle: 'Ciclo de vida de las aplicaciones',
+};
 
 export interface EnterpriseView {
-  /** `capabilities`, `landscape`, `unit:<id>` o, bajo demanda, `impact:<id>`, `depends:<id>` y `focus:<id>`. */
+  /** `capabilities`, `landscape`, `roadmap`, `unit:<id>` o, bajo demanda, `impact:<id>`, `depends:<id>`, `focus:<id>` y `capabilities:<criterio>`. */
   id: string;
-  type: 'capabilities' | 'landscape' | 'unit' | 'impact' | 'depends' | 'focus';
+  type: 'capabilities' | 'landscape' | 'roadmap' | 'unit' | 'impact' | 'depends' | 'focus';
+  /** Solo en el mapa de capacidades: con qué se colorea (por defecto, la madurez). */
+  colorBy?: CapabilityColorMode;
   title: string;
   /** Elementos dibujados (los del foco y los de contexto), capacidades primero y en el orden del documento. */
   elementIds: string[];
@@ -23,7 +36,7 @@ interface Spec {
 }
 
 function drawnOrder(doc: EnterpriseDocument): string[] {
-  return [...doc.capabilities, ...doc.processes, ...doc.applications, ...doc.technologies].map((x) => x.id);
+  return [...doc.capabilities, ...doc.processes, ...doc.applications, ...doc.technologies, ...doc.units].map((x) => x.id);
 }
 
 function build(doc: EnterpriseDocument, spec: Spec): EnterpriseView {
@@ -45,11 +58,60 @@ function build(doc: EnterpriseDocument, spec: Spec): EnterpriseView {
   };
 }
 
-/** Elementos que entran en las vistas de relaciones: todos menos las capacidades con hijas que no se relacionan con nada (son solo agrupación). */
+/**
+ * Elementos que entran en las vistas de relaciones: todos menos las capacidades con hijas que no se relacionan con nada
+ * (son solo agrupación) y las unidades que no se relacionan con nada. Una unidad se dibuja si participa en una relación
+ * (asignación a un proceso) o si está suelta del todo (no tiene jerarquía ni responsabilidades), para poder conectarla.
+ */
 function drawable(doc: EnterpriseDocument): Set<string> {
   const children = capabilityChildren(doc);
   const related = new Set(doc.relations.flatMap((r) => [r.sourceId, r.targetId]));
-  return new Set(drawnOrder(doc).filter((id) => !(children.has(id) && !related.has(id))));
+  const units = new Set(doc.units.map((u) => u.id));
+  const owners = new Set([...doc.capabilities, ...doc.processes, ...doc.applications, ...doc.technologies].flatMap((x) => (x.ownerId ? [x.ownerId] : [])));
+  const hierarchy = new Set(doc.units.flatMap((u) => (u.parentId ? [u.id, u.parentId] : [])));
+  return new Set(
+    drawnOrder(doc).filter((id) => (units.has(id) ? related.has(id) || (!owners.has(id) && !hierarchy.has(id)) : !(children.has(id) && !related.has(id)))),
+  );
+}
+
+/** Un periodo de la hoja de ruta del ciclo de vida: sus elementos se dibujan en una columna. */
+export interface RoadmapColumn {
+  /** `roadmap:retired`, `roadmap:2027`, `roadmap:undated`, `roadmap:planned`. */
+  id: string;
+  title: string;
+  elementIds: string[];
+}
+
+const COLUMN_ORDER = { retired: 0, year: 1, undated: 2, planned: 3 } as const;
+
+/**
+ * Hoja de ruta del ciclo de vida: las aplicaciones y la tecnología que dejan de estar activas o tienen una salida prevista
+ * (fin de soporte, retirada, estrategia de migrar, reemplazar o retirar), repartidas en columnas: retiradas, un año por
+ * columna, en retirada o con estrategia sin fecha y previstas.
+ */
+export function roadmapColumns(doc: EnterpriseDocument): RoadmapColumn[] {
+  const buckets = new Map<string, { title: string; order: number; key: string; items: Array<{ id: string; sort: string }> }>();
+  const put = (key: string, title: string, order: number, id: string, sort: string): void => {
+    const bucket = buckets.get(key) ?? { title, order, key, items: [] };
+    bucket.items.push({ id, sort });
+    buckets.set(key, bucket);
+  };
+  const place = (item: Application | Technology, strategy: Application['strategy']): void => {
+    const life = lifecycleOf(item);
+    const date = item.endOfLife;
+    const leaving = life !== 'active' || !!date || (strategy !== undefined && strategy !== 'keep');
+    if (!leaving) return;
+    const sort = `${date ?? '9999'}|${item.name}`;
+    if (life === 'retired') put('retired', 'Retiradas', COLUMN_ORDER.retired, item.id, sort);
+    else if (life === 'planned') put('planned', 'Previstas', COLUMN_ORDER.planned, item.id, sort);
+    else if (date) put(date.slice(0, 4), `Fin de soporte ${date.slice(0, 4)}`, COLUMN_ORDER.year, item.id, sort);
+    else put('undated', 'Sin fecha', COLUMN_ORDER.undated, item.id, sort);
+  };
+  doc.applications.forEach((a) => place(a, a.strategy));
+  doc.technologies.forEach((t) => place(t, undefined));
+  return [...buckets.values()]
+    .sort((a, b) => a.order - b.order || a.key.localeCompare(b.key))
+    .map((b) => ({ id: `roadmap:${b.key}`, title: b.title, elementIds: b.items.sort((x, y) => x.sort.localeCompare(y.sort)).map((i) => i.id) }));
 }
 
 /**
@@ -72,6 +134,17 @@ export function listViews(doc: EnterpriseDocument): EnterpriseView[] {
   const shown = drawable(doc);
   if (doc.relations.length > 0) {
     views.push(build(doc, { id: 'landscape', type: 'landscape', title: `Paisaje empresarial - ${doc.workspace.name}`, focus: shown }));
+  }
+  const roadmap = roadmapColumns(doc);
+  if (roadmap.length > 0) {
+    views.push({
+      id: 'roadmap',
+      type: 'roadmap',
+      title: `Hoja de ruta del ciclo de vida - ${doc.workspace.name}`,
+      elementIds: roadmap.flatMap((c) => c.elementIds),
+      contextIds: [],
+      relationIds: [],
+    });
   }
   const { ownerOf } = ownership(doc);
   for (const unit of doc.units) {
@@ -106,6 +179,13 @@ export function findView(doc: EnterpriseDocument, viewId?: string): EnterpriseVi
   const exact = views.find((v) => v.id === viewId);
   if (exact) return exact;
   const [prefix, ...rest] = viewId.split(':');
+  if (prefix === 'capabilities' && (CAPABILITY_COLOR_MODES as readonly string[]).includes(rest.join(':'))) {
+    const base = views.find((v) => v.id === 'capabilities');
+    if (base) {
+      const mode = rest.join(':') as CapabilityColorMode;
+      return { ...base, id: viewId, colorBy: mode, title: `Mapa de capacidades por ${CAPABILITY_COLOR_LABELS[mode].toLowerCase()} - ${doc.workspace.name}` };
+    }
+  }
   const id = rest.join(':');
   if (prefix in TRACE && indexElements(doc).has(id)) return traceView(doc, id, prefix as 'impact' | 'depends' | 'focus');
   const elements = indexElements(doc);
@@ -113,5 +193,20 @@ export function findView(doc: EnterpriseDocument, viewId?: string): EnterpriseVi
   if (bare && bare.kind !== 'unit') return traceView(doc, viewId);
   const unit = views.find((v) => v.id === `unit:${viewId}`);
   if (unit) return unit;
-  throw new Error(`No existe la vista «${viewId}». Vistas disponibles: ${[...views.map((v) => v.id), 'impact:<elemento>', 'depends:<elemento>', 'focus:<elemento>'].join(', ')}.`);
+  throw new Error(`No existe la vista «${viewId}». Vistas disponibles: ${[...views.map((v) => v.id), ...(views.some((v) => v.id === 'capabilities') ? CAPABILITY_COLOR_MODES.filter((m) => m !== 'maturity').map((m) => `capabilities:${m}`) : []), 'impact:<elemento>', 'depends:<elemento>', 'focus:<elemento>'].join(', ')}.`);
+}
+
+/**
+ * Vistas que ofrece el módulo: las derivadas y, tras el mapa de capacidades, sus variantes por criterio de color (el
+ * lienzo las muestra en el selector «Colorear por», no en «Vista»). Las exportaciones por lotes usan `listViews`.
+ */
+export function viewRefs(doc: EnterpriseDocument): ViewRef[] {
+  return listViews(doc).flatMap((v): ViewRef[] => {
+    if (v.type !== 'capabilities') return [{ id: v.id, title: v.title }];
+    return CAPABILITY_COLOR_MODES.map((mode) =>
+      mode === 'maturity'
+        ? { id: v.id, title: v.title, variantLabel: CAPABILITY_COLOR_LABELS[mode] }
+        : { id: `${v.id}:${mode}`, title: findView(doc, `${v.id}:${mode}`).title, variantOf: v.id, variantLabel: CAPABILITY_COLOR_LABELS[mode] },
+    );
+  });
 }

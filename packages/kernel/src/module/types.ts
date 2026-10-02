@@ -100,6 +100,10 @@ export interface EntityRef {
 export interface ViewRef {
   id: string;
   title: string;
+  /** Si es una variante de otra vista (la misma vista coloreada por otro criterio): id de la vista base. El lienzo la ofrece en un selector aparte en lugar de en «Vista». */
+  variantOf?: string;
+  /** Nombre corto de la variante en ese selector («Criticidad»). */
+  variantLabel?: string;
 }
 
 /** Vista bajo demanda de un elemento del documento (`<prefix>:<id>`), como el impacto, el linaje o el alcance. */

@@ -278,6 +278,7 @@ describe('vistas', () => {
     expect(views.map((v) => v.id)).toEqual([
       'capabilities',
       'landscape',
+      'roadmap',
       'unit:direccion-comercial',
       'unit:ventas',
       'unit:atencion',
@@ -324,7 +325,7 @@ describe('vistas', () => {
   });
 
   it('explica las vistas disponibles cuando no existe la pedida', () => {
-    expect(() => findView(doc, 'nada')).toThrow(/No existe la vista «nada»\. Vistas disponibles: capabilities, landscape, unit:direccion-comercial.*impact:<elemento>/);
+    expect(() => findView(doc, 'nada')).toThrow(/No existe la vista «nada»\. Vistas disponibles: capabilities, landscape, roadmap, unit:direccion-comercial.*capabilities:criticality.*impact:<elemento>/);
     expect(() => findView(doc, 'impact:nada')).toThrow(/No existe la vista/);
     expect(() => findView(parse({}))).toThrow(/no tiene vistas/);
   });
@@ -336,7 +337,7 @@ describe('exportación a Mermaid', () => {
     expect(text.startsWith('flowchart TB\n')).toBe(true);
     expect(text).toContain('subgraph gestion_comercial["Gestión comercial"]');
     expect(text).toContain('        ventas_online("Ventas online"):::capability');
-    expect(text).toContain('classDef capability fill:#0b7285');
+    expect(text).toContain('classDef capability fill:#ffec99,stroke:#e0a800,color:#0f172a');
     expect(text.match(/^\s*end$/gm)).toHaveLength(4);
   });
 
@@ -518,11 +519,14 @@ describe('SVG y draw.io', () => {
     expect(pages.map((p) => p['@_id'])).toEqual(listViews(doc).map((v) => v.id));
     const cells = (i: number) => ([] as Array<Record<string, string>>).concat(parsed.mxfile.diagram[i].mxGraphModel.root.mxCell);
     const capabilities = cells(0);
-    expect(capabilities.filter((c) => c['@_vertex']).length).toBe(16);
+    const isIcon = (c: Record<string, string>): boolean => c['@_id'].startsWith('i-');
+    expect(capabilities.filter((c) => c['@_vertex'] && !isIcon(c)).length).toBe(16);
+    expect(capabilities.filter(isIcon).length).toBe(12); // un icono de tipo por capacidad hoja
     expect(capabilities.some((c) => c['@_edge'])).toBe(false);
     const landscape = cells(1);
     expect(landscape.filter((c) => c['@_edge']).length).toBe(doc.relations.length);
-    expect(landscape.filter((c) => c['@_vertex']).length).toBe(listViews(doc)[1].elementIds.length);
+    expect(landscape.filter((c) => c['@_vertex' as string] && !isIcon(c)).length).toBe(listViews(doc)[1].elementIds.length);
+    expect(landscape.filter(isIcon).length).toBe(listViews(doc)[1].elementIds.length);
   });
 });
 
