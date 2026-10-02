@@ -834,7 +834,7 @@ describe('iark: módulo de plataforma', () => {
   const dir = mkdtempSync(join(tmpdir(), 'iarkplat-'));
 
   it('modules lista el módulo de plataforma con sus formatos', () => {
-    expect(run(['modules']).stdout).toMatch(/^platform {2}Arquitectura de plataforma {2}v0\.1\.0\n {4}importa: mermaid {2}· {2}exporta: mermaid, svg, drawio/m);
+    expect(run(['modules']).stdout).toMatch(/^platform {2}Arquitectura de plataforma {2}v0\.1\.0\n {4}importa: mermaid, terraform, kubernetes {2}· {2}exporta: mermaid, svg, drawio/m);
   });
 
   it('validate --module platform valida el documento y devuelve 2 con errores de estructura', () => {

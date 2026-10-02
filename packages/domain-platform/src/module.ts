@@ -6,7 +6,10 @@ import { platformEditor } from './editor';
 import { toDrawio } from './export/drawio';
 import { toMermaid } from './export/mermaid';
 import { toSvg } from './export/render';
+import { fromKubernetes, looksLikeKubernetes } from './import/fromKubernetes';
 import { fromMermaid } from './import/fromMermaid';
+import { fromTerraform } from './import/fromTerraform';
+import { looksLikeTerraform } from './import/terraformModel';
 import { analyzePlatform } from './issues';
 import { platformDocumentSchema, platformJsonSchema } from './schema';
 import { PLATFORM_DOCUMENT_VERSION, type PlatformDocument } from './types';
@@ -18,6 +21,23 @@ const mermaidImporter: Importer<PlatformDocument> = {
   extensions: ['.mmd', '.mermaid', '.md'],
   detect: looksLikeMermaid,
   import: (text, ctx) => fromMermaid(text, { name: ctx.name, fallbackName: ctx.fallbackName }),
+};
+
+const terraformImporter: Importer<PlatformDocument> = {
+  id: 'terraform',
+  label: 'Terraform',
+  // `.tf.json` llega al registro como `.json` (solo mira la última extensión): ese caso se reconoce por el contenido.
+  extensions: ['.tf', '.tf.json', '.tfstate'],
+  detect: looksLikeTerraform,
+  import: (text, ctx) => fromTerraform(text, { name: ctx.name, fallbackName: ctx.fallbackName, file: ctx.file }),
+};
+
+const kubernetesImporter: Importer<PlatformDocument> = {
+  id: 'kubernetes',
+  label: 'Kubernetes',
+  extensions: ['.yaml', '.yml'],
+  detect: looksLikeKubernetes,
+  import: (text, ctx) => fromKubernetes(text, { name: ctx.name, fallbackName: ctx.fallbackName, file: ctx.file }),
 };
 
 const mermaidExporter: Exporter<PlatformDocument> = {
@@ -55,12 +75,12 @@ export const platformModule: DomainModule<PlatformDocument> = {
   id: 'platform',
   name: 'Arquitectura de plataforma',
   version: '0.1.0',
-  description: 'Entornos, redes, recursos, servicios, despliegues y pipelines, con topología, despliegue por entorno e impacto; exporta a Mermaid, SVG y draw.io.',
+  description: 'Entornos, redes, recursos, servicios, despliegues y pipelines, con topología, despliegue por entorno e impacto; importa de Mermaid, Terraform y Kubernetes y exporta a Mermaid, SVG y draw.io.',
   documentVersion: PLATFORM_DOCUMENT_VERSION,
   schema: platformDocumentSchema as unknown as DomainModule<PlatformDocument>['schema'],
   jsonSchema: platformJsonSchema,
   validate: (doc): ModuleIssue[] => analyzePlatform(doc),
-  importers: [mermaidImporter],
+  importers: [mermaidImporter, terraformImporter, kubernetesImporter],
   exporters: [mermaidExporter, svgExporter, drawioExporter],
   ai: platformAiSpec,
   entities: (doc): EntityRef[] => [
