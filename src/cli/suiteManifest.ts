@@ -14,14 +14,19 @@ export interface SuiteManifestOptions {
   api?: string;
   /** La instancia sirve el sitio (editores embebibles y JSON Schema estáticos). Por defecto sí; un servicio solo con API, no. */
   site?: boolean;
+  /** La instancia tiene un espacio de trabajo (`iark serve --workspace`): anuncia la API de proyectos. Hace falta `api`. */
+  projects?: boolean;
 }
+
+/** El manifiesto, con `projects` (la URL de la API de proyectos, relativa al manifiesto) solo si la instancia tiene espacio de trabajo. */
+export type InstanceManifest = SuiteManifest & { projects?: string };
 
 /**
  * Manifiesto de federación de una instancia (`iark.manifest/1`). Las URL de `endpoints` son relativas al propio manifiesto,
  * que se publica en `/.well-known/iark.json`: `../modulos.html` es el banco de trabajo, `../schema/…` los JSON Schema.
  * Así el mismo manifiesto vale bajo cualquier ruta base (GitHub Pages sirve bajo `/<repositorio>/`).
  */
-export function suiteManifest(registry: ModuleRegistry, options: SuiteManifestOptions): SuiteManifest {
+export function suiteManifest(registry: ModuleRegistry, options: SuiteManifestOptions): InstanceManifest {
   const site = options.site ?? true;
   const api = options.api?.replace(/\/+$/, '');
   const endpoints: Record<string, ModuleManifest['endpoints']> = {};
@@ -33,5 +38,5 @@ export function suiteManifest(registry: ModuleRegistry, options: SuiteManifestOp
     };
     if (Object.keys(found).length > 0) endpoints[module.id] = found;
   }
-  return buildManifest(registry, { name: SUITE_NAME, version: options.version, endpoints });
+  return { ...buildManifest(registry, { name: SUITE_NAME, version: options.version, endpoints }), ...(options.projects && api ? { projects: `${api}/projects` } : {}) };
 }

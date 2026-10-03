@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { extname } from 'node:path';
 import { Command, InvalidArgumentError } from 'commander';
 import { applyLayoutToView, autoLayoutDocumentWithQuality, layoutView } from '@core/layout/elkLayout';
@@ -15,11 +15,13 @@ import { generationJsonSchema } from '@core/ai/generationSchema';
 import { standalonePrompt } from '@core/ai/prompt';
 import { DEFAULT_AI_MODEL, generateDocument, GenerationError, type Effort } from '@core/ai/generate';
 import { analyzeDocument } from '@core/model/issues';
-import { buildManifest, ModuleError, type ModuleRegistry, UnknownModuleError } from '@iark/kernel';
+import { buildManifest, ModuleError, ProjectError, type ModuleRegistry, UnknownModuleError } from '@iark/kernel';
 import { createDefaultRegistry, DEFAULT_MODULE } from './registry';
 import { createSuiteServer } from './serve';
 import { registerTrace } from './trace';
 import { registerDiff } from './diff';
+import { registerProject } from './project';
+import { FolderProjectStore } from './workspace';
 import { genericExport, genericGenerate, genericPrompt, genericSchema, genericValidate, readModuleDocument } from './generic';
 import { CliError, dslIncludeOptions, extractJson, fallbackDocumentName, info, readDocument, readInput, writeOutput } from './io';
 import { assertRepoFlags, DRY_RUN_HELP, FROM_REPO_HELP, FROM_REPO_PROMPT_HELP, parseRepoBudget, parseRepoRef, prepareRepo, REPO_BUDGET_HELP, REPO_PRIVACY_HELP, REPO_PROMPT_HELP, REPO_REF_HELP, reportRepoFiles, reportRepoSummary } from './repo';
@@ -454,15 +456,25 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
 
   program
     .command('serve')
-    .description('Servicio HTTP de la suite: API por módulo (validar, vistas, exportar, importar, informes), manifiesto de federación /.well-known/iark.json y, con --static, el sitio')
+    .description(
+      'Servicio HTTP de la suite: API por módulo (validar, vistas, exportar, importar, informes), manifiesto de federación /.well-known/iark.json y, con --static, el sitio y, con --workspace, la API de proyectos (/api/projects)',
+    )
     .option('-p, --port <n>', 'puerto (0 elige uno libre)', parsePort, 8787)
     .option('--host <host>', 'dirección en la que escucha (en un contenedor, 0.0.0.0)', '127.0.0.1')
     .option('--static <carpeta>', 'sirve también el sitio compilado (p. ej. dist/app), con el editor, el banco de trabajo y el shell', process.env.IARK_STATIC)
-    .option('--cors <orígenes>', 'orígenes autorizados a llamar a la API desde un navegador, separados por comas, o * (por defecto, ninguno)')
+    .option('--cors <orígenes>', 'orígenes autorizados a llamar a la API desde un navegador, separados por comas, o * (por defecto, ninguno). Para la API de proyectos hay que nombrar el origen: un * no basta')
+    .option(
+      '-w, --workspace <carpeta>',
+      'activa la API de proyectos (/api/projects) sobre esta carpeta de trabajo, la misma de `iark project` (o la variable IARK_WORKSPACE; sin ella, esas rutas responden 404). ' +
+        'Quien llegue al puerto puede leer y escribir los proyectos: déjelo en 127.0.0.1',
+      process.env.IARK_WORKSPACE || undefined,
+    )
     .action(async (opts) => {
       if (opts.static && !existsSync(opts.static)) throw new CliError(`La carpeta del sitio «${opts.static}» no existe (¿falta \`npm run build\`?).`);
+      if (opts.workspace && existsSync(opts.workspace) && !statSync(opts.workspace).isDirectory()) throw new CliError(`El espacio de trabajo «${opts.workspace}» no es una carpeta.`, 2);
       const cors = typeof opts.cors === 'string' ? opts.cors.split(',').map((o: string) => o.trim()).filter(Boolean) : [];
-      const server = createSuiteServer({ registry, version: CLI_VERSION, staticDir: opts.static, cors });
+      const projects = opts.workspace ? new FolderProjectStore(opts.workspace) : undefined;
+      const server = createSuiteServer({ registry, version: CLI_VERSION, staticDir: opts.static, cors, projects });
       await new Promise<void>((resolveListening, rejectListening) => {
         server.once('error', rejectListening);
         server.listen(opts.port, opts.host, resolveListening);
@@ -471,6 +483,10 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
       const port = typeof address === 'object' && address ? address.port : opts.port;
       info(`IArk - DIAgrams escuchando en http://${opts.host.includes(':') ? `[${opts.host}]` : opts.host}:${port}${opts.static ? ` (sitio: ${opts.static})` : ' (solo API)'}`);
       info(`  manifiesto: /.well-known/iark.json · módulos: /api/modules`);
+      if (projects) {
+        info(`  espacio de trabajo: ${projects.root} · proyectos: /api/projects`);
+        if (!['127.0.0.1', 'localhost', '::1'].includes(opts.host)) info(`aviso: escucha en ${opts.host}; con un espacio de trabajo, quien llegue a ese puerto puede leer y escribir los proyectos (y no se puede comprobar la cabecera Host).`);
+      }
       await new Promise<void>((resolveClosed) => {
         const stop = (): void => void server.close(() => resolveClosed());
         process.once('SIGINT', stop);
@@ -480,6 +496,7 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
 
   registerTrace(program, registry);
   registerDiff(program, registry, importSource);
+  registerProject(program, registry);
   registerModuleCommands(program, registry);
 
   return program;
@@ -530,6 +547,12 @@ export async function run(argv = process.argv): Promise<void> {
     if (error instanceof UnknownModuleError) {
       process.stderr.write(`${error.message}\n`);
       process.exitCode = 2;
+      return;
+    }
+    if (error instanceof ProjectError) {
+      // Uso incorrecto (no existe, ya existe, inválido): 2. Alguien cambió el diagrama en medio: 3. El disco no responde: 1.
+      process.stderr.write(`${error.message}\n`);
+      process.exitCode = error.code === 'unavailable' ? 1 : error.code === 'conflict' ? 3 : 2;
       return;
     }
     if (error instanceof DocumentValidationError) {
