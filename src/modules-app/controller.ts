@@ -16,9 +16,11 @@ import {
   type CommandRun,
   type ExportedFile,
   type ImportResult,
+  type DiagramMeta,
   type ModuleCapabilities,
   type ViewChoices,
 } from '@iark/kernel';
+import type { ProjectSession } from '../projects/session';
 
 /** Un módulo que el banco de trabajo sabe cargar (bajo demanda: cada especialidad es un trozo aparte del paquete). */
 export interface ModuleSource {
@@ -28,6 +30,17 @@ export interface ModuleSource {
   load(): Promise<AnyModule>;
   /** Documento de ejemplo (JSON) para empezar. */
   example?(): Promise<string>;
+  /** Documento vacío pero válido, para un diagrama nuevo. Sin él, el diagrama empieza sin texto. */
+  blank?(): Promise<string>;
+}
+
+/** Un documento del conjunto con el que se resuelven los enlaces: el borrador de un módulo o un diagrama del proyecto abierto. */
+export interface SuiteDocument {
+  moduleId: string;
+  /** Solo en un proyecto: el diagrama que lo contiene. */
+  diagramId?: string;
+  label: string;
+  text: string;
 }
 
 /** Borradores del editor entre sesiones (localStorage en la app; nada en modo embebido). */
@@ -53,6 +66,8 @@ export interface WorkbenchState {
   /** Mensaje del anfitrión (acción `status`) o de la propia interfaz. */
   status?: string;
   error?: string;
+  /** Lo que había antes de que una importación o un ejemplo reemplazara el diagrama guardado del proyecto, para poder deshacerlo. */
+  replaced?: { text: string; label: string };
 }
 
 export interface SuiteCapabilities {
@@ -103,11 +118,18 @@ export class WorkbenchController {
   private renderToken = 0;
   private renderTimer: ReturnType<typeof setTimeout> | undefined;
   private selectToken = 0;
+  /** Texto de los diagramas del proyecto que no están abiertos, por id y marca de modificación (para no releerlos). */
+  private readonly diagramTexts = new Map<string, { updatedAt: string; text: string }>();
 
   constructor(
     readonly sources: ModuleSource[],
-    private readonly options: { storage?: DraftStorage; suite?: string; protocol?: string; renderDelay?: number } = {},
+    private readonly options: { storage?: DraftStorage; suite?: string; protocol?: string; renderDelay?: number; projects?: ProjectSession } = {},
   ) {}
+
+  /** Los proyectos guardados (solo en el banco de trabajo de la app; en modo embebido el anfitrión es quien guarda). */
+  get projects(): ProjectSession | undefined {
+    return this.options.projects;
+  }
 
   // ───────────── suscripción ─────────────
 
@@ -155,6 +177,14 @@ export class WorkbenchController {
    */
   async selectModule(id: string, initial?: { text?: string }): Promise<void> {
     if (id === this.state.moduleId && initial?.text === undefined) return;
+    // Con un proyecto abierto, cambiar de módulo abre su diagrama más reciente; si no tiene ninguno, queda un borrador.
+    const projects = this.options.projects;
+    const project = projects?.project;
+    if (projects && project && initial?.text === undefined) {
+      const latest = project.diagrams.filter((d) => d.module === id).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0];
+      if (latest) return this.openDiagram(project.id, latest.id);
+      await projects.release();
+    }
     const token = ++this.selectToken;
     this.set({ loading: true, error: undefined });
     try {
@@ -187,9 +217,16 @@ export class WorkbenchController {
       modified: patch.modified,
       readOnly: patch.readOnly ?? this.state.readOnly,
       error: undefined,
+      replaced: undefined,
       ...(moduleChanged ? { svg: undefined, renderError: undefined } : {}),
     });
     this.scheduleRender(0);
+  }
+
+  /** Guarda el cambio donde corresponde: en el diagrama del proyecto abierto o, si no hay, en el borrador del módulo. */
+  private persist(module: AnyModule, text: string): void {
+    if (this.options.projects?.attached) this.options.projects.queueSave(text);
+    else this.options.storage?.write(module.id, text);
   }
 
   /** Edición del texto por la persona (o por el anfitrión con `merge`). */
@@ -197,7 +234,7 @@ export class WorkbenchController {
     const { module, readOnly } = this.state;
     if (!module || readOnly || text === this.state.text) return;
     this.apply(module, text, { modified: true });
-    this.options.storage?.write(module.id, text);
+    this.persist(module, text);
     if (this.state.analysis.status === 'ok') this.scheduleRender(this.options.renderDelay ?? 250);
   }
 
@@ -223,10 +260,136 @@ export class WorkbenchController {
 
   /** Sustituye el documento por el resultado de una importación o conversión (cuenta como cambio de la persona). */
   useDocumentText(text: string): void {
-    const { module } = this.state;
+    const { module, text: previous } = this.state;
     if (!module) return;
+    const projects = this.options.projects;
+    // Reemplazar un diagrama guardado se guarda solo: se conserva lo anterior unos momentos para poder deshacerlo.
+    const replaced = projects?.attached && previous.trim() && previous !== text ? { text: previous, label: projects.diagram?.name ?? 'el diagrama' } : undefined;
     this.apply(module, text, { modified: true });
-    this.options.storage?.write(module.id, text);
+    if (replaced) this.set({ replaced });
+    this.persist(module, text);
+  }
+
+  /** Deshace el último reemplazo del diagrama guardado (importar, abrir un archivo, cargar el ejemplo). */
+  undoReplace(): void {
+    const { module, replaced } = this.state;
+    if (!module || !replaced) return;
+    this.apply(module, replaced.text, { modified: true });
+    this.persist(module, replaced.text);
+  }
+
+  dismissReplaced(): void {
+    if (this.state.replaced) this.set({ replaced: undefined });
+  }
+
+  // ───────────── proyectos ─────────────
+
+  /** Abre un diagrama del proyecto: lo carga en el editor y a partir de ahí sus cambios se guardan solos. */
+  async openDiagram(projectId: string, diagramId: string): Promise<void> {
+    const projects = this.options.projects;
+    if (!projects) throw new Error('Este banco de trabajo no guarda proyectos.');
+    const meta = projects.getState().projects.find((p) => p.id === projectId)?.diagrams.find((d) => d.id === diagramId);
+    const token = ++this.selectToken;
+    this.set({ loading: true, error: undefined });
+    try {
+      if (meta && !this.moduleIds.includes(meta.module)) {
+        throw new Error(`El diagrama «${meta.name}» es del módulo «${meta.module}», que este banco de trabajo no ofrece (módulos: ${this.moduleIds.join(', ')}).`);
+      }
+      const diagram = await projects.openDiagram(projectId, diagramId);
+      const module = await this.loadModule(diagram.module);
+      if (token !== this.selectToken) return;
+      this.apply(module, diagram.text, { modified: false, readOnly: false });
+    } catch (error) {
+      if (token === this.selectToken) this.set({ loading: false, error: (error as Error).message });
+    }
+  }
+
+  /**
+   * Abre un proyecto como contexto (o `undefined` para salir de él). Entra en su diagrama más reciente del módulo activo o,
+   * si no tiene, en el más reciente de todos; un proyecto sin diagramas deja el borrador como está. Al salir, vuelve el borrador del módulo.
+   */
+  async enterProject(projectId: string | undefined): Promise<void> {
+    const projects = this.options.projects;
+    if (!projects) return;
+    if (projectId === undefined) {
+      await projects.release();
+      projects.selectProject(undefined);
+      const { module } = this.state;
+      if (module) {
+        const text = this.options.storage?.read(module.id) ?? (await this.source(module.id).example?.()) ?? '';
+        this.apply(module, text, { modified: false });
+      }
+      return;
+    }
+    await projects.release();
+    projects.selectProject(projectId);
+    const project = projects.project;
+    const recent = (list: DiagramMeta[]): DiagramMeta | undefined => [...list].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))[0];
+    const target = recent(project?.diagrams.filter((d) => d.module === this.state.moduleId) ?? []) ?? recent(project?.diagrams ?? []);
+    if (target && project) await this.openDiagram(project.id, target.id);
+  }
+
+  /** Guarda en el proyecto abierto el documento que se está editando (hasta entonces era un borrador) y lo deja abierto. */
+  async saveToProject(name?: string): Promise<void> {
+    const projects = this.options.projects;
+    const current = this.currentDocument();
+    if (!projects || !current) return;
+    await projects.createDiagram({ module: current.module, name: name ?? current.name, text: current.text });
+  }
+
+  /** Resuelve un conflicto de guardado: quedarse con esta versión o cargar la que guardó otra pestaña. */
+  async resolveConflict(choice: 'overwrite' | 'reload'): Promise<void> {
+    const projects = this.options.projects;
+    if (!projects) return;
+    const diagram = await projects.resolveConflict(choice);
+    const module = diagram && this.state.module;
+    if (diagram && module) this.apply(module, diagram.text, { modified: false });
+  }
+
+  /** Documento vacío y válido (o ejemplo) con el que empieza un diagrama nuevo del módulo. */
+  async template(moduleId: string, kind: 'example' | 'blank'): Promise<string | undefined> {
+    const source = this.source(moduleId);
+    return kind === 'blank' ? source.blank?.() : source.example?.();
+  }
+
+  /** El documento que se está editando, para guardarlo como diagrama de un proyecto. */
+  currentDocument(): { module: string; text: string; name?: string } | undefined {
+    const { module, text, analysis } = this.state;
+    if (!module || !text.trim()) return undefined;
+    const workspace = analysis.status === 'ok' ? (analysis.document as { workspace?: { name?: unknown } }).workspace : undefined;
+    return { module: module.id, text, name: typeof workspace?.name === 'string' ? workspace.name : undefined };
+  }
+
+  /**
+   * Los documentos con los que se resuelven los enlaces entre diagramas. Con un proyecto abierto son sus diagramas (el que se
+   * está editando, con el texto vivo); si no, el borrador de cada módulo, uno por módulo.
+   */
+  async suiteDocuments(): Promise<SuiteDocument[]> {
+    const projects = this.options.projects;
+    const project = projects?.project;
+    if (projects && project) {
+      const docs: SuiteDocument[] = [];
+      for (const meta of project.diagrams) {
+        let text: string | undefined;
+        if (meta.id === projects.getState().diagramId) text = this.state.text;
+        else {
+          const cached = this.diagramTexts.get(meta.id);
+          if (cached && cached.updatedAt === meta.updatedAt) text = cached.text;
+          else {
+            const diagram = await projects.store.getDiagram(project.id, meta.id).catch(() => undefined);
+            if (diagram) this.diagramTexts.set(meta.id, { updatedAt: diagram.updatedAt, text: (text = diagram.text) });
+          }
+        }
+        if (text?.trim()) docs.push({ moduleId: meta.module, diagramId: meta.id, label: meta.name, text });
+      }
+      return docs;
+    }
+    const docs: SuiteDocument[] = [];
+    for (const source of this.sources) {
+      const text = await this.draftText(source.id);
+      if (text?.trim()) docs.push({ moduleId: source.id, label: source.label, text });
+    }
+    return docs;
   }
 
   async loadExample(): Promise<void> {

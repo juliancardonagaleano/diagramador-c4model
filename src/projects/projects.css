@@ -1,0 +1,275 @@
+/*
+ * Gestor de proyectos. Sirve en dos pantallas con temas distintos (el banco de trabajo, con `--wb-*`, y el editor C4, con
+ * las variables de Semi UI): cada color toma la variable de la pantalla que esté y, si no hay ninguna, un valor propio.
+ */
+.pj-overlay {
+  --pj-bg: var(--wb-surface, var(--semi-color-bg-2, #ffffff));
+  --pj-bg-2: var(--wb-surface-2, var(--semi-color-fill-0, #f0f2f5));
+  --pj-border: var(--wb-border, var(--semi-color-border, #d9dde3));
+  --pj-text: var(--wb-text, var(--semi-color-text-0, #1f2430));
+  --pj-text-2: var(--wb-text-2, var(--semi-color-text-2, #566070));
+  --pj-primary: var(--wb-primary, var(--semi-color-primary, #175e7a));
+  --pj-primary-text: var(--wb-primary-text, #ffffff);
+  --pj-error: var(--wb-error, var(--semi-color-danger, #b42318));
+  --pj-error-bg: var(--wb-error-bg, #fdecea);
+  --pj-warning-bg: var(--wb-warning-bg, #fff4e0);
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(10, 14, 20, 0.5);
+  font-family: var(--wb-font, inherit);
+  font-size: 14px;
+  color: var(--pj-text);
+}
+.pj-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(960px, 100%);
+  max-height: min(720px, 100%);
+  background: var(--pj-bg);
+  border: 1px solid var(--pj-border);
+  border-radius: 10px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.pj-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--pj-border);
+}
+.pj-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.pj-dialog button,
+.pj-file {
+  padding: 5px 11px;
+  border-radius: 6px;
+  border: 1px solid var(--pj-border);
+  background: var(--pj-bg);
+  color: var(--pj-text);
+  font: inherit;
+  cursor: pointer;
+}
+.pj-dialog button:hover:not(:disabled),
+.pj-file:hover {
+  background: var(--pj-bg-2);
+}
+.pj-dialog button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pj-dialog button.pj-primary {
+  background: var(--pj-primary);
+  border-color: var(--pj-primary);
+  color: var(--pj-primary-text);
+}
+.pj-dialog button.pj-danger {
+  background: var(--pj-error);
+  border-color: var(--pj-error);
+  color: #fff;
+}
+.pj-dialog button.pj-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pj-primary);
+  text-align: left;
+  text-decoration: underline;
+}
+.pj-dialog input[type='text'],
+.pj-dialog select {
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--pj-border);
+  background: var(--pj-bg);
+  color: var(--pj-text);
+  font: inherit;
+  min-width: 0;
+}
+.pj-dialog :focus-visible {
+  outline: 2px solid var(--pj-primary);
+  outline-offset: 1px;
+}
+.pj-warn,
+.pj-error {
+  margin: 0;
+  padding: 8px 16px;
+}
+.pj-warn {
+  background: var(--pj-warning-bg);
+}
+.pj-error {
+  background: var(--pj-error-bg);
+  color: var(--pj-error);
+  white-space: pre-wrap;
+}
+.pj-body {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  min-height: 0;
+  flex: 1;
+}
+@media (max-width: 700px) {
+  .pj-body {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+}
+.pj-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border-right: 1px solid var(--pj-border);
+  overflow: auto;
+}
+.pj-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pj-dialog .pj-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+}
+.pj-dialog .pj-item[aria-current='true'] {
+  border-color: var(--pj-primary);
+  background: var(--pj-bg-2);
+}
+.pj-item small,
+.pj-desc,
+.pj-foot,
+.pj-empty {
+  color: var(--pj-text-2);
+}
+.pj-empty {
+  margin: 4px 0;
+}
+.pj-file {
+  position: relative;
+  text-align: center;
+}
+.pj-file input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.pj-file:focus-within {
+  outline: 2px solid var(--pj-primary);
+  outline-offset: 1px;
+}
+.pj-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px;
+  overflow: auto;
+  min-width: 0;
+}
+.pj-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pj-title-row h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.pj-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+td.pj-actions {
+  display: table-cell;
+  white-space: nowrap;
+}
+td.pj-actions > * {
+  margin-right: 6px;
+}
+.pj-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.pj-table th,
+.pj-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--pj-border);
+  vertical-align: middle;
+}
+.pj-table th {
+  color: var(--pj-text-2);
+  font-weight: 600;
+}
+.pj-table tr[data-current='true'] td:first-child {
+  border-left: 3px solid var(--pj-primary);
+}
+.pj-chip {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--pj-bg-2);
+  border: 1px solid var(--pj-border);
+  font-size: 12px;
+}
+.pj-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--pj-border);
+}
+.pj-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+.pj-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--pj-text-2);
+  font-size: 12px;
+}
+.pj-list .pj-row input {
+  flex: 1;
+}
+.pj-inline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pj-confirm {
+  color: var(--pj-error);
+}
+.pj-foot {
+  padding: 10px 16px;
+  border-top: 1px solid var(--pj-border);
+  font-size: 12px;
+}
+.pj-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
