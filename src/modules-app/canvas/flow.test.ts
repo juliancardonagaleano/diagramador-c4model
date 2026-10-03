@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EditorSpec } from '@iark/kernel';
 import { FAKE_DOC, fakeEditor } from '../testing-editor';
-import { absolutePositions, buildFlow, dropTarget, edgeLabelText, followRoute, layoutLabelText, movedByDrag, routeInPlace, structureKey } from './flow';
+import { absolutePositions, buildFlow, dropTarget, edgeLabelText, followRoute, ghostNodes, layoutLabelText, movedByDrag, removedNodes, routeInPlace, structureKey } from './flow';
 
 const spec = fakeEditor as unknown as EditorSpec<unknown>;
 const graph = fakeEditor.project(FAKE_DOC);
@@ -217,5 +217,41 @@ describe('dropTarget', () => {
     expect(dropTarget(nodes, sizes, 'celda')).toBeUndefined();
     const far = nodes.map((n) => (n.id === 'a' ? { ...n, position: { x: 900, y: 900 }, parentId: undefined } : n));
     expect(dropTarget(far, sizes, 'a')).toBeUndefined();
+  });
+});
+
+describe('comparar versiones: fantasmas de lo quitado', () => {
+  const base = { ...FAKE_DOC, nodes: [...FAKE_DOC.nodes, { id: 'antiguo', kind: 'service' as const, name: 'Servicio antiguo' }, { id: 'otro', kind: 'queue' as const, name: 'Cola antigua', zone: 'zona' }] };
+
+  it('removedNodes devuelve los nodos de la versión base que ya no están y que la vista de la base dibujaba', () => {
+    const ghosts = removedNodes(spec, base, undefined, new Set(['antiguo', 'otro', 'nunca-estuvo', 'api']), graph);
+    expect(ghosts.map((n) => n.id)).toEqual(['antiguo', 'otro']);
+    expect(removedNodes(spec, base, undefined, new Set(), graph)).toEqual([]);
+  });
+
+  it('si el módulo no sabe proyectar la versión base no hay fantasmas, en vez de romper', () => {
+    expect(removedNodes(spec, { nodes: 'roto' }, undefined, new Set(['antiguo']), graph)).toEqual([]);
+  });
+
+  it('ghostNodes los coloca en filas bajo el dibujo, discontinuos, sin padre y sin poder arrastrarse ni seleccionarse', () => {
+    const placed = buildFlow(spec, graph, undefined).nodes;
+    const ghosts = ghostNodes(spec, removedNodes(spec, base, undefined, new Set(['antiguo', 'otro']), graph), placed);
+    expect(ghosts.map((g) => g.id)).toEqual(['ghost:antiguo', 'ghost:otro']);
+    const bottom = Math.max(...[...absolutePositions(placed)].map(([id, at]) => at.y + placed.find((n) => n.id === id)!.height));
+    expect(ghosts[0].position.y).toBeGreaterThan(bottom);
+    expect(ghosts[1].position.y).toBe(ghosts[0].position.y);
+    expect(ghosts[1].position.x).toBeGreaterThan(ghosts[0].position.x);
+    expect(ghosts[0]).toMatchObject({ draggable: false, selectable: false, connectable: false });
+    expect(ghosts[0]).not.toHaveProperty('parentId');
+    expect(ghosts[1].data).toMatchObject({ diff: 'removed', group: false, node: { dashed: true } });
+    expect(ghosts[1].data.node.parentId).toBeUndefined();
+    expect(ghostNodes(spec, [], placed)).toEqual([]);
+  });
+
+  it('con más de cinco fantasmas se pasa a otra fila', () => {
+    const many = Array.from({ length: 7 }, (_, i) => ({ id: `q${i}`, kind: 'service', label: `Q${i}` }));
+    const ghosts = ghostNodes(spec, many, buildFlow(spec, graph, undefined).nodes);
+    expect(new Set(ghosts.map((g) => g.position.y)).size).toBe(2);
+    expect(ghosts[5].position.x).toBe(ghosts[0].position.x);
   });
 });

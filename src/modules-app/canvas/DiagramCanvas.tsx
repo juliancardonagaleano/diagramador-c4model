@@ -15,7 +15,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { layoutGraph, pretty, type EditResult, type EditorSpec, type GraphLayout } from '@iark/kernel';
 import './canvas.css';
 import { ActionPrompt } from './ActionPrompt';
-import { absolutePositions, buildFlow, dropTarget, layoutLabelText, movedByDrag, structureKey, type FlowEdge, type FlowNode } from './flow';
+import type { CanvasCompare } from '../compare';
+import { absolutePositions, buildFlow, dropTarget, ghostNodes, layoutLabelText, movedByDrag, removedNodes, structureKey, type FlowEdge, type FlowNode } from './flow';
 import type { EditHistory } from './history';
 import { Inspector, type LinkTools } from './Inspector';
 import { NotationEdge } from './NotationEdge';
@@ -46,6 +47,8 @@ export interface DiagramCanvasProps {
   onSelect?(id: string | undefined): void;
   /** Abre un adjunto del módulo (un contrato) en su pestaña. */
   onOpenAttachment?(id: string): void;
+  /** Comparando con otra versión: marca los elementos nuevos y modificados y dibuja como fantasmas los que se quitaron. Sin él, el lienzo es el de siempre. */
+  compare?: CanvasCompare;
 }
 
 /** Sin cajas calculadas: `buildFlow` coloca cada elemento en su cuadrícula de reserva. */
@@ -71,7 +74,7 @@ const writePositions = (key: string, positions: Map<string, { x: number; y: numb
   }
 };
 
-function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, readOnly, history, onText, notify, focusId, links, onBack, onSelect, onOpenAttachment }: DiagramCanvasProps) {
+function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, readOnly, history, onText, notify, focusId, links, onBack, onSelect, onOpenAttachment, compare }: DiagramCanvasProps) {
   const flow = useReactFlow();
   const key = positionsKey(moduleId, viewId);
   const [moved, setMoved] = useState(() => readPositions(key));
@@ -182,8 +185,20 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
   builtRef.current = built;
 
   const pick = useCallback((id: string, additive: boolean) => setSelection((current) => (additive ? toggleSelected(current, id) : new Set([id]))), []);
-  const nodes = useMemo(() => built.nodes.map((n) => ({ ...n, selected: selection.has(n.id) })), [built.nodes, selection]);
-  const edges = useMemo(() => built.edges.map((e) => ({ ...e, selected: selection.has(e.id), data: { ...e.data, onPick: pick } })), [built.edges, selection, pick]);
+  // Al comparar versiones, las marcas van en los datos de cada nodo y arista, y lo quitado se añade como fantasmas bajo el dibujo.
+  const marks = compare?.marks;
+  const ghosts = useMemo(() => (compare && graph && compare.removed.size > 0 ? removedNodes(spec, compare.base, viewId, compare.removed, graph) : []), [compare, graph, spec, viewId]);
+  const nodes = useMemo(() => {
+    const placed = built.nodes.map((n) => {
+      const diff = marks?.get(n.id);
+      return { ...n, selected: selection.has(n.id), ...(diff ? { data: { ...n.data, diff } } : {}) };
+    });
+    return ghosts.length > 0 ? [...placed, ...ghostNodes(spec, ghosts, built.nodes)] : placed;
+  }, [built.nodes, selection, marks, ghosts, spec]);
+  const edges = useMemo(
+    () => built.edges.map((e) => ({ ...e, selected: selection.has(e.id), data: { ...e.data, onPick: pick, ...(marks?.get(e.id) ? { diff: marks.get(e.id) } : {}) } })),
+    [built.edges, selection, pick, marks],
+  );
 
   // La cámara cuenta como asentada al acabar la animación o, si React Flow la interrumpe sin avisar, poco después.
   const settleCamera = useCallback((fit: Promise<unknown>, duration: number, forKey: string): void => {

@@ -1,10 +1,25 @@
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 import { memo } from 'react';
 import type { PortSide } from '@iark/kernel';
-import type { FlowNodeData } from './flow';
+import type { DiffMark, FlowNodeData } from './flow';
 import { ShapeSvg, textColorFor } from './shapes';
 
 export type NotationNodeType = Node<FlowNodeData, 'notation'>;
+
+/** Insignia de un elemento al comparar versiones. */
+const DIFF_TEXT: Record<DiffMark, { text: string; title: string }> = {
+  added: { text: 'Nuevo', title: 'Añadido respecto a la versión con la que se compara' },
+  modified: { text: 'Modificado', title: 'Distinto de la versión con la que se compara' },
+  removed: { text: 'Quitado', title: 'Estaba en la versión con la que se compara y ya no está' },
+};
+
+function DiffBadge({ id, diff }: { id: string; diff: DiffMark }) {
+  return (
+    <span className="cv-diff" data-diff={diff} title={DIFF_TEXT[diff].title} data-testid={`diff-${id}`}>
+      {DIFF_TEXT[diff].text}
+    </span>
+  );
+}
 
 const POSITIONS: Record<PortSide, Position> = { top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left };
 
@@ -24,7 +39,7 @@ function ProviderIcon({ id, paths, color, zone }: { id: string; paths: string[];
 
 /** Nodo del lienzo: la figura y el color los dicta la notación del módulo; los nodos con hijos se dibujan como zona. */
 function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
-  const { node, notation, group, width, height } = data;
+  const { node, notation, group, width, height, diff } = data;
   const fill = node.fill ?? notation.fill;
   const ink = textColorFor(fill);
   // El icono propio del nodo (el servicio de una nube) sustituye al de su tipo; con color de acento es una ficha de proveedor.
@@ -35,7 +50,7 @@ function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
     const line = node.stroke ?? fill;
     const tint = node.fill ? { background: `color-mix(in srgb, ${node.fill} 14%, transparent)` } : undefined;
     return (
-      <div className="cv-group" style={{ width, height, borderColor: line, ...(node.border ? { borderStyle: node.border } : {}), ...tint }} data-selected={selected || undefined} data-testid={`node-${node.id}`} data-kind={node.kind}>
+      <div className="cv-group" style={{ width, height, borderColor: line, ...(node.border ? { borderStyle: node.border } : {}), ...tint }} data-selected={selected || undefined} data-diff={diff} data-testid={`node-${node.id}`} data-kind={node.kind}>
         <Handle type="target" position={Position.Left} />
         {provider && <ProviderIcon id={node.id} paths={provider} color={node.iconColor!} zone />}
         <span className="cv-group-title" style={{ color: line }}>
@@ -46,13 +61,14 @@ function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
             </span>
           )}
         </span>
+        {diff && <DiffBadge id={node.id} diff={diff} />}
         <Handle type="source" position={Position.Right} />
       </div>
     );
   }
 
   return (
-    <div className="cv-node" style={{ width, height, color: ink }} data-selected={selected || undefined} data-testid={`node-${node.id}`} data-kind={node.kind} data-shape={notation.shape}>
+    <div className="cv-node" style={{ width, height, color: ink }} data-selected={selected || undefined} data-diff={diff} data-testid={`node-${node.id}`} data-kind={node.kind} data-shape={notation.shape}>
       <ShapeSvg shape={notation.shape} width={width} height={height} fill={fill} stroke={node.stroke ?? notation.stroke} dashed={node.dashed} />
       {!notation.bare && <Handle type="target" position={Position.Left} />}
       {provider ? (
@@ -99,6 +115,7 @@ function NotationNodeImpl({ data, selected }: NodeProps<NotationNodeType>) {
           ))}
         </div>
       )}
+      {diff && <DiffBadge id={node.id} diff={diff} />}
       {!notation.bare && <Handle type="source" position={Position.Right} />}
       {data.handles?.map((h) => (
         <Handle key={`${h.type}-${h.side}`} id={h.side} type={h.type} position={POSITIONS[h.side]} />
