@@ -13,6 +13,8 @@
   --pj-error: var(--wb-error, var(--semi-color-danger, #b42318));
   --pj-error-bg: var(--wb-error-bg, #fdecea);
   --pj-warning-bg: var(--wb-warning-bg, #fff4e0);
+  --pj-ok: var(--wb-ok, var(--semi-color-success, #1a7f43));
+  --pj-ok-bg: var(--wb-ok-bg, #e8f5ec);
   position: fixed;
   inset: 0;
   z-index: 2000;
@@ -84,6 +86,7 @@
   text-decoration: underline;
 }
 .pj-dialog input[type='text'],
+.pj-dialog input[type='password'],
 .pj-dialog select {
   padding: 5px 8px;
   border-radius: 6px;
@@ -98,12 +101,17 @@
   outline-offset: 1px;
 }
 .pj-warn,
-.pj-error {
+.pj-error,
+.pj-ok {
   margin: 0;
   padding: 8px 16px;
 }
 .pj-warn {
   background: var(--pj-warning-bg);
+}
+.pj-ok {
+  background: var(--pj-ok-bg);
+  color: var(--pj-ok);
 }
 .pj-error {
   background: var(--pj-error-bg);
@@ -115,6 +123,97 @@
   grid-template-columns: 250px 1fr;
   min-height: 0;
   flex: 1;
+}
+/* ───────────── Dónde se guardan ───────────── */
+.pj-storage {
+  border-bottom: 1px solid var(--pj-border);
+  background: var(--pj-bg-2);
+  max-height: 52vh;
+  overflow: auto;
+}
+.pj-storage-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 8px 16px;
+}
+.pj-storage-where {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.pj-status {
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--pj-border);
+  background: var(--pj-bg);
+  font-size: 12px;
+}
+.pj-status[data-status='connected'] {
+  color: var(--pj-ok);
+  border-color: var(--pj-ok);
+}
+.pj-status[data-status='offline'],
+.pj-status[data-status='rejected'] {
+  color: var(--pj-error);
+  border-color: var(--pj-error);
+}
+.pj-storage-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 0 10px;
+  border-top: 1px solid var(--pj-border);
+  background: var(--pj-bg);
+}
+.pj-connect {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px 0;
+}
+.pj-connect .pj-row label.pj-grow {
+  flex: 1 1 200px;
+}
+.pj-connect input[type='text'],
+.pj-connect input[type='password'] {
+  width: 100%;
+  box-sizing: border-box;
+}
+.pj-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+}
+.pj-hint {
+  margin: 0;
+  color: var(--pj-text-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.pj-hint code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--pj-bg-2);
+  user-select: all;
+}
+.pj-connect-actions {
+  padding-top: 2px;
+}
+.pj-storage-body > .pj-ok,
+.pj-storage-body > .pj-error,
+.pj-storage-body > .pj-warn {
+  white-space: normal;
+}
+.pj-error small {
+  display: block;
+  margin-top: 2px;
+  color: var(--pj-text-2);
 }
 @media (max-width: 700px) {
   .pj-body {
