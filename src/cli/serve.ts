@@ -6,6 +6,7 @@ import {
   analyzeText,
   buildTraceGraph,
   commandInfos,
+  diffDocuments,
   exportDocument,
   exportFormats,
   importText,
@@ -38,6 +39,7 @@ import { suiteManifest } from './suiteManifest';
  *   POST /api/<módulo>/export?format=svg&view=  cuerpo: documento JSON → el archivo exportado
  *   POST /api/<módulo>/import?importer=&name=   cuerpo: texto (Mermaid…) → { document, warnings, importer }
  *   POST /api/<módulo>/run/<comando>            cuerpo: { input?, args?, options? } → { output, warnings, kind }
+ *   POST /api/<módulo>/diff                     cuerpo: { before, after } (dos documentos del módulo) → DocumentDiff: qué se añadió, quitó y modificó
  *   POST /api/trace                             cuerpo: { documents: [{ module, document }], from?, direction?, depth? } → { graph, from?, reached?, report, mermaid, svg }
  */
 export interface ServeOptions {
@@ -143,6 +145,27 @@ export function createSuiteServer(options: ServeOptions): Server {
     throw new HttpError(422, 'El documento no cumple el esquema del módulo.', { issues: analysis.issues });
   }
 
+  /** Compara dos versiones de un documento del módulo: cada una, validada con su esquema (422 si no lo cumple, diciendo cuál). */
+  function compare(module: AnyModule, raw: string): unknown {
+    let body: { before?: unknown; after?: unknown } | null;
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      throw new HttpError(400, 'El cuerpo debe ser JSON: { "before": {…}, "after": {…} } (las dos versiones del documento del módulo).');
+    }
+    const side = (name: 'before' | 'after'): unknown => {
+      const value = body && typeof body === 'object' ? body[name] : undefined;
+      if (value === undefined || value === null) throw new HttpError(400, `Falta "${name}": la ${name === 'before' ? 'versión anterior' : 'versión nueva'} del documento.`);
+      try {
+        return documentOf(module, typeof value === 'string' ? value : JSON.stringify(value));
+      } catch (error) {
+        if (error instanceof HttpError) throw new HttpError(error.status, `«${name}»: ${error.message}`, error.extra);
+        throw error;
+      }
+    };
+    return diffDocuments(side('before'), side('after'), module.diff);
+  }
+
   /** Trazabilidad entre módulos: reúne los documentos aportados y sigue sus referencias URN. */
   async function trace(raw: string): Promise<unknown> {
     let body: { documents?: unknown; from?: unknown; direction?: unknown; depth?: unknown };
@@ -237,6 +260,10 @@ export function createSuiteServer(options: ServeOptions): Server {
         });
         return sendJson(res, 200, result);
       }
+      case 'diff': {
+        requireMethod(req, 'POST');
+        return sendJson(res, 200, compare(module, await readBody(req)));
+      }
       case 'run': {
         requireMethod(req, 'POST');
         if (!command) throw new HttpError(404, `Indica el comando: /api/${id}/run/<comando>. Comandos: ${commandInfos(module).map((c) => c.name).join(', ') || '(ninguno)'}.`);
@@ -258,7 +285,7 @@ export function createSuiteServer(options: ServeOptions): Server {
         return sendJson(res, 200, { module: module.id, ...result });
       }
       default:
-        throw new HttpError(404, `Acción desconocida «${action}». Use capabilities, schema, validate, views, export, import o run.`);
+        throw new HttpError(404, `Acción desconocida «${action}». Use capabilities, schema, validate, views, export, import, diff o run.`);
     }
   }
 

@@ -19,6 +19,7 @@ import { buildManifest, ModuleError, type ModuleRegistry, UnknownModuleError } f
 import { createDefaultRegistry, DEFAULT_MODULE } from './registry';
 import { createSuiteServer } from './serve';
 import { registerTrace } from './trace';
+import { registerDiff } from './diff';
 import { genericExport, genericGenerate, genericPrompt, genericSchema, genericValidate, readModuleDocument } from './generic';
 import { CliError, dslIncludeOptions, extractJson, fallbackDocumentName, info, readDocument, readInput, writeOutput } from './io';
 
@@ -449,6 +450,7 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
     });
 
   registerTrace(program, registry);
+  registerDiff(program, registry, importSource);
   registerModuleCommands(program, registry);
 
   return program;
