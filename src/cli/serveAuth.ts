@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http';
+import { performance } from 'node:perf_hooks';
 import { HttpError } from './httpError';
 import type { TokenIdentity, TokenStore } from './tokens';
 
@@ -26,6 +27,7 @@ export interface FailureLimiterOptions {
   forgetAfterMs: number;
   /** Direcciones que se recuerdan a la vez (la memoria no crece sin límite): se descartan primero las olvidables y luego las más antiguas. */
   maxEntries: number;
+  /** El reloj, en milisegundos (en las pruebas, uno falso). */
   now: () => number;
 }
 
@@ -35,7 +37,7 @@ const DEFAULT_LIMITS: FailureLimiterOptions = {
   maxMs: 5 * 60_000,
   forgetAfterMs: 15 * 60_000,
   maxEntries: 10_000,
-  now: Date.now,
+  now: () => performance.now(), // reloj monotónico: un cambio de hora del sistema no alarga ni acorta un freno
 };
 
 interface Attempts {
