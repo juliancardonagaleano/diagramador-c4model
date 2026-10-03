@@ -1,0 +1,26 @@
+services:
+  web:
+    image: tienda/web:latest
+    ports:
+      - "8080:80"
+    depends_on:
+      - pedidos
+  pedidos:
+    build: ./services/pedidos
+    environment:
+      DATABASE_URL: postgres://tienda@db:5432/pedidos
+      AMQP_URL: amqp://broker:5672
+    depends_on:
+      - db
+      - broker
+  facturacion:
+    build: ./services/facturacion
+    environment:
+      AMQP_URL: amqp://broker:5672
+      PAGOS_API_URL: https://api.pagos.example
+    depends_on:
+      - broker
+  db:
+    image: postgres:16
+  broker:
+    image: rabbitmq:3-management

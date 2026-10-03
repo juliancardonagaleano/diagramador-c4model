@@ -22,6 +22,7 @@ import { registerTrace } from './trace';
 import { registerDiff } from './diff';
 import { genericExport, genericGenerate, genericPrompt, genericSchema, genericValidate, readModuleDocument } from './generic';
 import { CliError, dslIncludeOptions, extractJson, fallbackDocumentName, info, readDocument, readInput, writeOutput } from './io';
+import { assertRepoFlags, DRY_RUN_HELP, FROM_REPO_HELP, parseRepoBudget, prepareRepo, REPO_BUDGET_HELP, REPO_PRIVACY_HELP, reportRepoFiles, reportRepoSummary } from './repo';
 
 const CLI_VERSION = '0.1.0';
 
@@ -109,6 +110,12 @@ async function readBaseDocument(registry: ModuleRegistry, file: string, moduleId
   return imported.document;
 }
 
+/** Imprime el prompt autocontenido del módulo (sin llamar a ningún modelo): `prompt` y `generate --from-repo --dry-run`. */
+async function emitPrompt(registry: ModuleRegistry, moduleId: string, instruction: string, base: any): Promise<void> {
+  if (moduleId !== DEFAULT_MODULE) return genericPrompt(registry.require(moduleId), instruction, base);
+  process.stdout.write(standalonePrompt(instruction, base));
+}
+
 function parseTarget(value: string): 'drawio' | 'mermaid' {
   const v = value.toLowerCase();
   if (v !== 'drawio' && v !== 'mermaid') throw new InvalidArgumentError('Formato de salida inválido. Use: drawio, mermaid');
@@ -190,8 +197,23 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
     .option('--distribution <auto|centered|elk>', 'distribución del autolayout', parseDistribution)
     .option('--notation <c4|card>', 'notación de las figuras en el .drawio', parseNotation, 'c4')
     .option('--module <id>', 'módulo de la suite (ver `iark modules`); con otro que no sea c4, --out exporta según la extensión (.svg, .mmd, .drawio…)', DEFAULT_MODULE)
+    .option('--from-repo <carpeta>', FROM_REPO_HELP)
+    .option('--repo-budget <kb>', REPO_BUDGET_HELP, parseRepoBudget)
+    .option('--dry-run', DRY_RUN_HELP, false)
+    .addHelpText('after', REPO_PRIVACY_HELP)
     .action(async (instruction: string, opts) => {
+      assertRepoFlags(opts);
       const base = opts.from ? await readBaseDocument(registry, opts.from, opts.module) : undefined;
+      const repo = prepareRepo(instruction, opts, opts.module);
+      if (repo) {
+        instruction = repo.instruction;
+        if (opts.dryRun) {
+          reportRepoFiles(repo.digest);
+          await emitPrompt(registry, opts.module, instruction, base);
+          return;
+        }
+        reportRepoSummary(repo.digest, true);
+      }
       if (opts.module !== DEFAULT_MODULE) {
         await genericGenerate(registry.require(opts.module), instruction, { base, provider: opts.provider, model: opts.model, effort: opts.effort, retries: opts.retries, json: opts.json, out: opts.out });
         return;
@@ -395,10 +417,14 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
     .argument('<instrucción>', 'descripción del sistema o instrucción de refinamiento')
     .option('-f, --from <archivo>', 'documento existente a refinar: JSON, .drawio, .dsl (Structurizr) o .mmd (Mermaid)')
     .option('--module <id>', 'módulo de la suite (ver `iark modules`)', DEFAULT_MODULE)
+    .option('--from-repo <carpeta>', 'incluye en el prompt un resumen de la carpeta local de un repositorio (sin secretos, acotado); ver `iark generate --help`')
+    .option('--repo-budget <kb>', REPO_BUDGET_HELP, parseRepoBudget)
     .action(async (instruction: string, opts) => {
+      assertRepoFlags(opts);
       const base = opts.from ? await readBaseDocument(registry, opts.from, opts.module) : undefined;
-      if (opts.module !== DEFAULT_MODULE) return genericPrompt(registry.require(opts.module), instruction, base);
-      process.stdout.write(standalonePrompt(instruction, base));
+      const repo = prepareRepo(instruction, opts, opts.module);
+      if (repo) reportRepoSummary(repo.digest);
+      await emitPrompt(registry, opts.module, repo ? repo.instruction : instruction, base);
     });
 
   program

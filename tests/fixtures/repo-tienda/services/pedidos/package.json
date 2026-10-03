@@ -1,0 +1,10 @@
+{
+  "name": "pedidos",
+  "version": "1.4.0",
+  "main": "src/server.js",
+  "dependencies": {
+    "amqplib": "^0.10.4",
+    "express": "^4.19.2",
+    "pg": "^8.12.0"
+  }
+}
