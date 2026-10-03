@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { bundleFileName, bundleToText, checkProject, createBundle, importBundle, ProjectError, parseBundle, snapshotProject, type ModuleRegistry, type ProjectStore } from '@iark/kernel';
 import { HttpError } from './httpError';
+import type { Authenticator } from './serveAuth';
+import { roleAllows, type TokenRole } from './tokens';
 import { isWorkspaceId } from './workspace';
 
 /**
@@ -28,6 +30,11 @@ import { isWorkspaceId } from './workspace';
  *  - una petición con cabecera `Origin` solo se acepta si es del mismo sitio (su host es el de `Host`) o está en `--cors`
  *    (un `*` no basta: abrir la API de cálculo a cualquier sitio no es abrir el disco);
  *  - POST, PUT, PATCH y DELETE exigen `Content-Type: application/json`, que un formulario o un `fetch` `no-cors` no pueden enviar.
+ *
+ * Con autenticación (`--tokens`, ver `serveAuth.ts`) cada petición trae su token en `Authorization: Bearer …` y se aplican los
+ * roles (ver `requiredRole`). Un token en una cabecera no es una credencial «ambiental» (el navegador no lo añade solo a las
+ * peticiones de otra página), así que ya no hay CSRF ni «DNS rebinding» que atajar: las comprobaciones de `Host` y de `Origin`
+ * dejan de aplicarse (el servidor, además, se expone con otros nombres y desde otros sitios). Se mantiene `Content-Type: application/json`.
  */
 
 export interface ProjectsApiContext {
@@ -36,6 +43,8 @@ export interface ProjectsApiContext {
   registry: ModuleRegistry;
   /** Orígenes autorizados con `--cors` (se compara el texto exacto del `Origin`). */
   cors: string[];
+  /** Con autenticación por token (`--tokens`): quien identifica a quien llama. Sin él, las rutas no piden credenciales y valen las comprobaciones de `Host` y `Origin`. */
+  auth?: Authenticator;
   readBody(req: IncomingMessage): Promise<string>;
   send(res: ServerResponse, status: number, body: string | Buffer, headers?: Record<string, string>): void;
   sendJson(res: ServerResponse, status: number, value: unknown, headers?: Record<string, string>): void;
@@ -64,17 +73,34 @@ export function projectOriginAllowed(origin: string, host: string | undefined, c
 
 const isJson = (req: IncomingMessage): boolean => (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() === 'application/json';
 
-function guard(req: IncomingMessage, cors: string[]): void {
-  if (isLoopbackAddress(req.socket.localAddress) && !LOOPBACK_HOSTS.has(hostName(req.headers.host))) {
+/** Sin autenticación: `Host`, `Origin` y `Content-Type`. Con ella (`authenticated`), solo `Content-Type`: ver el comentario de arriba. */
+function guard(req: IncomingMessage, cors: string[], authenticated: boolean): void {
+  if (!authenticated && isLoopbackAddress(req.socket.localAddress) && !LOOPBACK_HOSTS.has(hostName(req.headers.host))) {
     throw new HttpError(403, 'Host no permitido: este servicio solo atiende en localhost, 127.0.0.1 o [::1] (protección contra «DNS rebinding»).');
   }
   const origin = req.headers.origin;
-  if (origin !== undefined && !projectOriginAllowed(origin, req.headers.host, cors)) {
+  if (!authenticated && origin !== undefined && !projectOriginAllowed(origin, req.headers.host, cors)) {
     throw new HttpError(403, `Origen no autorizado «${origin.slice(0, 100)}»: para llamar a esta API desde otro sitio, arranque el servicio con --cors ${origin.slice(0, 100)}.`);
   }
   if (MUTATING.has(req.method ?? '') && !isJson(req)) {
     throw new HttpError(415, 'Las operaciones que modifican proyectos exigen Content-Type: application/json.');
   }
+}
+
+/**
+ * El rol mínimo que exige una operación. `parts` son los segmentos de la ruta sin `projects` (como en `createProjectsApi`).
+ *
+ *   viewer  leer: cualquier GET (lista, resumen, diagrama, archivo único, comprobación)
+ *   editor  además: crear, guardar, renombrar y borrar diagramas; crear y renombrar proyectos; importar
+ *   admin   además: borrar proyectos
+ *
+ * Lo que no es una lectura exige editor, también un método o una ruta que no existen (un viewer no escribe ni «probando»): la
+ * respuesta a un rol insuficiente no depende de si la ruta existe. Se decide **antes** de leer el cuerpo y de tocar el disco.
+ */
+export function requiredRole(method: string, parts: string[]): TokenRole {
+  if (method === 'GET' || method === 'HEAD') return 'viewer';
+  if (method === 'DELETE' && parts.length === 1) return 'admin'; // borrar un proyecto (incluso uno que se llame `import`)
+  return 'editor';
 }
 
 const STATUS: Record<ProjectError['code'], number> = { 'not-found': 404, exists: 409, conflict: 409, invalid: 400, unavailable: 500 };
@@ -201,7 +227,12 @@ export function createProjectsApi(ctx: ProjectsApiContext): (req: IncomingMessag
 
   return async (req, res, url, parts) => {
     if (!store) throw new HttpError(404, 'Este servicio no tiene espacio de trabajo (use --workspace <carpeta>)');
-    guard(req, ctx.cors);
+    const identity = ctx.auth?.identify(req);
+    if (identity) {
+      const needed = requiredRole(req.method ?? 'GET', parts);
+      if (!roleAllows(identity.role, needed)) throw new HttpError(403, `El rol «${identity.role}» no permite esta operación (hace falta «${needed}»).`, { code: 'forbidden' });
+    }
+    guard(req, ctx.cors, !!ctx.auth);
     try {
       await route(req, res, url, parts, store);
     } catch (error) {

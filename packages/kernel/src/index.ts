@@ -12,8 +12,10 @@ export {
   manifestSchema,
   moduleManifestSchema,
   MANIFEST_SCHEMA_ID,
+  PROJECTS_AUTH,
   type ManifestOptions,
   type ModuleManifest,
+  type ProjectsAuth,
   type SuiteManifest,
 } from './module/manifest';
 

@@ -18,9 +18,12 @@ import { analyzeDocument } from '@core/model/issues';
 import { buildManifest, ModuleError, ProjectError, type ModuleRegistry, UnknownModuleError } from '@iark/kernel';
 import { createDefaultRegistry, DEFAULT_MODULE } from './registry';
 import { createSuiteServer } from './serve';
+import { isLoopbackHost } from './serveAuth';
 import { registerTrace } from './trace';
 import { registerDiff } from './diff';
 import { registerProject } from './project';
+import { registerAuth } from './auth';
+import { TokenError, TokenStore } from './tokens';
 import { FolderProjectStore } from './workspace';
 import { genericExport, genericGenerate, genericPrompt, genericSchema, genericValidate, readModuleDocument } from './generic';
 import { CliError, dslIncludeOptions, extractJson, fallbackDocumentName, info, readDocument, readInput, writeOutput } from './io';
@@ -470,15 +473,33 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
     .option(
       '-w, --workspace <carpeta>',
       'activa la API de proyectos (/api/projects) sobre esta carpeta de trabajo, la misma de `iark project` (o la variable IARK_WORKSPACE; sin ella, esas rutas responden 404). ' +
-        'Quien llegue al puerto puede leer y escribir los proyectos: déjelo en 127.0.0.1',
+        'Sin --tokens, quien llegue al puerto puede leer y escribir los proyectos: déjelo en 127.0.0.1 (con otra --host exige --tokens)',
       process.env.IARK_WORKSPACE || undefined,
     )
+    .option(
+      '-t, --tokens <archivo>',
+      'exige un token (`Authorization: Bearer <token>`, con rol viewer, editor o admin) en la API de proyectos y en /api/whoami; el archivo se administra con `iark auth` y se relee cuando cambia (o la variable IARK_TOKENS). ' +
+        'Hace falta para escuchar fuera de loopback con --workspace',
+      process.env.IARK_TOKENS || undefined,
+    )
+    .option('--trust-proxy', 'hay un proxy de confianza delante (Caddy, nginx…): el freno de intentos fallidos usa la última dirección de X-Forwarded-For en vez de la del proxy. No lo active sin proxy', false)
     .action(async (opts) => {
       if (opts.static && !existsSync(opts.static)) throw new CliError(`La carpeta del sitio «${opts.static}» no existe (¿falta \`npm run build\`?).`);
       if (opts.workspace && existsSync(opts.workspace) && !statSync(opts.workspace).isDirectory()) throw new CliError(`El espacio de trabajo «${opts.workspace}» no es una carpeta.`, 2);
       const cors = typeof opts.cors === 'string' ? opts.cors.split(',').map((o: string) => o.trim()).filter(Boolean) : [];
       const projects = opts.workspace ? new FolderProjectStore(opts.workspace) : undefined;
-      const server = createSuiteServer({ registry, version: CLI_VERSION, staticDir: opts.static, cors, projects });
+      const loopback = isLoopbackHost(opts.host);
+      if (projects && !opts.tokens && !loopback) {
+        throw new CliError(
+          `Con un espacio de trabajo, escuchar en ${opts.host} sin autenticación dejaría los proyectos al alcance de quien llegue a ese puerto: el servicio no arranca así. ` +
+            'Elija una de las dos salidas: exija un token con --tokens <archivo> (o IARK_TOKENS; se crea con `iark auth create <nombre> --role admin --tokens <archivo>`) o escuche solo en loopback con --host 127.0.0.1.',
+          2,
+        );
+      }
+      if (opts.tokens && !projects) info('aviso: --tokens protege la API de proyectos, y no hay espacio de trabajo (--workspace): se ignora.');
+      // Al arrancar el archivo de tokens debe existir y ser válido (si no, error de uso): después se relee cuando cambia, y un problema deniega todo.
+      const tokens = projects && opts.tokens ? TokenStore.open(opts.tokens) : undefined;
+      const server = createSuiteServer({ registry, version: CLI_VERSION, staticDir: opts.static, cors, projects, tokens, trustProxy: opts.trustProxy });
       await new Promise<void>((resolveListening, rejectListening) => {
         server.once('error', rejectListening);
         server.listen(opts.port, opts.host, resolveListening);
@@ -489,7 +510,11 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
       info(`  manifiesto: /.well-known/iark.json · módulos: /api/modules`);
       if (projects) {
         info(`  espacio de trabajo: ${projects.root} · proyectos: /api/projects`);
-        if (!['127.0.0.1', 'localhost', '::1'].includes(opts.host)) info(`aviso: escucha en ${opts.host}; con un espacio de trabajo, quien llegue a ese puerto puede leer y escribir los proyectos (y no se puede comprobar la cabecera Host).`);
+        if (tokens) {
+          info(`  autenticación: tokens de ${tokens.path} (${tokens.size}), roles viewer, editor y admin · /api/whoami`);
+          if (tokens.size === 0) info('aviso: el archivo no tiene ningún token: cree uno con `iark auth create <nombre> --role admin` (no hace falta reiniciar).');
+          if (!loopback) info('aviso: este servicio no habla TLS: ponga delante un proxy con HTTPS (Caddy, nginx…); si no, los tokens viajan en claro.');
+        }
       }
       await new Promise<void>((resolveClosed) => {
         const stop = (): void => void server.close(() => resolveClosed());
@@ -501,6 +526,7 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
   registerTrace(program, registry);
   registerDiff(program, registry, importSource);
   registerProject(program, registry);
+  registerAuth(program);
   registerModuleCommands(program, registry);
 
   return program;
@@ -557,6 +583,12 @@ export async function run(argv = process.argv): Promise<void> {
       // Uso incorrecto (no existe, ya existe, inválido): 2. Alguien cambió el diagrama en medio: 3. El disco no responde: 1.
       process.stderr.write(`${error.message}\n`);
       process.exitCode = error.code === 'unavailable' ? 1 : error.code === 'conflict' ? 3 : 2;
+      return;
+    }
+    if (error instanceof TokenError) {
+      // Uso incorrecto (nombre repetido, rol inválido, no existe, archivo dañado): 2. El disco no responde: 1.
+      process.stderr.write(`${error.message}\n`);
+      process.exitCode = error.code === 'unavailable' ? 1 : 2;
       return;
     }
     if (error instanceof DocumentValidationError) {
