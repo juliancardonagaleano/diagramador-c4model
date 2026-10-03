@@ -1,0 +1,23 @@
+openapi: 3.0.3
+info:
+  title: API de pedidos
+  version: 1.0.0
+paths:
+  /pedidos:
+    post:
+      summary: Crea un pedido y publica pedido.creado
+      responses:
+        '201':
+          description: Pedido creado
+  /pedidos/{id}:
+    get:
+      summary: Consulta un pedido
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: El pedido
