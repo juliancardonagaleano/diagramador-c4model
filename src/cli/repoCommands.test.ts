@@ -230,6 +230,138 @@ describe('--from-repo: errores de uso', () => {
   });
 });
 
+describe('--repo-exclude y --repo-include', () => {
+  /** El tramo «Archivos clave» del prompt (lo que lleva contenido): sin el árbol ni los componentes. */
+  const keyFiles = (out: string): string => out.split('## Archivos clave')[1].split(/^<<<FIN-DEL-REPOSITORIO-/m)[0];
+  const keyPaths = (out: string): string[] => [...keyFiles(out).matchAll(/^===== (\S+) \[/gm)].map((m) => m[1]);
+
+  it('--repo-exclude (repetible) quita archivos y carpetas del resumen entero y lo cuenta por stderr', () => {
+    const r = run(['prompt', 'Dibuja la arquitectura', '--from-repo', repo, '--repo-exclude', 'docker-compose.yml', '--repo-exclude', 'k8s/', '--repo-exclude', '**/*.controller.ts']);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).not.toContain('===== docker-compose.yml');
+    expect(r.stdout).not.toContain('k8s/deployment.yaml');
+    expect(r.stdout).not.toContain('pedidos.controller.ts');
+    expect(keyPaths(r.stdout)).toContain('README.md');
+    expect(r.stdout).toContain('Filtros del usuario: 3 entrada(s) excluida(s) con --repo-exclude (no salen ni en el árbol).');
+    expect(r.stderr).toMatch(/3 excluida\(s\) por --repo-exclude/);
+    noLeaks(r.stdout, r.stderr);
+  });
+
+  it('--dry-run lista lo excluido con su motivo y da el mismo prompt que `prompt`', () => {
+    const args = ['--from-repo', repo, '--repo-exclude', 'docker-compose.yml', '--repo-exclude', 'services/facturacion/'];
+    const dry = run(['generate', 'x', ...args, '--dry-run']);
+    const prompt = run(['prompt', 'x', ...args]);
+    expect(dry.status, dry.stderr).toBe(0);
+    expect(dry.stdout).toBe(prompt.stdout);
+    expect(dry.stderr).toMatch(/excluido por --repo-exclude \(2\): .*docker-compose\.yml.*services\/facturacion\//);
+    expect(dry.stderr).not.toMatch(/===== docker-compose/);
+    expect(dry.stderr).not.toMatch(/^\s*docker-compose\.yml\s+contenedores/m); // ya no está entre los incluidos
+    noLeaks(dry.stdout, dry.stderr);
+  });
+
+  it('--repo-include limita el contenido a lo que cuadre; el árbol sigue entero y lo de fuera se lista como omitido', () => {
+    const r = run(['generate', 'x', '--from-repo', repo, '--repo-include', 'services/pedidos/', '--dry-run']);
+    expect(r.status, r.stderr).toBe(0);
+    expect(keyPaths(r.stdout)).toEqual(['services/pedidos/package.json', 'services/pedidos/src/server.ts']);
+    expect(r.stdout).toContain('## Árbol de carpetas');
+    expect(r.stdout).toContain('services/facturacion/'); // el árbol sigue completo
+    expect(r.stdout).toContain('Filtros del usuario: el contenido de los archivos clave se limitó con --repo-include');
+    expect(r.stderr).toMatch(/fuera de --repo-include \(el contenido se limitó a otros archivos\) \(\d+\): .*README\.md/);
+    expect(r.stderr).toMatch(/\d+ archivo\(s\) clave fuera de --repo-include/);
+    noLeaks(r.stdout, r.stderr);
+  });
+
+  it('varios --repo-include se suman, y combinados con --repo-exclude gana el exclude', () => {
+    const r = run(['prompt', 'x', '--from-repo', repo, '--repo-include', 'README.md', '--repo-include', 'services/', '--repo-exclude', '**/package.json']);
+    expect(r.status, r.stderr).toBe(0);
+    const files = keyPaths(r.stdout);
+    expect(files).toEqual(expect.arrayContaining(['README.md', 'services/facturacion/pom.xml', 'services/pedidos/src/server.ts']));
+    expect(files).not.toContain('services/pedidos/package.json'); // incluido por services/, pero excluido
+    expect(files).not.toContain('docker-compose.yml'); // ni README ni services/ lo incluyen
+    expect(files.every((f) => f === 'README.md' || f.startsWith('services/'))).toBe(true);
+  });
+
+  it('un --repo-include que nombra los secretos NO los abre: error claro si no queda nada y ningún valor sale', () => {
+    for (const glob of ['.env', '.env.production', '*.pem', 'config/', 'infra/', 'credentials.json']) {
+      const r = run(['prompt', 'x', '--from-repo', repo, '--repo-include', glob]);
+      expect(r.status, glob).toBe(2);
+      expect(r.stderr, glob).toMatch(/Ningún archivo clave de «.*» cuadra con --repo-include/);
+      expect(r.stdout, glob).toBe('');
+      noLeaks(r.stdout, r.stderr);
+    }
+  });
+
+  it('con un include que lo abarca todo, los secretos siguen sin leerse y lo que entra sigue redactado', () => {
+    const args = ['--from-repo', repo, '--repo-include', '**', '--repo-include', '.env*', '--repo-include', '*.pem', '--repo-include', 'infra/', '--repo-include', 'config/'];
+    const r = run(['generate', 'x', ...args, '--dry-run']);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain('[REDACTADO]');
+    expect(r.stdout).toContain('DATABASE_URL'); // el .env.example: solo nombres de variables
+    expect(r.stdout).not.toContain('===== .env ');
+    expect(r.stdout).not.toContain('===== config/server.pem');
+    expect(r.stderr).toMatch(/secreto \(nunca se lee\) \(9\): .*\.env /);
+    expect(r.stderr).toContain('infra/terraform.tfstate');
+    noLeaks(r.stdout, r.stderr);
+    noLeaks(run(['prompt', 'x', ...args]).stdout);
+  });
+
+  it('con un exclude que no deja nada, o un include que no cuadra con nada, el error es de uso (código 2)', () => {
+    const todo = run(['prompt', 'x', '--from-repo', repo, '--repo-exclude', '**']);
+    expect(todo.status).toBe(2);
+    expect(todo.stderr).toMatch(/no contiene archivos de texto que leer \(omitidos: .*excluido por --repo-exclude/);
+    const nada = run(['prompt', 'x', '--from-repo', repo, '--repo-include', 'no-existe/']);
+    expect(nada.status).toBe(2);
+    expect(nada.stderr).toMatch(/solo reduce lo que la lista de archivos clave ya lee/);
+    expect(nada.stdout + todo.stdout).toBe('');
+  });
+
+  it('un patrón inválido se rechaza al leer la opción: no se escanea nada y no hay salida', () => {
+    for (const [option, glob, why] of [
+      ['--repo-exclude', '!x', /no puede empezar por «!»/],
+      ['--repo-include', '#x', /no puede empezar por «#»/],
+      ['--repo-include', '../fuera', /no puede llevar «\.\.»/],
+      ['--repo-exclude', '', /está vacío/],
+      ['--repo-exclude', 'a\nb', /saltos de línea o caracteres de control/],
+      ['--repo-include', ' x', /espacios al principio o al final/],
+      ['--repo-exclude', '/', /no indica ningún archivo ni carpeta/],
+    ] as const) {
+      for (const command of ['prompt', 'generate']) {
+        const r = run([command, 'x', '--from-repo', repo, option, glob]);
+        expect(r.status, `${command} ${option} ${JSON.stringify(glob)}`).not.toBe(0);
+        expect(r.stderr).toContain(`El patrón de ${option} no vale`);
+        expect(r.stderr).toMatch(why);
+        expect(r.stdout).toBe('');
+        expect(r.stderr).not.toMatch(/Repositorio «/); // no llegó a escanear
+      }
+    }
+  });
+
+  it('un patrón hostil responde en un instante (sin retroceso exponencial)', () => {
+    const started = Date.now();
+    const r = run(['prompt', 'x', '--from-repo', repo, '--repo-exclude', `${'*a'.repeat(300)}b`, '--repo-include', `${'**/'.repeat(100)}README.md`]);
+    expect(r.status, r.stderr).toBe(0);
+    expect(Date.now() - started).toBeLessThan(20_000);
+    expect(keyPaths(r.stdout)).toEqual(['README.md']);
+  });
+
+  it('solo valen junto con --from-repo', () => {
+    for (const [command, option] of [['prompt', '--repo-include'], ['prompt', '--repo-exclude'], ['generate', '--repo-include'], ['generate', '--repo-exclude']]) {
+      const r = run([command, 'x', option, '*.md']);
+      expect(r.status, `${command} ${option}`).toBe(2);
+      expect(r.stderr).toContain(`${option} solo se usa junto con --from-repo <carpeta|url>`);
+      expect(r.stdout).toBe('');
+    }
+  });
+
+  it('sin filtros, el resumen es el de siempre (ni el prompt ni el informe los mencionan)', () => {
+    const r = run(['generate', 'x', '--from-repo', repo, '--dry-run']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).not.toContain('Filtros del usuario');
+    expect(r.stderr).not.toContain('--repo-include');
+    expect(r.stderr).not.toContain('--repo-exclude');
+  });
+});
+
 describe('--help documenta la función y su privacidad', () => {
   it('generate --help', () => {
     const out = run(['generate', '--help']).stdout;
@@ -253,6 +385,18 @@ describe('--help documenta la función y su privacidad', () => {
     expect(out).toMatch(/--dry-run también clona \(necesita el contenido\) pero no llama a ningún modelo/);
     expect(out).toMatch(/va al modelo que elijas con --provider y --model/);
     expect(out).toMatch(/\(con una URL sí clona el repositorio, que\s+necesita su contenido\)/);
+    // Los filtros: qué hacen, cómo se escriben y que nunca saltan la lista de secretos.
+    expect(out).toContain('--repo-include <glob>');
+    expect(out).toContain('--repo-exclude <glob>');
+    expect(out).toContain('Filtros (--repo-include <glob>, --repo-exclude <glob>; se pueden repetir):');
+    expect(out).toMatch(/como en un \.gitignore \(sin «!»\)/);
+    expect(out).toMatch(/--repo-exclude quita lo que cuadre de TODO el resumen/);
+    expect(out).toMatch(/excluido por --repo-exclude/);
+    expect(out).toMatch(/--repo-include limita el contenido a los archivos clave que cuadren/);
+    expect(out).toMatch(/el árbol de carpetas y la lista de componentes siguen\s+enteros/);
+    expect(out).toMatch(/gana --repo-exclude/);
+    expect(out).toMatch(/Nunca hacen legible lo que la lista de secretos prohíbe/);
+    expect(out).toMatch(/--repo-include y --repo-exclude solo pueden reducir lo que se envía: nunca saltan la lista de secretos ni la\s+redacción/);
   });
 
   it('prompt --help', () => {
@@ -264,6 +408,10 @@ describe('--help documenta la función y su privacidad', () => {
     expect(out).toMatch(/Se ejecuta SOLO `git clone`/);
     expect(out).toMatch(/`iark prompt` clona la URL \(necesita el contenido\) pero no llama a ningún modelo/);
     expect(out).toMatch(/credenciales que ya tengas en git/);
+    expect(out).toContain('--repo-include <glob>');
+    expect(out).toContain('--repo-exclude <glob>');
+    expect(out).toContain('Filtros (--repo-include <glob>, --repo-exclude <glob>; se pueden repetir):');
+    expect(out).toMatch(/Nunca hacen legible lo que la lista de secretos prohíbe/);
   });
 });
 

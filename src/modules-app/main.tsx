@@ -6,6 +6,8 @@ import { createModuleBridge, type ModuleBridge } from './bridge';
 import { WorkbenchController } from './controller';
 import { localDrafts, MODULE_SOURCES } from './modules';
 import { MODULE_PROTOCOL_VERSION } from '../embed/moduleProtocol';
+import { IndexedDbProjectStore } from '../projects/indexedDbStore';
+import { localPointer, ProjectSession } from '../projects/session';
 
 /**
  * Banco de trabajo de los módulos de la suite (`modulos.html`). Con `?embed=1&proto=json&module=<id>&origin=<origen del
@@ -15,6 +17,9 @@ import { MODULE_PROTOCOL_VERSION } from '../embed/moduleProtocol';
 const params = new URLSearchParams(window.location.search);
 const embed = params.get('embed') === '1' && window.parent !== window;
 const moduleParam = params.get('module') ?? undefined;
+/** `?project=<id>&diagram=<id>`: abre ese diagrama de un proyecto (así enlaza el editor C4 a los diagramas de otros módulos). */
+const projectParam = params.get('project') ?? undefined;
+const diagramParam = params.get('diagram') ?? undefined;
 
 function referrerOrigin(): string | undefined {
   try {
@@ -38,9 +43,11 @@ const applyTheme = (theme: Theme): void => {
 };
 
 function Root() {
+  // Los proyectos se guardan en el navegador (IndexedDB). En modo embebido guarda el anfitrión, no esta pantalla.
+  const projects = useMemo(() => (embed ? undefined : new ProjectSession(new IndexedDbProjectStore(), { pointer: localPointer })), []);
   const controller = useMemo(
-    () => new WorkbenchController(MODULE_SOURCES, { storage: embed ? undefined : localDrafts, protocol: MODULE_PROTOCOL_VERSION }),
-    [],
+    () => new WorkbenchController(MODULE_SOURCES, { storage: embed ? undefined : localDrafts, protocol: MODULE_PROTOCOL_VERSION, projects }),
+    [projects],
   );
   const [ui, setUi] = useState<'full' | 'min'>(params.get('ui') === 'min' ? 'min' : 'full');
   const [dialog, setDialog] = useState<{ title: string; message: string; button?: string } | undefined>();
@@ -49,8 +56,30 @@ function Root() {
   useEffect(() => {
     applyTheme(preferredTheme());
     if (!embed) {
-      void controller.selectModule(moduleParam && controller.moduleIds.includes(moduleParam) ? moduleParam : controller.moduleIds[0]);
-      return;
+      const fallback = (): Promise<void> => controller.selectModule(moduleParam && controller.moduleIds.includes(moduleParam) ? moduleParam : controller.moduleIds[0]);
+      void (async () => {
+        const last = await projects?.init();
+        // Un enlace a un diagrama manda; si no, se reabre lo último que se estaba editando (salvo que la URL pida un módulo).
+        if (projects && projectParam && diagramParam && projects.getState().projects.some((p) => p.id === projectParam)) {
+          await controller.openDiagram(projectParam, diagramParam);
+        } else if (projects && !moduleParam && last?.projectId) {
+          if (last.diagramId) await controller.openDiagram(last.projectId, last.diagramId);
+          else await controller.enterProject(last.projectId);
+        }
+        if (!controller.getState().moduleId) await fallback();
+      })();
+      // Lo que esté pendiente se guarda al ocultar o cerrar la pestaña; si no pudo guardarse, se avisa antes de cerrar.
+      const flush = (): void => void projects?.flush();
+      const guard = (event: BeforeUnloadEvent): void => {
+        if (projects?.dirty) event.preventDefault();
+      };
+      window.addEventListener('pagehide', flush);
+      document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && flush());
+      window.addEventListener('beforeunload', guard);
+      return () => {
+        window.removeEventListener('pagehide', flush);
+        window.removeEventListener('beforeunload', guard);
+      };
     }
     const post = (event: unknown): void => window.parent.postMessage(JSON.stringify(event), hostOrigin);
     const instance = createModuleBridge({

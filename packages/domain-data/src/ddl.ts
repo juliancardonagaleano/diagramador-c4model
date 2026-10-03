@@ -93,10 +93,10 @@ function columnType(engine: EngineDef, table: DdlTable, column: DdlColumn, warni
   return type;
 }
 
-/** Aviso de una clave primaria cuyo tipo el motor no admite como clave (una línea, para poder ir en un comentario SQL). */
-function keyNotice(engine: EngineDef, table: DdlTable, column: DdlColumn): string[] {
-  const type = unkeyableType(engine, column.type);
-  return type ? [oneLine(`La clave primaria «${table.name}.${column.name}» es de tipo «${type}», que ${engine.label} no admite como clave: su CREATE TABLE falla. ${keyTypeAdvice(engine)}`)] : [];
+/** Aviso de una clave primaria o única cuyo tipo el motor no admite como clave (una línea, para poder ir en un comentario SQL). */
+function keyNotice(engine: EngineDef, table: DdlTable, column: DdlColumn, kind: 'pk' | 'uk'): string[] {
+  const type = unkeyableType(engine, column.type, kind);
+  return type ? [oneLine(`La clave ${kind === 'pk' ? 'primaria' : 'única'} «${table.name}.${column.name}» es de tipo «${type}», que ${engine.label} no admite como clave: su CREATE TABLE falla. ${keyTypeAdvice(engine)}`)] : [];
 }
 
 function sqlTable(engine: EngineDef, table: DdlTable, schema: string | undefined, warnings: string[], cql = false): string {
@@ -119,7 +119,8 @@ function sqlTable(engine: EngineDef, table: DdlTable, schema: string | undefined
   }
   if (!cql && sql?.unique === false && table.columns.some((c) => c.unique && !c.primaryKey)) warnings.push(`${engine.label} no admite UNIQUE: se omite en «${table.name}».`);
   // El DDL no se toca (el tipo es el que el modelo declara): lo que el motor rechazará se avisa, y el aviso viaja en el propio esquema.
-  const notices = cql ? [] : keys.flatMap((c) => keyNotice(engine, table, c));
+  const uniques = table.columns.filter((c) => c.unique && !c.primaryKey);
+  const notices = cql ? [] : [...keys.flatMap((c) => keyNotice(engine, table, c, 'pk')), ...uniques.flatMap((c) => keyNotice(engine, table, c, 'uk'))];
   warnings.push(...notices);
   const body = rows.map((r, i) => `    ${r.text}${i < rows.length - 1 ? ',' : ''}${r.comment ? ` -- ${r.comment}` : ''}`).join('\n');
   return `${notices.map((n) => `-- AVISO: ${n}\n`).join('')}CREATE TABLE ${name} (\n${body}\n)${sql?.tableSuffix ?? ''};`;
