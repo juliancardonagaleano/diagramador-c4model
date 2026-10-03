@@ -1,5 +1,5 @@
 import { contractEngine, contractTables } from './contract';
-import { canonicalType, listEngines, parseType, resolveEngine, typeFor, type EngineDef } from './engines';
+import { canonicalType, keyTypeAdvice, listEngines, parseType, resolveEngine, typeFor, unkeyableType, type EngineDef } from './engines';
 import { inheritance } from './inherit';
 import type { DataAsset, DataDocument } from './types';
 
@@ -89,6 +89,12 @@ function columnType(engine: EngineDef, table: DdlTable, column: DdlColumn, warni
   return type;
 }
 
+/** Aviso de una clave primaria cuyo tipo el motor no admite como clave (una línea, para poder ir en un comentario SQL). */
+function keyNotice(engine: EngineDef, table: DdlTable, column: DdlColumn): string[] {
+  const type = unkeyableType(engine, column.type);
+  return type ? [oneLine(`La clave primaria «${table.name}.${column.name}» es de tipo «${type}», que ${engine.label} no admite como clave: su CREATE TABLE falla. ${keyTypeAdvice(engine)}`)] : [];
+}
+
 function sqlTable(engine: EngineDef, table: DdlTable, schema: string | undefined, warnings: string[], cql = false): string {
   const sql = engine.sql;
   const name = schema ? `${quote(engine, schema)}.${quote(engine, physicalName(table.name))}` : quote(engine, physicalName(table.name));
@@ -108,8 +114,11 @@ function sqlTable(engine: EngineDef, table: DdlTable, schema: string | undefined
     rows.push({ text: `PRIMARY KEY ((${quote(engine, table.columns[0].name)}))`, comment: '' });
   }
   if (!cql && sql?.unique === false && table.columns.some((c) => c.unique && !c.primaryKey)) warnings.push(`${engine.label} no admite UNIQUE: se omite en «${table.name}».`);
+  // El DDL no se toca (el tipo es el que el modelo declara): lo que el motor rechazará se avisa, y el aviso viaja en el propio esquema.
+  const notices = cql ? [] : keys.flatMap((c) => keyNotice(engine, table, c));
+  warnings.push(...notices);
   const body = rows.map((r, i) => `    ${r.text}${i < rows.length - 1 ? ',' : ''}${r.comment ? ` -- ${r.comment}` : ''}`).join('\n');
-  return `CREATE TABLE ${name} (\n${body}\n)${sql?.tableSuffix ?? ''};`;
+  return `${notices.map((n) => `-- AVISO: ${n}\n`).join('')}CREATE TABLE ${name} (\n${body}\n)${sql?.tableSuffix ?? ''};`;
 }
 
 const BSON_ALIASES: Record<string, string> = { boolean: 'bool', decimal128: 'decimal' };

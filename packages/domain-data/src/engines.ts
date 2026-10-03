@@ -30,8 +30,12 @@ export interface EngineDef {
   defaultParams?: Readonly<Record<string, string>>;
   /** Acepta cualquier nombre de tipo (SQLite): uno fuera del catálogo es una nota, no un aviso. */
   lenient?: boolean;
-  /** Solo SQL: comillas de los identificadores, cláusula tras la clave primaria y cierre de la tabla; `unique: false` si no admite `UNIQUE`. */
-  sql?: { quote: readonly [string, string]; pkSuffix?: string; unique?: boolean; tableSuffix?: string };
+  /**
+   * Solo SQL: comillas de los identificadores, cláusula tras la clave primaria y cierre de la tabla; `unique: false` si no admite `UNIQUE`;
+   * `noKeyTypes`: tipos (sin parámetros) que el motor rechaza como clave primaria (en MySQL, `text`, `blob` y `json`, que piden una
+   * longitud de prefijo): el DDL no los cambia, pero se avisa.
+   */
+  sql?: { quote: readonly [string, string]; pkSuffix?: string; unique?: boolean; tableSuffix?: string; noKeyTypes?: readonly string[] };
 }
 
 const list = (text: string): string[] => text.split('|');
@@ -63,7 +67,7 @@ const ENGINES: EngineDef[] = [
     ),
     concepts: concepts('varchar(255)', 'text', 'smallint', 'int', 'bigint', 'decimal(18,2)', 'float', 'double', 'boolean', 'date', 'time', 'datetime', 'timestamp', 'char(36)', 'json', 'blob'),
     defaultParams: { varchar: '(255)', varbinary: '(255)', decimal: '(18,2)', numeric: '(18,2)', dec: '(18,2)', fixed: '(18,2)' },
-    sql: { quote: ['`', '`'] },
+    sql: { quote: ['`', '`'], noKeyTypes: list('tinytext|text|mediumtext|longtext|tinyblob|blob|mediumblob|longblob|json') },
   },
   {
     id: 'sqlserver',
@@ -377,4 +381,17 @@ export function typeFor(engine: EngineDef, type: string | undefined): { type: st
     return { type: params && !type.includes('(') ? `${type.trim()}${params}` : type.trim(), replaced: false };
   }
   return { type: engine.concepts[conceptOf(type)], replaced: true };
+}
+
+/** Tipo con que el motor escribiría `type` si el motor no lo admite como clave primaria (`text` en MySQL); `undefined` si sirve de clave o no se sabe. */
+export function unkeyableType(engine: EngineDef, type: string | undefined): string | undefined {
+  const banned = engine.sql?.noKeyTypes;
+  if (!banned || !type?.trim()) return undefined;
+  const written = typeFor(engine, type).type;
+  return banned.includes(parseType(written).base) ? written : undefined;
+}
+
+/** Cómo arreglar una clave de un tipo que el motor no admite: un tipo de texto con longitud (`varchar(n)`, `varchar2(n)`) o una clave sustituta. */
+export function keyTypeAdvice(engine: EngineDef): string {
+  return `Usa ${parseType(engine.concepts.string).base}(n) o una clave sustituta.`;
 }

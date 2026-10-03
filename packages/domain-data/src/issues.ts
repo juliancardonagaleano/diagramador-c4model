@@ -1,7 +1,7 @@
 import type { ModuleIssue } from '@iark/kernel';
 import { catalogIssues } from './catalog';
 import { contractEngine } from './contract';
-import { checkType, listEngines, resolveEngine, suggestTypes } from './engines';
+import { checkType, keyTypeAdvice, listEngines, resolveEngine, suggestTypes, unkeyableType } from './engines';
 import { inheritance } from './inherit';
 import { findLineageCycles, indexLineage } from './lineage';
 import { CLASSIFICATION_LABELS, CLASSIFICATION_RANK, ENTITY_KINDS, KIND_LABELS, hasPii, isCatalogKind, type Column, type ColumnRef, type DataAsset, type DataDocument, type Pipeline } from './types';
@@ -73,6 +73,11 @@ function engineIssues(doc: DataDocument, contracts: Map<string, { name: string; 
         elementId: a.id,
         message: `La columna «${c.name}» de ${label(a)} declara el tipo «${c.type}», que no existe en ${engine.label}${alternatives.length ? `. ¿Quisiste decir ${alternatives.map((t) => `«${t}»`).join(', ')}?` : '.'}`,
       });
+    }
+    // Una clave primaria de un tipo que el motor no admite como clave (`text` en MySQL): el CREATE TABLE que se genera falla.
+    for (const c of a.kind === 'table' ? (a.columns ?? []).filter((x) => x.keys?.includes('pk')) : []) {
+      const type = unkeyableType(engine, c.type);
+      if (type) issues.push({ severity: 'warning', elementId: a.id, message: `La columna «${c.name}» de ${label(a)} es clave primaria de tipo «${type}», que ${engine.label} no admite como clave: su CREATE TABLE falla. ${keyTypeAdvice(engine)}` });
     }
     const contract = a.contractId ? contracts.get(a.contractId) : undefined;
     const declared = contract?.content ? contractEngine(contract.content) : undefined;
