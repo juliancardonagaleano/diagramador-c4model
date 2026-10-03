@@ -770,6 +770,19 @@ server {
 - Un token con rol `editor` o `admin` puede escribir y borrar en la carpeta de trabajo: el control de versiones de la carpeta (git, copias de seguridad) es su red de seguridad. Cada diagrama se guarda de forma atómica y `ifUpdatedAt` detecta un guardado en medio, pero no hay edición simultánea en tiempo real ni historial de quién cambió qué.
 - El servidor no registra accesos. El resto de la API (validar, exportar…) no pide token y consume CPU de su servidor con cuerpos de hasta 5 MB.
 
+## Proyectos en la app web (este navegador)
+
+Los mismos proyectos de la sección anterior (diagramas de cualquier módulo, agrupados) se usan desde el navegador sin instalar nada: en el **banco de trabajo** (`modulos.html`, botón *Proyectos…*) y en el **editor C4** (*Archivo ▸ Proyectos…*), que comparten almacén. Por omisión viven en **este navegador** (IndexedDB); para guardarlos en un servidor, véase la sección siguiente.
+
+- **El gestor** crea, renombra y borra proyectos; crea un diagrama nuevo (con el ejemplo del módulo o vacío), guarda el documento que estás editando, y abre, renombra, duplica y borra diagramas. No puede haber dos proyectos con el mismo nombre ni dos diagramas con el mismo nombre en un proyecto (sin distinguir mayúsculas).
+- **Autoguardado.** Con un proyecto y un diagrama abiertos, cada cambio se guarda tras 500 ms de pausa; la barra del proyecto (banco) y el chip del editor C4 dicen «Guardado en «X»». Sin proyecto abierto todo sigue como antes: un borrador por módulo en `localStorage`, que «Guardar en «X»» convierte en un diagrama del proyecto.
+- **Abrir directamente** con `modulos.html?project=<id>&diagram=<id>`; se recuerda el último diagrama abierto. En el editor C4, abrir un diagrama de otro módulo lleva al banco de trabajo con ese enlace.
+- **Enlaces entre diagramas.** Las referencias `ref: "urn:iark:<módulo>:<id>"` se resuelven en todo el proyecto: doble clic o Alt+↓ sobre un elemento enlazado abre el diagrama que lo contiene, y Alt+↑ (o la miga de pan) vuelve al anterior.
+- **Dos pestañas.** Si otra pestaña guarda el mismo diagrama mientras lo editas, se avisa (`ifUpdatedAt`) y puedes «Quedarme con mi versión» o «Cargar la otra»: no se mezclan cambios. Cargar un ejemplo o importar sobre un diagrama guardado avisa «Se reemplazó el contenido de «X»» y se puede deshacer.
+- **Copia de seguridad.** *Exportar* baja el proyecto entero como `<proyecto>.iark-project.json` (`iark.project/1`, el mismo archivo de `iark project export`) e *Importar proyecto* lo recupera sin pisar nada: si el nombre ya existe queda «Nombre (2)». Un proyecto admite hasta 500 diagramas.
+
+Límites: IndexedDB pertenece a **este navegador y a este sitio**. Borrar los datos del sitio, usar otro navegador u otro equipo o una ventana privada deja los proyectos fuera de alcance: **exporta de vez en cuando** o usa un servidor. Con el almacenamiento bloqueado la app dice «Almacenamiento no disponible» y sigue funcionando con borradores.
+
 ## Guardar en la nube (servidor propio) desde el navegador
 
 Por omisión los proyectos de la app web viven en **este navegador** (IndexedDB). Para verlos desde otros equipos y compartirlos con otras personas se pueden guardar en un **servidor propio**: el mismo `iark serve --workspace` de la sección anterior, cuya API de proyectos ya es lo que usa el navegador. No hay un servicio gestionado ni cuentas en un tercero: el servidor es tuyo y su carpeta de trabajo (la misma de `iark project`, pensada para ir en git) es la fuente de verdad.
