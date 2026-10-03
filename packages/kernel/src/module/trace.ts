@@ -29,7 +29,7 @@ export interface TraceLink {
   to: string;
 }
 
-export type TraceProblemReason = 'dangling' | 'unresolved' | 'invalid';
+export type TraceProblemReason = 'dangling' | 'unresolved' | 'invalid' | 'ambiguous';
 
 export interface TraceProblem {
   from: string;
@@ -59,23 +59,46 @@ function collectRefs(value: unknown, out: Array<{ id: string; ref: string }> = [
   return out;
 }
 
-export function buildTraceGraph(inputs: TraceInput[]): TraceGraph {
+export interface TraceOptions {
+  /**
+   * Admite varios documentos del mismo módulo (los diagramas de un proyecto). La URN no dice en qué documento está un
+   * elemento, así que `urn:iark:<módulo>:<id>` se resuelve en todo el conjunto; si dos documentos definen el mismo id, la URN
+   * apunta al primero y el otro queda como problema `ambiguous`. Sin esta opción, repetir un módulo es un error.
+   */
+  allowRepeatedModules?: boolean;
+}
+
+export function buildTraceGraph(inputs: TraceInput[], options: TraceOptions = {}): TraceGraph {
   const seen = new Set<string>();
   const nodes = new Map<string, TraceNode>();
+  const owner = new Map<string, string>();
   const documents: TraceGraph['documents'] = [];
+  const problems: TraceProblem[] = [];
   for (const { module, document, source } of inputs) {
-    if (seen.has(module.id)) throw new Error(`El módulo «${module.id}» aparece más de una vez: la trazabilidad usa un documento por módulo.`);
+    if (seen.has(module.id) && !options.allowRepeatedModules) throw new Error(`El módulo «${module.id}» aparece más de una vez: la trazabilidad usa un documento por módulo.`);
     seen.add(module.id);
     const entities = module.entities?.(document) ?? [];
     documents.push({ module: module.id, source, entities: entities.length });
     for (const e of entities) {
       const urn = formatUrn(module.id, e.id);
+      if (nodes.has(urn)) {
+        const first = owner.get(urn);
+        if (first !== (source ?? module.id)) {
+          problems.push({
+            from: urn,
+            ref: urn,
+            reason: 'ambiguous',
+            message: `«${e.id}» también está definido en ${source ? `«${source}»` : 'otro documento'}: la URN apunta al de ${first ? `«${first}»` : 'el primero'}.`,
+          });
+        }
+        continue;
+      }
       nodes.set(urn, { urn, module: module.id, id: e.id, name: e.name, kind: e.kind });
+      owner.set(urn, source ?? module.id);
     }
   }
 
   const links: TraceLink[] = [];
-  const problems: TraceProblem[] = [];
   const linked = new Set<string>();
   for (const { module, document } of inputs) {
     for (const { id, ref } of collectRefs(document)) {

@@ -2,6 +2,7 @@ import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readd
 import { homedir } from 'node:os';
 import { basename, dirname, join, parse, relative, sep } from 'node:path';
 import { CliError } from '../io';
+import { PathFilter } from './filter';
 import { IgnoreMatcher } from './gitignore';
 import { redactSecrets } from './redact';
 import { CATEGORY_LABEL, CATEGORY_SHARE, classify, extensionOf, isEnvExample, isExcludedDir, isSecretDir, isTestPath, nonTextKind, secretReason, sniffYaml, type Classification, type RepoCategory } from './rules';
@@ -36,11 +37,13 @@ const MAX_LINE_CHARS = 8000;
 const MAX_YAML_SNIFF = 300;
 const MAX_GITIGNORE_BYTES = 256 * 1024;
 
-export type OmitReason = 'secreto' | 'ignorado' | 'excluida' | 'binario' | 'imagen' | 'lockfile' | 'grande' | 'generado' | 'presupuesto' | 'tope' | 'enlace' | 'ilegible';
+export type OmitReason = 'secreto' | 'ignorado' | 'excluido' | 'no-incluido' | 'excluida' | 'binario' | 'imagen' | 'lockfile' | 'grande' | 'generado' | 'presupuesto' | 'tope' | 'enlace' | 'ilegible';
 
 export const OMIT_LABEL: Record<OmitReason, string> = {
   secreto: 'secreto (nunca se lee)',
   ignorado: 'ignorado por .gitignore',
+  excluido: 'excluido por --repo-exclude',
+  'no-incluido': 'fuera de --repo-include (el contenido se limitó a otros archivos)',
   excluida: 'carpeta excluida (dependencias, compilación, cachés)',
   binario: 'binario o minificado',
   imagen: 'imagen',
@@ -62,6 +65,20 @@ export interface ScanOptions {
   treeDepth?: number;
   /** Máximo de entradas (archivos y carpetas) que se recorren (por defecto 20 000). */
   maxEntries?: number;
+  /**
+   * La carpeta es un clon temporal de un repositorio remoto (`--from-repo <url>`): el resumen lleva el nombre del repositorio
+   * (no el del directorio temporal), los errores no nombran la ruta temporal y no se aplican los `.gitignore`: un clon solo trae
+   * lo versionado (no hay nada que ignorar) y son texto de un tercero, así que no se gasta ni un ciclo en interpretarlos. El
+   * intérprete (`gitignore.ts`) no usa regex con retroceso, de modo que no es una cuestión de seguridad sino de prudencia.
+   */
+  remote?: { name: string };
+  /**
+   * Patrones de `--repo-include` (formato `.gitignore`): limitan el CONTENIDO a los archivos clave que cuadren (el árbol y la
+   * lista de componentes siguen completos). Solo reducen: no abren nada que las reglas de secretos o la lista blanca prohíban.
+   */
+  include?: readonly string[];
+  /** Patrones de `--repo-exclude`: lo que cuadre sale del resumen entero (árbol, componentes y contenido) y se lista como omitido. */
+  exclude?: readonly string[];
 }
 
 export interface DigestFile {
@@ -88,6 +105,8 @@ export interface OmittedEntry {
 export interface RepoDigest {
   /** Nombre de la carpeta analizada (no su ruta absoluta: no se envían rutas del equipo del usuario). */
   name: string;
+  /** `true` si se leyó un clon temporal de un repositorio remoto (`--from-repo <url>`). */
+  remote?: true;
   /** El resumen, listo para enviar. */
   text: string;
   /** Bytes del resumen. */
@@ -120,6 +139,8 @@ class Omissions {
   }
 }
 
+const CONTROL_NAME = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
+const CONTROL_NAME_ALL = new RegExp(CONTROL_NAME.source, 'g');
 const byName = (a: { name: string }, b: { name: string }): number => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 const toPosix = (p: string): string => p.split(sep).join('/');
 
@@ -159,9 +180,9 @@ interface WalkResult {
   truncated: boolean;
 }
 
-function walkRepo(root: string, omit: Omissions, maxEntries: number): WalkResult {
+function walkRepo(root: string, omit: Omissions, maxEntries: number, useGitignore: boolean, exclude: PathFilter): WalkResult {
   const matcher = new IgnoreMatcher();
-  const top = findGitTop(root);
+  const top = useGitignore ? findGitTop(root) : undefined;
   const prefix = top ? toPosix(relative(top, root)) : '';
   // Reglas de las carpetas por encima de la analizada (si es una subcarpeta de un repositorio) y `.git/info/exclude`.
   if (top) {
@@ -190,7 +211,7 @@ function walkRepo(root: string, omit: Omissions, maxEntries: number): WalkResult
       return;
     }
     list.sort(byName);
-    const own = list.some((e) => e.name === '.gitignore' && e.isFile()) ? readIgnoreFile(join(absDir, '.gitignore')) : undefined;
+    const own = useGitignore && list.some((e) => e.name === '.gitignore' && e.isFile()) ? readIgnoreFile(join(absDir, '.gitignore')) : undefined;
     if (own) matcher.add(own, gitPath(relDir));
     for (const entry of list) {
       if (entries >= maxEntries) {
@@ -199,11 +220,15 @@ function walkRepo(root: string, omit: Omissions, maxEntries: number): WalkResult
       }
       entries += 1;
       const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
-      if (entry.isSymbolicLink()) {
+      if (CONTROL_NAME.test(entry.name)) {
+        // Un nombre con caracteres de control (secuencias de escape de terminal, saltos de línea…) no se muestra ni se envía tal cual.
+        omit.add(rel.replace(CONTROL_NAME_ALL, '�'), 'ilegible', 'nombre con caracteres de control');
+      } else if (entry.isSymbolicLink()) {
         omit.add(rel, 'enlace');
       } else if (entry.isDirectory()) {
         if (isExcludedDir(entry.name)) omit.add(`${rel}/`, 'excluida');
         else if (isSecretDir(entry.name)) omit.add(`${rel}/`, 'secreto', `carpeta de credenciales (${entry.name}/)`);
+        else if (exclude.matchesEntry(rel, true)) omit.add(`${rel}/`, 'excluido');
         else if (matcher.ignores(gitPath(rel), true)) omit.add(`${rel}/`, 'ignorado');
         else if (depth >= MAX_DEPTH) omit.add(`${rel}/`, 'tope', 'demasiado profunda');
         else {
@@ -214,6 +239,7 @@ function walkRepo(root: string, omit: Omissions, maxEntries: number): WalkResult
         const secret = secretReason(rel);
         if (secret) omit.add(rel, 'secreto', secret);
         else if (entry.name === '.git') omit.add(rel, 'excluida');
+        else if (exclude.matchesEntry(rel, false)) omit.add(rel, 'excluido');
         else if (matcher.ignores(gitPath(rel), false)) omit.add(rel, 'ignorado');
         else {
           const kind = nonTextKind(entry.name);
@@ -366,50 +392,72 @@ function fitBlock(rel: string, cls: Classification, loaded: Loaded, room: number
  * o no contiene nada reconocible.
  */
 export function scanRepo(folder: string, options: ScanOptions = {}): RepoDigest {
+  const remote = options.remote;
   const budget = Math.max(1024, Math.min(options.budgetBytes ?? DEFAULT_BUDGET_BYTES, MAX_BUDGET_BYTES));
   const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
   const treeDepth = options.treeDepth ?? 3;
 
-  if (!existsSync(folder)) throw new CliError(`La carpeta «${folder}» no existe.`, 2);
+  // De un clon temporal se habla por el nombre del repositorio: la ruta del directorio temporal no sale en ningún mensaje.
+  const label = remote ? `El repositorio «${remote.name}»` : `La carpeta «${folder}»`;
+  const where = remote ? `el clon de «${remote.name}»` : `«${folder}»`;
+  if (!existsSync(folder)) throw new CliError(`${label} no existe.`, 2);
   let root: string;
   try {
     root = realpathSync(folder);
-    if (!statSync(root).isDirectory()) throw new CliError(`«${folder}» no es una carpeta: --from-repo espera la carpeta de un repositorio.`, 2);
+    if (!statSync(root).isDirectory()) throw new CliError(`${where} no es una carpeta: --from-repo espera la carpeta de un repositorio.`, 2);
   } catch (error) {
     if (error instanceof CliError) throw error;
-    throw new CliError(`No se pudo leer la carpeta «${folder}»: ${(error as Error).message}`, 2);
+    throw new CliError(`No se pudo leer ${remote ? where : `la carpeta ${where}`}${remote ? '' : `: ${(error as Error).message}`}`, 2);
   }
   if (root === parse(root).root || root === homeDirectory()) {
-    throw new CliError(`«${folder}» es la raíz del disco o tu carpeta personal, no la de un repositorio: indica la carpeta del proyecto (no se envía nada de ahí).`, 2);
+    throw new CliError(`${where} es la raíz del disco o tu carpeta personal, no la de un repositorio: indica la carpeta del proyecto (no se envía nada de ahí).`, 2);
   }
-  const name = basename(root) || 'repositorio';
+  const name = remote ? remote.name : basename(root) || 'repositorio';
+
+  // Filtros del usuario (se validan antes de leer nada): `--repo-exclude` quita entradas del recorrido y `--repo-include` limita los archivos clave.
+  const excludeFilter = new PathFilter(options.exclude, '--repo-exclude');
+  const includeFilter = new PathFilter(options.include, '--repo-include');
 
   const omit = new Omissions();
-  const walked = walkRepo(root, omit, options.maxEntries ?? DEFAULT_MAX_ENTRIES);
+  const walked = walkRepo(root, omit, options.maxEntries ?? DEFAULT_MAX_ENTRIES, !remote, excludeFilter);
   const { files } = walked;
   const codeFiles = countCode(files);
 
   // Clasificación: por nombre y, para los YAML sin pista, por su cabecera.
   const candidates: Candidate[] = [];
   let sniffed = 0;
+  let keyOutsideInclude = 0;
   for (const file of files) {
+    const wanted = !includeFilter.active || includeFilter.matches(file.rel);
     let cls = classify(file.rel);
-    if (!cls && ['yaml', 'yml'].includes(extensionOf(file.rel)) && file.size <= 200 * 1024 && sniffed < MAX_YAML_SNIFF) {
+    // Un YAML fuera de --repo-include no se abre ni para clasificarlo (solo se lista si ya se sabía que era un archivo clave).
+    if (!cls && wanted && ['yaml', 'yml'].includes(extensionOf(file.rel)) && file.size <= 200 * 1024 && sniffed < MAX_YAML_SNIFF) {
       sniffed += 1;
       const head = readHead(join(root, ...file.rel.split('/')), 4096);
       if (head && !head.subarray(0, 4096).includes(0)) cls = sniffYaml(head.toString('utf8'));
     }
-    if (cls) candidates.push({ file, cls });
+    if (!cls) continue;
+    if (!wanted) {
+      keyOutsideInclude += 1;
+      omit.add(file.rel, 'no-incluido');
+    } else candidates.push({ file, cls });
   }
 
   if (files.length === 0) {
     const counts = Object.entries(omit.counts).map(([reason, n]) => `${n} ${OMIT_LABEL[reason as OmitReason]}`);
-    throw new CliError(`La carpeta «${folder}» no contiene archivos de texto que leer${counts.length ? ` (omitidos: ${counts.join('; ')})` : ' (está vacía)'}.`, 2);
+    throw new CliError(`${label} no contiene archivos de texto que leer${counts.length ? ` (omitidos: ${counts.join('; ')})` : ' (está vacía)'}.`, 2);
+  }
+  if (includeFilter.active && candidates.length === 0 && keyOutsideInclude > 0) {
+    throw new CliError(
+      `Ningún archivo clave de ${remote ? `«${remote.name}»` : where} cuadra con --repo-include (${keyOutsideInclude} archivo(s) clave quedaron fuera). ` +
+        `Los patrones se escriben como en un .gitignore y son relativos a la raíz del repositorio (p. ej. services/pedidos/ o *.yaml); --repo-include solo reduce lo que la lista de archivos clave ya lee, no añade archivos.`,
+      2,
+    );
   }
   if (candidates.length === 0 && codeFiles === 0) {
     throw new CliError(
-      `No se reconoce nada en «${folder}»: ni documentación, manifiestos, contenedores, infraestructura o contratos de API, ni código fuente. ` +
-        `¿Es la carpeta de un repositorio?`,
+      `No se reconoce nada en ${remote ? `el repositorio «${remote.name}»` : where}: ni documentación, manifiestos, contenedores, infraestructura o contratos de API, ni código fuente. ` +
+        `${remote ? '¿Es el repositorio que querías?' : '¿Es la carpeta de un repositorio?'}`,
       2,
     );
   }
@@ -428,7 +476,16 @@ export function scanRepo(folder: string, options: ScanOptions = {}): RepoDigest 
     `Repositorio: ${name}\n` +
     `Archivos de texto vistos: ${files.length} en ${walked.dirs + 1} carpetas${walked.truncated ? ' (recorrido parcial: se alcanzó el tope de entradas)' : ''}; ` +
     `fuera del resumen por ser secretos, binarios, dependencias o estar ignorados: ${totalOmitted}.\n` +
-    (languages ? `Lenguajes y formatos (por número de archivos): ${languages}.\n` : '');
+    (languages ? `Lenguajes y formatos (por número de archivos): ${languages}.\n` : '') +
+    // Si el usuario filtró, el modelo debe saber que lo que no ve puede existir (no es que el repositorio no lo tenga).
+    (excludeFilter.active || includeFilter.active
+      ? `Filtros del usuario: ${[
+          excludeFilter.active ? `${omit.counts.excluido ?? 0} entrada(s) excluida(s) con --repo-exclude (no salen ni en el árbol)` : undefined,
+          includeFilter.active ? `el contenido de los archivos clave se limitó con --repo-include (${omit.counts['no-incluido'] ?? 0} archivo(s) clave quedaron fuera; el árbol de carpetas sigue completo)` : undefined,
+        ]
+          .filter(Boolean)
+          .join('; ')}. Lo que falte en el resumen no implica que no exista en el repositorio.\n`
+      : '');
   const treeSection = `\n## Árbol de carpetas (profundidad ${treeDepth}; entre paréntesis, archivos y extensiones principales)\n${tree}\n`;
   const componentSection = componentText
     ? `\n## Archivos de código cuyo nombre sugiere un componente (solo rutas, sin contenido${components.total > componentsShown ? `; ${componentsShown} de ${components.total}` : ''})\n${componentText}\n`
@@ -529,6 +586,7 @@ export function scanRepo(folder: string, options: ScanOptions = {}): RepoDigest 
 
   return {
     name,
+    ...(remote ? { remote: true as const } : {}),
     text,
     bytes: Buffer.byteLength(text),
     budget,

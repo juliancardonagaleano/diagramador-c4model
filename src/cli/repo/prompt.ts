@@ -56,7 +56,7 @@ export function repoInstruction(instruction: string, digest: RepoDigest, moduleI
   return (
     `${instruction}\n\n` +
     `---\n` +
-    `MATERIAL ADJUNTO: resumen del repositorio local «${digest.name}» (el árbol de carpetas y ${digest.included.length} archivo(s) clave, ${kb(digest.bytes)} KB; ` +
+    `MATERIAL ADJUNTO: resumen del repositorio${digest.remote ? '' : ' local'} «${digest.name}» (el árbol de carpetas y ${digest.included.length} archivo(s) clave, ${kb(digest.bytes)} KB; ` +
     `los valores que parecían secretos están sustituidos por [REDACTADO]). Úsalo como fuente para el modelo que pide la instrucción de arriba.\n\n` +
     `Cómo usarlo:\n` +
     `- ${repoFocus(moduleId)}\n` +

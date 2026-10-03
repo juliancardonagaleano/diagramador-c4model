@@ -203,6 +203,99 @@ describe('avisos del modelo por motor', () => {
       const found = keyIssues(mysql([{ name: 'k', type: 'blobby', keys: ['pk'] }], 'motor-clave'));
       expect(found[0].message).toContain('que Motor de prueba no admite como clave');
     });
+
+    const key = (engineId: string, type: string, keys = ['pk']) => keyIssues(mysql([{ name: 'k', type, keys }], engineId)).map((i) => i.message).filter((m) => m.includes('no admite como clave'));
+    const pk = (engineLabel: string, type: string, advice: string) => `La columna «k» de Tabla «Líneas» es clave primaria de tipo «${type}», que ${engineLabel} no admite como clave: su CREATE TABLE falla. ${advice}`;
+
+    it('Oracle: los LOB, long y long raw no sirven de clave; varchar2, number y raw sí', () => {
+      for (const type of ['clob', 'CLOB', 'nclob', 'blob', 'Blob', 'long', 'long raw', 'LONG  RAW']) expect(key('oracle', type), type).toEqual([pk('Oracle', type, 'Usa varchar2(n) o una clave sustituta.')]);
+      for (const type of ['varchar2(40)', 'varchar2', 'nvarchar2(30)', 'number(19)', 'raw(16)', 'char(10)', 'date', 'timestamp']) expect(key('oracle', type), type).toEqual([]);
+      // Un tipo que Oracle no tiene se escribe como su equivalente (`text` → `clob`, `bytea` → `blob`), y eso es lo que avisa.
+      expect(key('oracle', 'text')).toEqual([pk('Oracle', 'clob', 'Usa varchar2(n) o una clave sustituta.')]);
+      expect(key('oracle', 'bytea')).toEqual([pk('Oracle', 'blob', 'Usa varchar2(n) o una clave sustituta.')]);
+    });
+
+    it('PostgreSQL: json, xml y los geométricos no tienen operadores btree; jsonb, text, bytea y los arrays de tipos ordenables sí', () => {
+      for (const type of ['json', 'JSON', 'xml', 'Xml', 'point', 'box', 'polygon', 'circle', 'line', 'lseg', 'path', 'json[]']) expect(key('postgresql', type), type).toEqual([pk('PostgreSQL', type, 'Usa varchar(n) o una clave sustituta.')]);
+      for (const type of ['jsonb', 'text', 'varchar(40)', 'bytea', 'uuid', 'text[]', 'int4range', 'inet', 'tsvector', 'hstore', 'bigint']) expect(key('postgresql', type), type).toEqual([]);
+      expect(key('postgres', 'xml')).toHaveLength(1);
+    });
+
+    it('SQL Server: los tipos de objeto grande no sirven de clave, pero varchar(255) sí; hay que distinguir el parámetro, las mayúsculas y los espacios', () => {
+      for (const type of ['text', 'ntext', 'image', 'xml', 'varchar(max)', 'nvarchar(max)', 'varbinary(max)', 'VARCHAR(MAX)', 'NVarChar(Max)', 'varchar (max)', 'varchar( max )', ' varbinary(  MAX) ']) expect(key('sqlserver', type), type).toEqual([pk('SQL Server', type.trim(), 'Usa nvarchar(n) o una clave sustituta.')]);
+      for (const type of ['varchar(255)', 'varchar(900)', 'nvarchar(450)', 'varchar', 'nvarchar', 'varbinary(16)', 'varbinary', 'char(10)', 'uniqueidentifier', 'bigint', 'int', 'datetime2']) expect(key('mssql', type), type).toEqual([]);
+      // `jsonb` no existe en SQL Server y se escribe como `nvarchar(max)`.
+      expect(key('sqlserver', 'jsonb')).toEqual([pk('SQL Server', 'nvarchar(max)', 'Usa nvarchar(n) o una clave sustituta.')]);
+    });
+
+    it('un motor registrado puede declarar un tipo con parámetros: solo esa forma no sirve de clave', () => {
+      registerEngine({ ...engine('sqlite'), id: 'motor-param', label: 'Motor de parámetros', aliases: [], lenient: false, types: ['varchar'], concepts: Object.fromEntries(TYPE_CONCEPTS.map((c) => [c, 'varchar(10)'])) as never, sql: { quote: ['"', '"'], noKeyTypes: ['Varchar( Big )'] } });
+      expect(key('motor-param', 'varchar(big)')).toHaveLength(1);
+      expect(key('motor-param', 'VARCHAR (BIG)')).toHaveLength(1);
+      expect(key('motor-param', 'varchar(10)')).toEqual([]);
+      expect(key('motor-param', 'varchar')).toEqual([]);
+    });
+
+    describe('clave única (uk)', () => {
+      const uk = (engineLabel: string, type: string, advice = 'Usa varchar(n) o una clave sustituta.') => `La columna «k» de Tabla «Líneas» es clave única de tipo «${type}», que ${engineLabel} no admite como clave: su CREATE TABLE falla. ${advice}`;
+
+      it('MySQL y MariaDB: una columna única de tipo text, blob o json avisa con el arreglo', () => {
+        for (const type of ['text', 'TEXT', 'longtext', 'tinytext', 'blob', 'longblob', 'json']) expect(key('mysql', type, ['uk']), type).toEqual([uk('MySQL', type)]);
+        expect(key('mariadb', 'text', ['uk'])).toEqual([uk('MySQL', 'text')]);
+        const found = keyIssues(mysql([{ name: 'k', type: 'text', keys: ['uk'] }])).filter((i) => i.message.includes('no admite como clave'));
+        expect(found).toHaveLength(1);
+        expect(found[0]).toMatchObject({ severity: 'warning', elementId: 't' });
+      });
+
+      it('no avisa si el tipo lleva longitud (varchar), si no es una tabla o si el motor no emite UNIQUE', () => {
+        expect(key('mysql', 'varchar(100)', ['uk'])).toEqual([]);
+        expect(key('mysql', 'varchar', ['uk'])).toEqual([]);
+        expect(key('mysql', 'char(36)', ['uk'])).toEqual([]);
+        expect(keyIssues(mysql([{ name: 'k', type: 'text', keys: ['uk'] }], 'mysql', 'view'))).toEqual([]);
+        // Sin tipo, o una columna que no es clave (ni fk): nada.
+        expect(keyIssues(mysql([{ name: 'k', keys: ['uk'] }, { name: 'n', type: 'text' }, { name: 'f', type: 'text', keys: ['fk'] }])).filter((i) => i.message.includes('no admite como clave'))).toEqual([]);
+        // El DDL de BigQuery y Databricks no escribe UNIQUE: un motor así no falla por ello aunque declare tipos prohibidos.
+        registerEngine({ ...engine('databricks'), id: 'motor-sin-unique', label: 'Motor sin UNIQUE', aliases: [], sql: { quote: ['"', '"'], unique: false, noKeyTypes: ['string'] } });
+        expect(key('motor-sin-unique', 'string', ['uk'])).toEqual([]);
+        expect(key('motor-sin-unique', 'string', ['pk'])).toHaveLength(1);
+      });
+
+      it('una columna pk y uk a la vez avisa una sola vez, como clave primaria', () => {
+        expect(key('mysql', 'text', ['pk', 'uk'])).toEqual([pk('MySQL', 'text', 'Usa varchar(n) o una clave sustituta.')]);
+      });
+
+      it('lo que un motor no admite como clave primaria tampoco lo admite como única: Oracle, PostgreSQL y SQL Server', () => {
+        expect(key('oracle', 'clob', ['uk'])).toEqual([uk('Oracle', 'clob', 'Usa varchar2(n) o una clave sustituta.')]);
+        expect(key('postgresql', 'json', ['uk'])).toEqual([uk('PostgreSQL', 'json')]);
+        expect(key('sqlserver', 'varchar(max)', ['uk'])).toEqual([uk('SQL Server', 'varchar(max)', 'Usa nvarchar(n) o una clave sustituta.')]);
+        expect(key('sqlserver', 'varchar(255)', ['uk'])).toEqual([]);
+      });
+
+      it('en una clave compuesta avisa de cada columna afectada, primarias y únicas', () => {
+        const found = keyIssues(mysql([{ name: 'a', type: 'bigint', keys: ['pk'] }, { name: 'b', type: 'text', keys: ['pk'] }, { name: 'c', type: 'varchar(20)', keys: ['uk'] }, { name: 'd', type: 'json', keys: ['uk'] }]));
+        expect(found.map((i) => i.message.match(/«(\w+)»/)![1])).toEqual(['b', 'd']);
+      });
+    });
+
+    it('un documento válido de antes sigue sin avisos: claves de tipos que sirven, en cada motor, y el ejemplo con cada motor forzado salvo la tabla de líneas', () => {
+      const safe: Record<string, string[]> = {
+        postgresql: ['bigint', 'uuid', 'varchar(40)', 'text', 'jsonb', 'bytea'],
+        mysql: ['bigint', 'char(36)', 'varchar(40)', 'varchar', 'varbinary(16)'],
+        sqlserver: ['bigint', 'uniqueidentifier', 'varchar(40)', 'nvarchar(255)', 'varbinary(16)'],
+        oracle: ['number(19)', 'raw(16)', 'varchar2(40)', 'date'],
+        sqlite: ['integer', 'text', 'blob'],
+        bigquery: ['int64', 'string'],
+        snowflake: ['number(18,2)', 'varchar'],
+        redshift: ['bigint', 'varchar(40)'],
+        databricks: ['bigint', 'string'],
+      };
+      for (const [id, types] of Object.entries(safe)) {
+        const d = mysql(types.map((type, i) => ({ name: `c${i}`, type, keys: i % 2 ? ['uk'] : ['pk'] })), id);
+        expect(keyIssues(d), id).toEqual([]);
+        expect(toDdl(d).text, id).not.toContain('AVISO');
+      }
+      for (const id of ['postgresql', 'mysql', 'sqlserver', 'sqlite', 'snowflake', 'bigquery']) expect(toDdl(doc, { assetId: 'erp-pedidos', engine: id }).text, id).not.toContain('AVISO');
+    });
   });
 
   it('SQLite acepta cualquier nombre de tipo: una nota, no un aviso', () => {
@@ -408,7 +501,7 @@ describe('DDL por motor', () => {
       expect(all.match(/-- AVISO:/g)).toHaveLength(1);
       expect(all.indexOf('-- AVISO:')).toBeGreaterThan(all.indexOf('-- líneas de pedido'));
       expect(toDdl(doc, { assetId: 'erp' }).text).not.toContain('AVISO');
-      expect(toDdl(doc, { assetId: 'erp', engine: 'oracle' }).text).not.toContain('AVISO');
+      expect(toDdl(doc, { assetId: 'erp', engine: 'postgresql' }).text).not.toContain('AVISO');
       // Con el motor declarado en el activo, sin forzarlo.
       const declared = parse({ assets: [{ id: 'db', kind: 'database', name: 'B', engine: 'mariadb' }, { id: 't', kind: 'table', name: 'Archivo', parentId: 'db', columns: [{ name: 'contenido', type: 'longblob', keys: ['pk'] }] }] });
       expect(toDdl(declared).text).toMatch(/^-- Archivo · B\n-- AVISO: La clave primaria «Archivo\.contenido» es de tipo «longblob», que MySQL no admite como clave/);
@@ -429,6 +522,71 @@ describe('DDL por motor', () => {
       const lines = toDdl(d).text.split('\n').filter((l) => l.includes('AVISO'));
       expect(lines).toHaveLength(1);
       expect(lines[0]).toContain('«T.a b»');
+    });
+
+    const tabla = (engine: string, columns: unknown[]) => parse({ assets: [{ id: 'db', kind: 'database', name: 'B', engine }, { id: 't', kind: 'table', name: 'T', parentId: 'db', columns }] });
+
+    it('MySQL: una columna única text, blob o json avisa en el esquema y en los avisos, y deja UNIQUE tal cual', () => {
+      const d = tabla('mysql', [{ name: 'id', type: 'bigint', keys: ['pk'] }, { name: 'email', type: 'text', keys: ['uk'] }, { name: 'bin', type: 'BLOB', keys: ['uk'] }, { name: 'ref', type: 'varchar(40)', keys: ['uk'] }]);
+      const { text, warnings } = toDdl(d);
+      expect(warnings).toEqual([
+        'La clave única «T.email» es de tipo «text», que MySQL no admite como clave: su CREATE TABLE falla. Usa varchar(n) o una clave sustituta.',
+        'La clave única «T.bin» es de tipo «BLOB», que MySQL no admite como clave: su CREATE TABLE falla. Usa varchar(n) o una clave sustituta.',
+      ]);
+      expect(text).toBe(
+        [
+          '-- T · B',
+          ...warnings.map((w) => `-- AVISO: ${w}`),
+          'CREATE TABLE T (',
+          '    id bigint NOT NULL,',
+          '    email text NOT NULL UNIQUE,',
+          '    bin BLOB NOT NULL UNIQUE,',
+          '    ref varchar(40) NOT NULL UNIQUE,',
+          '    PRIMARY KEY (id)',
+          ');',
+          '',
+        ].join('\n'),
+      );
+    });
+
+    it('la clave primaria avisa antes que las únicas, una columna pk y uk avisa una vez y un motor sin UNIQUE no avisa de ellas', () => {
+      const d = tabla('mysql', [{ name: 'u', type: 'json', keys: ['uk'] }, { name: 'p', type: 'text', keys: ['pk', 'uk'] }]);
+      expect(toDdl(d).warnings.map((w) => w.match(/«([^»]+)»/)![1])).toEqual(['T.p', 'T.u']);
+      const sin = toDdl(tabla('databricks', [{ name: 'u', type: 'string', keys: ['uk'] }]));
+      expect(sin.warnings).toEqual(['Databricks no admite UNIQUE: se omite en «T».']);
+      expect(sin.text).not.toContain('AVISO');
+    });
+
+    it('Oracle, PostgreSQL y SQL Server: el DDL conserva el tipo, comenta el aviso con su arreglo y lo suma a los avisos', () => {
+      const casos: [string, string, string, string][] = [
+        ['oracle', 'clob', 'Oracle', 'varchar2(n)'],
+        ['postgresql', 'xml', 'PostgreSQL', 'varchar(n)'],
+        ['sqlserver', 'varchar(MAX)', 'SQL Server', 'nvarchar(n)'],
+      ];
+      for (const [engine, type, label, advice] of casos) {
+        const { text, warnings } = toDdl(tabla(engine, [{ name: 'k', type, keys: ['pk'] }, { name: 'u', type, keys: ['uk'] }]));
+        const avisos = [
+          `La clave primaria «T.k» es de tipo «${type}», que ${label} no admite como clave: su CREATE TABLE falla. Usa ${advice} o una clave sustituta.`,
+          `La clave única «T.u» es de tipo «${type}», que ${label} no admite como clave: su CREATE TABLE falla. Usa ${advice} o una clave sustituta.`,
+        ];
+        expect(warnings, engine).toEqual(avisos);
+        expect(text.split('\n').slice(0, 3), engine).toEqual(['-- T · B', ...avisos.map((a) => `-- AVISO: ${a}`)]);
+        expect(text, engine).toContain(`    k ${type} NOT NULL,`);
+      }
+      // Con el parámetro que sí sirve, o un tipo que sí sirve, ni aviso ni comentario.
+      for (const [engine, type] of [['oracle', 'varchar2(40)'], ['postgresql', 'jsonb'], ['sqlserver', 'varchar(255)']]) {
+        const ok = toDdl(tabla(engine, [{ name: 'k', type, keys: ['pk'] }, { name: 'u', type, keys: ['uk'] }]));
+        expect(ok.warnings, engine).toEqual([]);
+        expect(ok.text, engine).not.toContain('AVISO');
+      }
+    });
+
+    it('un contrato con una columna única de un tipo que el motor no admite como clave también avisa', () => {
+      const contrato = parse({ assets: [{ id: 'db', kind: 'database', name: 'B', engine: 'mysql' }, { id: 't', kind: 'table', name: 'T', parentId: 'db', contractId: 'c' }], contracts: [{ id: 'c', name: 'C', format: 'odcs', content: 'schema:\n  - name: clientes\n    properties:\n      - name: correo\n        physicalType: text\n        unique: true\n' }] });
+      const { text, warnings } = toDdl(contrato, { contractId: 'c' });
+      expect(warnings).toEqual(['La clave única «clientes.correo» es de tipo «text», que MySQL no admite como clave: su CREATE TABLE falla. Usa varchar(n) o una clave sustituta.']);
+      expect(text).toContain('-- AVISO: La clave única «clientes.correo»');
+      expect(text).toContain('    correo text UNIQUE');
     });
   });
 
@@ -541,10 +699,22 @@ describe('módulo: exportador y comandos', () => {
     expect(warnings).toEqual(['aviso: La clave primaria «líneas de pedido.producto» es de tipo «text», que MySQL no admite como clave: su CREATE TABLE falla. Usa varchar(n) o una clave sustituta.']);
   });
 
+  it('la ayuda de iark data ddl explica el aviso de las claves de un tipo que el motor no admite', () => {
+    const help = dataCommands.find((c) => c.name === 'ddl')!.description;
+    expect(help).toContain('Una clave primaria o única de un tipo que el motor no admite como clave');
+    expect(help).toMatch(/clob en Oracle, varchar\(max\) en SQL Server, json o xml en PostgreSQL/);
+    expect(help).toContain('-- AVISO:');
+  });
+
   it('iark data ddl genera el esquema y deja los avisos aparte', () => {
     const { out, warnings } = run('ddl', [], example, { asset: 'erp-lineas', engine: 'oracle' });
     expect(out).toContain('CREATE TABLE lineas_de_pedido (');
-    expect(warnings).toEqual(['aviso: El tipo «bigint» de «líneas de pedido.pedido_id» no existe en Oracle: se usa «number(19)».', 'aviso: El tipo «text» de «líneas de pedido.producto» no existe en Oracle: se usa «clob».']);
+    // `text` se escribe `clob` en Oracle, y un LOB no sirve de clave primaria: lo último que se avisa.
+    expect(warnings).toEqual([
+      'aviso: El tipo «bigint» de «líneas de pedido.pedido_id» no existe en Oracle: se usa «number(19)».',
+      'aviso: El tipo «text» de «líneas de pedido.producto» no existe en Oracle: se usa «clob».',
+      'aviso: La clave primaria «líneas de pedido.producto» es de tipo «clob», que Oracle no admite como clave: su CREATE TABLE falla. Usa varchar2(n) o una clave sustituta.',
+    ]);
     expect(run('ddl', [], example, { asset: 'erp-pedidos', engine: 'mongodb', format: 'json' }).out).toContain('"$jsonSchema"');
     expect(run('ddl', [], { assets: [{ id: 'a', kind: 'source', name: 'A' }] }).out).toMatch(/^-- No hay tablas/);
     expect(() => run('ddl', [], example, { engine: 'access' })).toThrow(/Motor desconocido/);

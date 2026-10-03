@@ -40,3 +40,6 @@ export * from './graph';
 
 // Versionado: comparar dos versiones de un documento de cualquier módulo.
 export * from './diff';
+
+// Proyectos: guardar los diagramas agrupados, en un archivo único y con referencias entre ellos.
+export * from './project';
