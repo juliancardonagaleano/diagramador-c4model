@@ -21,7 +21,7 @@ import type { Point, Rect } from '@core/layout/edgeAnchors';
 import { estimateLabelSize } from '@core/layout/labelMetrics';
 import { routeMatchesNodes } from '@core/layout/quality';
 import { routeEdges } from '@core/layout/router';
-import { useDocumentStore } from '../../store/documentStore';
+import { pauseHistory, useDocumentStore } from '../../store/documentStore';
 import { BoundaryNode, type BoundaryNodeType } from './BoundaryNode';
 import { holdCamera, useCameraPending, useFitCamera } from './camera';
 import { ElementNode, elementColor, type ElementNodeType } from './ElementNode';
@@ -49,8 +49,9 @@ export function Canvas() {
 
   // Autolayout automático cuando hay elementos sin posición (p. ej. documento generado por IA,
   // recién importado, o la carga inicial de la app antes de que exista nada persistido). No se
-  // registra como paso de deshacer propio (pause/resume): si no, un Ctrl+Z de más después de las
-  // acciones del usuario retrocede a este estado "sin posicionar" en vez de quedarse quieto.
+  // registra como paso de deshacer propio (pauseHistory, anidable con otras pausas como la de exportar):
+  // si no, un Ctrl+Z de más después de las acciones del usuario retrocede a este estado "sin posicionar"
+  // en vez de quedarse quieto.
   const layoutRequested = useRef<string | null>(null);
   useEffect(() => {
     if (!derived || layoutBusy) return;
@@ -58,15 +59,14 @@ export function Canvas() {
     const key = `${derived.view.id}:${derived.nodes.map((n) => n.id).join(',')}`;
     if (needs && layoutRequested.current !== key) {
       layoutRequested.current = key;
-      const temporal = useDocumentStore.temporal.getState();
       const wasModified = useDocumentStore.getState().modified;
-      temporal.pause();
+      const resumeHistory = pauseHistory();
       const layout = runAutoLayout(derived.view.id, { force: false });
       fitAfter(layout, { padding: 0.15, duration: 300 }, 50);
       void layout
         .catch((error) => Toast.error(`Autolayout automático falló: ${(error as Error).message}`))
         .finally(() => {
-          temporal.resume();
+          resumeHistory();
           // Colocar por primera vez una vista no es una edición del usuario: no debe marcar "Cambios sin guardar".
           useDocumentStore.setState({ modified: wasModified });
         });

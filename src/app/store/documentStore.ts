@@ -550,6 +550,28 @@ function labelForViewType(type: ViewType): string {
   return type === 'systemContext' ? 'Contexto' : type === 'container' ? 'Contenedores' : 'Componentes';
 }
 
+// Cuántas secciones tienen ahora mismo el historial en pausa (ver `pauseHistory`).
+let historyPauses = 0;
+
+/**
+ * Pausa el historial de deshacer (lo que se cambie mientras tanto no es un paso) y devuelve la función que levanta esa pausa.
+ * Las pausas se anidan: `temporal.pause()`/`resume()` de zundo son un interruptor, así que una sección que terminara antes que
+ * otra (el autolayout inicial de una vista, que es asíncrono, y la exportación a .drawio, que guarda las posiciones de las
+ * vistas sin abrir) reanudaría el historial a mitad de la otra y su cambio llegaría después como un paso de deshacer. Aquí el
+ * historial solo se reanuda cuando se han levantado todas las pausas; levantar dos veces la misma no cuenta dos.
+ */
+export function pauseHistory(): () => void {
+  historyPauses++;
+  useDocumentStore.temporal.getState().pause();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    historyPauses--;
+    if (historyPauses === 0) useDocumentStore.temporal.getState().resume();
+  };
+}
+
 export const useTemporalStore = <T,>(selector: (state: ReturnType<typeof useDocumentStore.temporal.getState>) => T): T =>
   useStore(useDocumentStore.temporal, selector);
 
