@@ -411,7 +411,7 @@ describe('IA', () => {
     expect(refined.ok).toBe(true);
     if (!refined.ok) return;
 
-    const carried = integrationAiSpec.carry(base, refined.document);
+    const carried = integrationAiSpec.carry!(base, refined.document);
     expect(carried).toEqual(carryIntegration(base, refined.document));
     const contract = (id: string) => carried.contracts.find((c) => c.id === id);
     expect(contract('pedidos-openapi')?.content).toBe('openapi: 3.1.0');
