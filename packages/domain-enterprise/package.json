@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@iark/kernel": "*",
+    "fast-xml-parser": "^5.3.4",
     "zod": "^4.3.3"
   }
 }

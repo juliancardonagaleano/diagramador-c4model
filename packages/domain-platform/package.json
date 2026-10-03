@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@iark/kernel": "*",
+    "yaml": "^2.9.1",
     "zod": "^4.3.3"
   }
 }
