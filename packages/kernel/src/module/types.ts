@@ -24,8 +24,17 @@ export interface ImportContext {
   fallbackName?: string;
   /** Ruta del archivo de origen, si lo hay. */
   file?: string;
-  /** Opciones propias de cada importador (p. ej. cómo resolver los `!include` del DSL de Structurizr). */
+  /**
+   * Opciones propias de cada importador (p. ej. cómo resolver los `!include` del DSL de Structurizr). Los importadores con
+   * `multiFile` reciben aquí `files` (`SourceFile[]`): ver `joinSourceFiles`.
+   */
   extra?: Record<string, unknown>;
+}
+
+/** Un archivo de origen de una importación de varios archivos: su nombre (con la ruta que se quiera ver en los avisos) y su texto. */
+export interface SourceFile {
+  name: string;
+  text: string;
 }
 
 export interface ImportOutcome<TDoc> {
@@ -43,6 +52,13 @@ export interface Importer<TDoc> {
   extensions: string[];
   /** Reconoce el formato por el contenido (para stdin o extensiones desconocidas). */
   detect?(text: string): boolean;
+  /**
+   * Si el formato se reparte en varios archivos que se leen juntos (los `.tf` de una carpeta de Terraform): las extensiones
+   * (en minúsculas y con punto) de los que se juntan al importar una carpeta o varios archivos. En ese caso `import` recibe
+   * todos los textos concatenados (el mismo documento que si se hubieran concatenado a mano) y, en `context.extra.files`, el
+   * detalle por archivo para que los avisos y los errores digan de cuál vienen (ver `joinSourceFiles`).
+   */
+  multiFile?: { extensions: string[] };
   import(text: string, context: ImportContext): Promise<ImportOutcome<TDoc>> | ImportOutcome<TDoc>;
 }
 

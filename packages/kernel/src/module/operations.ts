@@ -1,5 +1,5 @@
 import { extractJson } from '../util/extractJson';
-import type { CommandOption, CommandSpec, DomainModule, EntityRef, ExportContext, ImportContext, ModuleIssue, ViewRef } from './types';
+import type { CommandOption, CommandSpec, DomainModule, EntityRef, ExportContext, ImportContext, Importer, ModuleIssue, SourceFile, ViewRef } from './types';
 
 /**
  * Operaciones sobre un módulo, comunes a todas las superficies (banco de trabajo web, puente `postMessage`, servicio HTTP):
@@ -161,6 +161,69 @@ export async function importText(module: AnyModule, text: string, importerId?: s
   }
   const outcome = await importer.import(text, context);
   return { document: outcome.document, warnings: outcome.warnings, importer: importer.id };
+}
+
+// ───────────── importar varios archivos ─────────────
+
+const extensionOf = (name: string): string => /\.[^./\\]+$/.exec(name.toLowerCase())?.[0] ?? '';
+
+/** Orden estable de los archivos de una importación: por nombre sin distinguir mayúsculas y, si empatan, por el nombre tal cual. */
+function byName(a: SourceFile, b: SourceFile): number {
+  const x = a.name.toLowerCase();
+  const y = b.name.toLowerCase();
+  return x < y ? -1 : x > y ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+}
+
+/**
+ * Prepara varios archivos para un importador `multiFile`: los ordena por nombre (el resultado no depende del orden en que se
+ * eligieron), concatena sus textos con un salto de línea entre uno y otro (`text`, el que recibe `import` y el que sirve para
+ * reconocer el formato) y deja el detalle por archivo en `extra.files`.
+ */
+export function joinSourceFiles(files: SourceFile[]): { text: string; extra: { files: SourceFile[] } } {
+  const sorted = [...files].sort(byName);
+  return { text: sorted.map((f) => f.text).join('\n'), extra: { files: sorted } };
+}
+
+/** Los `files` de `context.extra` de un importador `multiFile`, si vienen bien formados. */
+export function sourceFilesOf(extra: Record<string, unknown> | undefined): SourceFile[] | undefined {
+  const files = extra?.files;
+  if (!Array.isArray(files) || files.length === 0) return undefined;
+  return files.every((f) => f && typeof f.name === 'string' && typeof f.text === 'string') ? (files as SourceFile[]) : undefined;
+}
+
+/**
+ * Importador que lee juntos los archivos `names`: el pedido con `importerId` o, sin pedirlo, el que declara `multiFile` con la
+ * extensión de todos. `undefined` si no hay ninguno. Con `importerId` los nombres también deben ser de sus extensiones.
+ */
+export function multiFileImporter<TDoc>(module: DomainModule<TDoc>, names: string[], importerId?: string): Importer<TDoc> | undefined {
+  const candidates = module.importers.filter((i) => i.multiFile && (importerId === undefined || i.id === importerId));
+  return candidates.find((i) => names.every((n) => i.multiFile!.extensions.includes(extensionOf(n))));
+}
+
+/** Por qué no se pueden leer juntos los archivos `names` con ese importador (o con ninguno), dicho a quien los eligió. */
+export function whyNotMultiFile(module: AnyModule, names: string[], importerId?: string): string {
+  const joinable = module.importers.filter((i) => i.multiFile);
+  if (importerId !== undefined && !module.importers.some((i) => i.id === importerId)) {
+    return `El módulo «${module.id}» no importa «${importerId}». Formatos: ${module.importers.map((i) => i.id).join(', ') || 'ninguno'}.`;
+  }
+  if (importerId !== undefined && !joinable.some((i) => i.id === importerId)) return `El formato «${importerId}» no se puede leer repartido en varios archivos: importa uno solo.`;
+  if (joinable.length === 0) return `El módulo «${module.id}» no importa varios archivos a la vez: importa uno solo.`;
+  const extensions = (importerId === undefined ? joinable : joinable.filter((i) => i.id === importerId)).flatMap((i) => i.multiFile!.extensions);
+  return `Los archivos (${names.join(', ')}) no son todos del mismo formato: solo se leen juntos los ${extensions.join(', ')}.`;
+}
+
+/**
+ * Importa varios archivos como uno solo con un importador `multiFile` (p. ej. los `.tf` de una carpeta). Con un solo archivo
+ * es una importación normal. Falla con un mensaje claro (`whyNotMultiFile`) si los archivos no son todos del mismo formato o
+ * si el formato no se puede repartir en varios archivos.
+ */
+export async function importFiles(module: AnyModule, files: SourceFile[], importerId?: string, context: ImportContext = {}): Promise<ImportResult> {
+  if (files.length === 0) throw new Error('No hay ningún archivo que importar.');
+  const names = files.map((f) => f.name);
+  const importer = multiFileImporter(module, names, importerId);
+  if (!importer) throw new Error(whyNotMultiFile(module, names, importerId));
+  const joined = joinSourceFiles(files);
+  return importText(module, joined.text, importer.id, { ...context, extra: { ...context.extra, ...joined.extra } });
 }
 
 // ───────────── comandos (informes y conversiones) ─────────────

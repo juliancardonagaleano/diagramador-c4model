@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildManifest, manifestSchema } from './manifest';
+import { importFiles, joinSourceFiles, multiFileImporter, sourceFilesOf } from './operations';
 import { ModuleRegistry, UnknownModuleError } from './registry';
-import type { DomainModule, Importer } from './types';
+import type { DomainModule, ImportContext, Importer } from './types';
 import { formatUrn, parseUrn } from './urn';
 
 const importer = (id: string, extensions: string[], detect?: (t: string) => boolean): Importer<{ n: number }> => ({
@@ -78,5 +79,67 @@ describe('manifiesto de federación', () => {
     });
     expect(manifestSchema.safeParse(manifest).success).toBe(true);
     expect(manifestSchema.safeParse({ ...manifest, schema: 'otro' }).success).toBe(false);
+  });
+});
+
+describe('importar varios archivos', () => {
+  // Un importador que se reparte en `.part` y deja a la vista lo que recibe: el texto concatenado y el detalle por archivo.
+  const received: Array<{ text: string; context: ImportContext }> = [];
+  const parts: Importer<{ n: number }> = {
+    id: 'partes',
+    label: 'Partes',
+    extensions: ['.part', '.json'],
+    multiFile: { extensions: ['.part'] },
+    import: (text, context) => (received.push({ text, context }), { document: { n: text.length }, warnings: [] }),
+  };
+  const single = importer('solo', ['.uno']);
+  const mod = fakeModule('multi', [single, parts]);
+
+  it('joinSourceFiles ordena por nombre, concatena con un salto de línea y deja el detalle en extra.files', () => {
+    const joined = joinSourceFiles([
+      { name: 'b.part', text: 'B' },
+      { name: 'C.part', text: 'C' },
+      { name: 'a.part', text: 'A' },
+    ]);
+    expect(joined.text).toBe('A\nB\nC');
+    expect(joined.extra.files.map((f) => f.name)).toEqual(['a.part', 'b.part', 'C.part']);
+    // Con nombres que solo difieren en las mayúsculas, el orden sigue siendo estable.
+    const same = [{ name: 'a.part', text: '1' }, { name: 'A.part', text: '2' }];
+    expect(joinSourceFiles(same).text).toBe(joinSourceFiles([...same].reverse()).text);
+  });
+
+  it('sourceFilesOf solo da los archivos si vienen bien formados', () => {
+    expect(sourceFilesOf(undefined)).toBeUndefined();
+    expect(sourceFilesOf({ files: [] })).toBeUndefined();
+    expect(sourceFilesOf({ files: [{ name: 'a' }] })).toBeUndefined();
+    expect(sourceFilesOf({ files: 'a' })).toBeUndefined();
+    expect(sourceFilesOf({ files: [{ name: 'a.part', text: 'A' }] })).toEqual([{ name: 'a.part', text: 'A' }]);
+  });
+
+  it('multiFileImporter elige el importador por la extensión de todos los archivos', () => {
+    expect(multiFileImporter(mod, ['a.part', 'B.PART'])?.id).toBe('partes');
+    expect(multiFileImporter(mod, ['a.part', 'b.uno'])).toBeUndefined();
+    expect(multiFileImporter(mod, ['a.json'])).toBeUndefined();
+    expect(multiFileImporter(mod, ['a.part'], 'partes')?.id).toBe('partes');
+    expect(multiFileImporter(mod, ['a.part'], 'solo')).toBeUndefined();
+  });
+
+  it('importFiles pasa al importador el texto concatenado y el detalle por archivo', async () => {
+    received.length = 0;
+    const result = await importFiles(mod, [{ name: 'b.part', text: 'BB' }, { name: 'a.part', text: 'AA' }], undefined, { file: '/proyecto/infra' });
+    expect(result).toEqual({ document: { n: 5 }, warnings: [], importer: 'partes' });
+    expect(received).toHaveLength(1);
+    expect(received[0].text).toBe('AA\nBB');
+    expect(received[0].context.file).toBe('/proyecto/infra');
+    expect(received[0].context.extra?.files).toEqual([{ name: 'a.part', text: 'AA' }, { name: 'b.part', text: 'BB' }]);
+  });
+
+  it('importFiles explica por qué no puede: mezcla de formatos, formato que no se reparte, importador desconocido o nada que importar', async () => {
+    const files = (...names: string[]) => names.map((name) => ({ name, text: 'x' }));
+    await expect(importFiles(mod, files('a.part', 'b.uno'))).rejects.toThrow(/no son todos del mismo formato: solo se leen juntos los \.part/);
+    await expect(importFiles(mod, files('a.uno', 'b.uno'), 'solo')).rejects.toThrow(/«solo» no se puede leer repartido en varios archivos/);
+    await expect(importFiles(mod, files('a.part'), 'nada')).rejects.toThrow(/no importa «nada»/);
+    await expect(importFiles(fakeModule('sin', [single]), files('a.uno', 'b.uno'))).rejects.toThrow(/no importa varios archivos a la vez/);
+    await expect(importFiles(mod, [])).rejects.toThrow(/No hay ningún archivo/);
   });
 });

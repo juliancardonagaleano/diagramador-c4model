@@ -1,10 +1,10 @@
-import { readFileSync } from 'node:fs';
-import { ModuleRegistry } from '@iark/kernel';
+import { readdirSync, readFileSync } from 'node:fs';
+import { importFiles, joinSourceFiles, ModuleRegistry } from '@iark/kernel';
 import { describe, expect, it } from 'vitest';
 import { platformModule } from '../module';
 import { fromKubernetes } from './fromKubernetes';
 import { PlatformImportError } from './fromMermaid';
-import { fromTerraform } from './fromTerraform';
+import { fromTerraform, fromTerraformFiles } from './fromTerraform';
 import { validatePlatformDocument } from '../schema';
 import type { PlatformDocument } from '../types';
 
@@ -91,6 +91,61 @@ describe('módulo de plataforma: importadores registrados', () => {
     const text = 'resource "aws_s3_bucket" "a" {\n  bucket = "x"\n}\n';
     expect((await importer.import(text, { fallbackName: 'mi-infra.tf' })).document.workspace.name).toBe('mi-infra');
     expect((await importer.import(text, {})).document.workspace.name).toBe('Arquitectura de plataforma');
+  });
+});
+
+describe('módulo de plataforma: Terraform repartido en varios archivos', () => {
+  const FOLDER = `${TF}/aws-tienda-multiarchivo`;
+  const files = readdirSync(FOLDER)
+    .filter((n) => n.endsWith('.tf'))
+    .map((name) => ({ name, text: read(`${FOLDER}/${name}`) }));
+
+  it('solo Terraform declara que se lee en varios archivos, y solo los .tf', () => {
+    expect(platformModule.importers.map((i) => [i.id, i.multiFile])).toEqual([
+      ['mermaid', undefined],
+      ['terraform', { extensions: ['.tf'] }],
+      ['kubernetes', undefined],
+    ]);
+  });
+
+  it('importFiles del módulo da el mismo documento que importar los textos concatenados', async () => {
+    const together = await importFiles(platformModule, files, undefined, { file: FOLDER });
+    const manual = fromTerraform(joinSourceFiles(files).text, { file: FOLDER });
+    expect(together.importer).toBe('terraform');
+    expect(together.document).toEqual(manual.document);
+    expect(together.warnings).toEqual(manual.warnings);
+    expect(validatePlatformDocument(together.document).ok).toBe(true);
+  });
+
+  it('con el formato pedido (terraform) o sin pedirlo se elige el mismo importador; con otro formato se rechaza', async () => {
+    const byId = await importFiles(platformModule, files, 'terraform', { file: FOLDER });
+    const auto = await importFiles(platformModule, files, undefined, { file: FOLDER });
+    expect(byId).toEqual(auto);
+    await expect(importFiles(platformModule, files, 'kubernetes')).rejects.toThrow(/«kubernetes» no se puede leer repartido en varios archivos/);
+    await expect(importFiles(platformModule, [...files, { name: 'x.yaml', text: 'a: 1' }])).rejects.toThrow(/no son todos del mismo formato/);
+  });
+
+  it('con un error en un archivo, el mensaje dice cuál', async () => {
+    const broken = files.map((f) => (f.name === 'red.tf' ? { ...f, text: `${f.text}\nresource "aws_vpc" "otra" {\n  cidr_block = "10.1.0.0/16\n}\n` } : f));
+    const line = broken.find((f) => f.name === 'red.tf')!.text.split('\n').findIndex((l) => l.includes('10.1.0.0/16')) + 1;
+    await expect(importFiles(platformModule, broken, undefined, { file: FOLDER })).rejects.toThrow(`El HCL de Terraform no es válido (red.tf, línea ${line}): cadena sin cerrar.`);
+  });
+
+  it('dañado un archivo (cortado, recortado, símbolos de más) solo da un documento válido o un error de importación', () => {
+    let imported = 0;
+    for (const name of ['red.tf', 'seguridad.tf', 'entrada.tf']) {
+      const base = files.find((f) => f.name === name)!;
+      for (let cut = 0; cut < base.text.length; cut += Math.ceil(base.text.length / 40)) {
+        const mutated = files.map((f) => (f.name === name ? { ...f, text: f.text.slice(0, cut) + f.text.slice(cut + 37) } : f));
+        try {
+          expect(validatePlatformDocument(fromTerraformFiles(mutated, {}).document).ok).toBe(true);
+          imported += 1;
+        } catch (error) {
+          expect(error).toBeInstanceOf(PlatformImportError);
+        }
+      }
+    }
+    expect(imported).toBeGreaterThan(0);
   });
 });
 

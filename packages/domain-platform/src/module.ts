@@ -1,5 +1,5 @@
 import type { DomainModule, EntityRef, Exporter, Importer, ModuleIssue, ViewRef } from '@iark/kernel';
-import { looksLikeMermaid } from '@iark/kernel';
+import { looksLikeMermaid, sourceFilesOf } from '@iark/kernel';
 import { platformAiSpec } from './ai/generation';
 import { platformCommands } from './commands';
 import { platformEditor } from './editor';
@@ -10,7 +10,7 @@ import { fromKubernetes, looksLikeKubernetes } from './import/fromKubernetes';
 import { fromMermaid } from './import/fromMermaid';
 import { iconCommands } from './icons/commands';
 import { iconIssues } from './icons/issues';
-import { fromTerraform } from './import/fromTerraform';
+import { fromTerraform, fromTerraformFiles } from './import/fromTerraform';
 import { looksLikeTerraform } from './import/terraformModel';
 import { analyzePlatform } from './issues';
 import { platformDocumentSchema, platformJsonSchema } from './schema';
@@ -31,7 +31,13 @@ const terraformImporter: Importer<PlatformDocument> = {
   // `.tf.json` llega al registro como `.json` (solo mira la última extensión): ese caso se reconoce por el contenido.
   extensions: ['.tf', '.tf.json', '.tfstate'],
   detect: looksLikeTerraform,
-  import: (text, ctx) => fromTerraform(text, { name: ctx.name, fallbackName: ctx.fallbackName, file: ctx.file }),
+  // Los `.tf` de una carpeta (o varios archivos) se leen juntos: `text` es su concatenación y `extra.files` el detalle por archivo.
+  multiFile: { extensions: ['.tf'] },
+  import: (text, ctx) => {
+    const files = sourceFilesOf(ctx.extra);
+    const options = { name: ctx.name, fallbackName: ctx.fallbackName, file: ctx.file };
+    return files && files.length > 1 ? fromTerraformFiles(files, options) : fromTerraform(text, options);
+  },
 };
 
 const kubernetesImporter: Importer<PlatformDocument> = {

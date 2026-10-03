@@ -244,37 +244,56 @@ function noteWorkspace(model: TfModel, attrs: TfObject): void {
   }
 }
 
+/** Un texto de HCL; con `name` (el archivo, cuando se leen varios juntos) los avisos y los errores dicen de cuál vienen. */
+interface HclSource {
+  name?: string;
+  text: string;
+}
+
+/** `línea 3` o, con archivo, `main.tf, línea 3`. */
+const hclPlace = (name: string | undefined, line: number): string => (name ? `${name}, línea ${line}` : `línea ${line}`);
+
 function fromHcl(text: string): TfModel {
-  let file;
-  try {
-    file = parseHcl(text);
-  } catch (error) {
-    if (error instanceof HclSyntaxError) throw new PlatformImportError(`El HCL de Terraform no es válido (línea ${error.line}): ${error.message}.`);
-    throw error;
-  }
+  return fromHclSources([{ text }]);
+}
+
+/** Lee varios textos de HCL como un solo stack: es lo mismo que leer su concatenación, pero cada aviso y error lleva su archivo. */
+function fromHclSources(sources: HclSource[]): TfModel {
   const model = emptyModel('hcl');
-  model.warnings.push(...file.warnings);
-  const known = new Set(['resource', 'data', 'variable', 'locals', 'module', 'provider', 'terraform', 'output', 'moved', 'import', 'check', 'removed']);
-  if (!file.blocks.some((b) => known.has(b.type))) {
-    const first = file.warnings[0];
-    throw new PlatformImportError(`El texto no contiene bloques de Terraform (resource, data, variable, locals, module, provider…).${first ? ` ${first[0].toUpperCase()}${first.slice(1)}.` : ''}`);
+  const found: Array<{ block: HclBlock; name?: string }> = [];
+  for (const { name, text } of sources) {
+    let file;
+    try {
+      file = parseHcl(text);
+    } catch (error) {
+      if (error instanceof HclSyntaxError) throw new PlatformImportError(`El HCL de Terraform no es válido (${hclPlace(name, error.line)}): ${error.message}.`);
+      throw error;
+    }
+    // Los avisos del analizador empiezan por «línea N: …»: con archivo pasan a «main.tf, línea N: …».
+    model.warnings.push(...file.warnings.map((w) => (name ? `${name}, ${w}` : w)));
+    for (const block of file.blocks) found.push({ block, name });
   }
-  for (const block of file.blocks) {
+  const known = new Set(['resource', 'data', 'variable', 'locals', 'module', 'provider', 'terraform', 'output', 'moved', 'import', 'check', 'removed']);
+  if (!found.some((f) => known.has(f.block.type))) {
+    const first = model.warnings[0];
+    throw new PlatformImportError(`El texto no contiene bloques de Terraform (resource, data, variable, locals, module, provider…).${first ? ` ${/^línea /.test(first) ? `${first[0].toUpperCase()}${first.slice(1)}` : first}.` : ''}`);
+  }
+  for (const { block, name } of found) {
     const attrs = bodyToObject(block);
     if (block.type === 'resource' || block.type === 'data') {
-      const [type, name] = block.labels;
-      if (!type || !name) {
-        model.warnings.push(`línea ${block.line}: el bloque ${block.type} necesita tipo y nombre; se omite.`);
+      const [type, label] = block.labels;
+      if (!type || !label) {
+        model.warnings.push(`${hclPlace(name, block.line)}: el bloque ${block.type} necesita tipo y nombre; se omite.`);
         continue;
       }
       const mode = block.type === 'data' ? 'data' : 'managed';
       const dependsOn = refsOf(attrs.depends_on);
       const count = instanceCount(attrs);
       model.nodes.push({
-        address: mode === 'data' ? `data.${type}.${name}` : `${type}.${name}`,
+        address: mode === 'data' ? `data.${type}.${label}` : `${type}.${label}`,
         mode,
         type,
-        name,
+        name: label,
         attrs,
         instances: [],
         refs: unique([...refsOf(attrs), ...dependsOn]),
@@ -627,6 +646,24 @@ export function readTerraform(source: string): TfModel {
   if ('format_version' in json && ['values', 'planned_values', 'resource_changes', 'configuration', 'prior_state'].some((k) => k in json)) return fromShow(json);
   if (Object.keys(json).length > 0 && Object.keys(json).every((k) => TF_JSON_KEYS.includes(k) || k === '//' || k === '//comment')) return fromTfJson(json);
   throw new PlatformImportError('El JSON no es de Terraform: se esperaba un estado (`.tfstate`), la salida de `terraform show -json` o un `.tf.json` con resource/data/variable/module.');
+}
+
+/**
+ * Lee varios archivos `.tf` como un solo stack (los de una carpeta de Terraform). El modelo es el mismo que el de leer sus textos
+ * concatenados, pero los avisos y los errores dicen de qué archivo vienen. Un archivo vacío o solo de comentarios no cuenta (es
+ * habitual, p. ej. un `outputs.tf` aún sin salidas); solo se leen juntos archivos HCL: el JSON de Terraform se importa de uno en uno.
+ */
+export function readTerraformFiles(files: Array<{ name: string; text: string }>): TfModel {
+  const sources = files.map((f) => ({ name: f.name, text: f.text.replace(/^﻿/, '') }));
+  if (sources.every((f) => f.text.trim() === '')) throw new PlatformImportError('Los archivos de Terraform están vacíos.');
+  for (const f of sources) {
+    const start = f.text.trimStart();
+    if (start.startsWith('{') || start.startsWith('[')) {
+      throw new PlatformImportError(`«${f.name}» no es HCL: el JSON de Terraform (.tf.json, estado, plan) se importa de uno en uno, no junto con otros archivos.`);
+    }
+  }
+  const labelled = sources.length > 1;
+  return fromHclSources(sources.filter((f) => f.text.trim() !== '').map((f) => ({ text: f.text, ...(labelled ? { name: f.name } : {}) })));
 }
 
 /** ¿Parece Terraform? Reconoce HCL por sus bloques y JSON por la forma del estado, del plan o del `.tf.json`. */
