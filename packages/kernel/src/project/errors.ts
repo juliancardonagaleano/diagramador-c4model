@@ -12,10 +12,19 @@ export type ProjectErrorCode =
   /** Un servidor remoto pide un token, o el que se usa no sirve o no alcanza para esa operación. */
   | 'unauthorized';
 
+/** Detalle opcional de un error que vino de un servidor remoto (el cliente HTTP lo rellena; los almacenes locales no). */
+export interface ProjectErrorInfo {
+  /** Código de estado HTTP de la respuesta. */
+  status?: number;
+  /** `true` si ni siquiera hubo respuesta (red caída, tiempo agotado, o el navegador bloqueó la petición por CORS o por contenido mixto). */
+  network?: boolean;
+}
+
 export class ProjectError extends Error {
   constructor(
     readonly code: ProjectErrorCode,
     message: string,
+    readonly info: ProjectErrorInfo = {},
   ) {
     super(message);
     this.name = 'ProjectError';

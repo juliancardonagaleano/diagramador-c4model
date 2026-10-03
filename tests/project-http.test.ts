@@ -70,12 +70,33 @@ describe('HttpProjectStore contra iark serve', () => {
     const url = `http://127.0.0.1:${(bare.address() as AddressInfo).port}`;
     const error = await new HttpProjectStore({ baseUrl: url }).whoami().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ProjectError);
-    expect(error).toMatchObject({ code: 'unavailable', message: expect.stringContaining('espacio de trabajo') });
+    expect(error).toMatchObject({ code: 'unavailable', message: expect.stringContaining('espacio de trabajo'), info: { status: 404 } });
 
     // nada escucha en ese puerto
     await running.close();
     cleanups.length = 0;
     const down = await new HttpProjectStore({ baseUrl: running.base, timeoutMs: 2000 }).listProjects().catch((e: unknown) => e);
-    expect(down).toMatchObject({ code: 'unavailable', message: expect.stringContaining('No se pudo conectar') });
+    expect(down).toMatchObject({ code: 'unavailable', message: expect.stringContaining('No se pudo conectar'), info: { network: true } });
+  });
+
+  it('el detalle del error dice si hubo respuesta (estado HTTP) o no (red), y el token se puede cambiar sin crear otro cliente', async () => {
+    let seen: string | null = null;
+    const needsToken = (async (_url: unknown, init: RequestInit) => {
+      seen = new Headers(init.headers).get('Authorization');
+      return seen === 'Bearer bueno'
+        ? new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+        : new Response(JSON.stringify({ error: 'Falta un token válido.', code: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }) as unknown as typeof fetch;
+    const store = new HttpProjectStore({ baseUrl: 'http://x.example', fetch: needsToken });
+    const rejected = await store.listProjects().catch((e: unknown) => e);
+    expect(rejected).toMatchObject({ code: 'unauthorized', info: { status: 401 } });
+    expect(seen).toBeNull();
+
+    store.setToken(' bueno ');
+    expect(await store.listProjects()).toEqual([]);
+    expect(seen).toBe('Bearer bueno');
+    store.setToken(undefined);
+    await expect(store.listProjects()).rejects.toMatchObject({ code: 'unauthorized' });
+    expect(seen).toBeNull();
   });
 });

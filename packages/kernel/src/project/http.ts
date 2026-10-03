@@ -55,24 +55,25 @@ interface Payload {
 function errorFromResponse(status: number, payload: Payload, retryAfter: string | null): ProjectError {
   const message = typeof payload.error === 'string' && payload.error ? payload.error : '';
   const code = typeof payload.code === 'string' ? payload.code : undefined;
-  if (code && LOCAL_CODES.has(code)) return new ProjectError(code as ProjectErrorCode, message || `Error ${status}.`);
-  if (status === 401 || code === 'unauthorized') return new ProjectError('unauthorized', message || 'El servidor pide un token de acceso válido.');
-  if (status === 403 || code === 'forbidden') return new ProjectError('unauthorized', message || 'Este token no tiene permiso para esa operación.');
+  const info = { status };
+  if (code && LOCAL_CODES.has(code)) return new ProjectError(code as ProjectErrorCode, message || `Error ${status}.`, info);
+  if (status === 401 || code === 'unauthorized') return new ProjectError('unauthorized', message || 'El servidor pide un token de acceso válido.', info);
+  if (status === 403 || code === 'forbidden') return new ProjectError('unauthorized', message || 'Este token no tiene permiso para esa operación.', info);
   if (status === 429 || code === 'rate-limited') {
     const wait = Number(retryAfter);
-    return new ProjectError('unavailable', message || `Demasiados intentos fallidos${Number.isFinite(wait) && wait > 0 ? `: espera ${Math.ceil(wait)} s` : ''}.`);
+    return new ProjectError('unavailable', message || `Demasiados intentos fallidos${Number.isFinite(wait) && wait > 0 ? `: espera ${Math.ceil(wait)} s` : ''}.`, info);
   }
-  if (status === 413) return new ProjectError('invalid', message || 'El documento es demasiado grande para el servidor.');
-  if (status === 400) return new ProjectError('invalid', message || 'El servidor rechazó la petición.');
-  if (status === 404) return new ProjectError('unavailable', message || 'Ese servidor no ofrece proyectos (¿arrancó sin --workspace, o la dirección no es la de IArk?).');
-  return new ProjectError('unavailable', `El servidor respondió ${status}${message ? `: ${message}` : ''}.`);
+  if (status === 413) return new ProjectError('invalid', message || 'El documento es demasiado grande para el servidor.', info);
+  if (status === 400) return new ProjectError('invalid', message || 'El servidor rechazó la petición.', info);
+  if (status === 404) return new ProjectError('unavailable', message || 'Ese servidor no ofrece proyectos (¿arrancó sin --workspace, o la dirección no es la de IArk?).', info);
+  return new ProjectError('unavailable', `El servidor respondió ${status}${message ? `: ${message}` : ''}.`, info);
 }
 
 export class HttpProjectStore implements ProjectStore {
   readonly kind = 'http';
   /** La dirección del servicio, ya normalizada. */
   readonly baseUrl: string;
-  private readonly token: string | undefined;
+  private token: string | undefined;
   private readonly doFetch: typeof fetch;
   private readonly timeoutMs: number;
 
@@ -83,6 +84,11 @@ export class HttpProjectStore implements ProjectStore {
     this.timeoutMs = options.timeoutMs ?? 20_000;
   }
 
+  /** Cambia el token de las peticiones siguientes (para reconectar sin recargar la página ni perder lo pendiente). */
+  setToken(token: string | undefined): void {
+    this.token = token?.trim() || undefined;
+  }
+
   /** Quién es este token ante el servidor, o `{ auth: false }` si el servidor no pide autenticación. Sirve para «probar la conexión». */
   async whoami(): Promise<RemoteSession> {
     try {
@@ -90,7 +96,7 @@ export class HttpProjectStore implements ProjectStore {
       return { auth: found.auth === true, name: typeof found.name === 'string' ? found.name : undefined, role: typeof found.role === 'string' ? found.role : undefined };
     } catch (error) {
       // Un servidor anterior a la autenticación no tiene `/api/whoami` (404): basta con que ofrezca proyectos sin pedir token.
-      if (!(error instanceof ProjectError) || error.code !== 'unavailable') throw error;
+      if (!(error instanceof ProjectError) || error.code !== 'unavailable' || error.info.network) throw error;
       await this.listProjects();
       return { auth: false };
     }
@@ -171,7 +177,7 @@ export class HttpProjectStore implements ProjectStore {
     } catch (error) {
       const timedOut = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
       const reason = timedOut ? `no respondió en ${Math.round(this.timeoutMs / 1000)} s` : error instanceof Error ? error.message : String(error);
-      throw new ProjectError('unavailable', `No se pudo conectar con ${this.baseUrl}: ${reason}.`);
+      throw new ProjectError('unavailable', `No se pudo conectar con ${this.baseUrl}: ${reason}.`, { network: true });
     }
     const raw = await response.text().catch(() => '');
     let payload: unknown = {};
@@ -180,7 +186,7 @@ export class HttpProjectStore implements ProjectStore {
         payload = JSON.parse(raw);
       } catch {
         // una respuesta que no es JSON (una página de error de un proxy, por ejemplo) no se puede interpretar
-        if (response.ok) throw new ProjectError('unavailable', `${this.baseUrl} no respondió como un servidor de IArk (la respuesta no es JSON).`);
+        if (response.ok) throw new ProjectError('unavailable', `${this.baseUrl} no respondió como un servidor de IArk (la respuesta no es JSON).`, { status: response.status });
       }
     }
     if (!response.ok) throw errorFromResponse(response.status, payload && typeof payload === 'object' ? (payload as Payload) : {}, response.headers.get('Retry-After'));

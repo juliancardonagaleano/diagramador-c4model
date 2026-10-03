@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'r
 import type { DiagramMeta } from '@iark/kernel';
 import { formatIssues, validateDocument } from '@core/model/schema';
 import type { C4Document } from '@core/model/types';
-import { IndexedDbProjectStore } from '../../projects/indexedDbStore';
-import { localPointer, ProjectSession, type ProjectsState } from '../../projects/session';
+import { getProjectSession as sharedProjectSession, resetProjectSession as resetSharedProjectSession } from '../../projects/factory';
+import type { ProjectSession, ProjectsState } from '../../projects/session';
 import { isEmbedMode, useDocumentStore } from '../store/documentStore';
 import { extractJson } from '../utils/files';
 
@@ -15,19 +15,16 @@ const serialize = (doc: C4Document): string => JSON.stringify(doc, null, 2);
 /** Enlace al banco de trabajo con ese diagrama abierto (`modulos.html` está junto al editor, en la misma carpeta del sitio). */
 export const workbenchUrl = (projectId: string, diagramId: string): string => `modulos.html?project=${encodeURIComponent(projectId)}&diagram=${encodeURIComponent(diagramId)}`;
 
-let shared: ProjectSession | undefined;
-/** La sesión de proyectos de esta pestaña (una sola). Se crea al pedirla; en modo embebido no hay: guarda el anfitrión. */
+/**
+ * La sesión de proyectos de esta pestaña (una sola, de la fábrica compartida con el banco de trabajo: guarda en este navegador
+ * o en el servidor configurado). En modo embebido no hay: guarda el anfitrión.
+ */
 export function getProjectSession(): ProjectSession | undefined {
-  if (isEmbedMode) return undefined;
-  shared ??= new ProjectSession(new IndexedDbProjectStore(), { pointer: localPointer });
-  return shared;
+  return isEmbedMode ? undefined : sharedProjectSession();
 }
 
 /** Suelta la sesión compartida (la siguiente petición crea otra). Solo para las pruebas. */
-export function resetProjectSession(): void {
-  shared?.dispose();
-  shared = undefined;
-}
+export const resetProjectSession = resetSharedProjectSession;
 
 export interface ProjectBinding {
   session: ProjectSession | undefined;
