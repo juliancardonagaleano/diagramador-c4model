@@ -1,7 +1,8 @@
 export * from './types';
-export { ProjectError, type ProjectErrorCode } from './errors';
+export { ProjectError, type ProjectErrorCode, type ProjectErrorInfo } from './errors';
 export { cleanName, MAX_NAME_LENGTH, MODULE_ID, nameKey, requireModuleId, sameName, slugify, uniqueName, uniqueSlug } from './names';
 export { MemoryProjectStore } from './memory';
+export { HttpProjectStore, normalizeBaseUrl, type HttpProjectStoreOptions, type RemoteSession } from './http';
 export { duplicateDiagram, findDiagram, findProject, snapshotProject } from './operations';
 export {
   bundleFileName,

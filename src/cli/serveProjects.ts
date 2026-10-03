@@ -103,7 +103,7 @@ export function requiredRole(method: string, parts: string[]): TokenRole {
   return 'editor';
 }
 
-const STATUS: Record<ProjectError['code'], number> = { 'not-found': 404, exists: 409, conflict: 409, invalid: 400, unavailable: 500 };
+const STATUS: Record<ProjectError['code'], number> = { 'not-found': 404, exists: 409, conflict: 409, invalid: 400, unavailable: 500, unauthorized: 401, forbidden: 403 };
 
 /** Los errores del almacén se responden con el código HTTP que les corresponde y su `code`; el resto se deja como está. */
 function toHttpError(error: unknown): unknown {

@@ -6,8 +6,7 @@ import { createModuleBridge, type ModuleBridge } from './bridge';
 import { WorkbenchController } from './controller';
 import { localDrafts, MODULE_SOURCES } from './modules';
 import { MODULE_PROTOCOL_VERSION } from '../embed/moduleProtocol';
-import { IndexedDbProjectStore } from '../projects/indexedDbStore';
-import { localPointer, ProjectSession } from '../projects/session';
+import { getProjectSession } from '../projects/factory';
 
 /**
  * Banco de trabajo de los módulos de la suite (`modulos.html`). Con `?embed=1&proto=json&module=<id>&origin=<origen del
@@ -43,8 +42,8 @@ const applyTheme = (theme: Theme): void => {
 };
 
 function Root() {
-  // Los proyectos se guardan en el navegador (IndexedDB). En modo embebido guarda el anfitrión, no esta pantalla.
-  const projects = useMemo(() => (embed ? undefined : new ProjectSession(new IndexedDbProjectStore(), { pointer: localPointer })), []);
+  // Los proyectos se guardan donde diga la configuración: en este navegador (IndexedDB) o en un servidor propio. En modo embebido guarda el anfitrión, no esta pantalla.
+  const projects = useMemo(() => (embed ? undefined : getProjectSession()), []);
   const controller = useMemo(
     () => new WorkbenchController(MODULE_SOURCES, { storage: embed ? undefined : localDrafts, protocol: MODULE_PROTOCOL_VERSION, projects }),
     [projects],

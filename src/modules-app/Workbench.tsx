@@ -56,7 +56,8 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
   const [base, setBase] = useState<{ name: string; document: unknown } | undefined>();
   useEffect(() => setBase(undefined), [state.moduleId]);
   const projects = controller.projects;
-  const [showProjects, setShowProjects] = useState(false);
+  /** El gestor de proyectos: cerrado, abierto, o abierto con «Dónde se guardan» desplegado (para volver a conectar). */
+  const [showProjects, setShowProjects] = useState<false | 'list' | 'storage'>(false);
   const [toast, setToast] = useState<string | undefined>();
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const jsonEditor = useRef<HTMLTextAreaElement>(null);
@@ -252,7 +253,7 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
           </div>
       </header>
 
-      {projects && !embed && ui === 'full' && <ProjectBar controller={controller} state={state} onManage={() => setShowProjects(true)} notify={notify} />}
+      {projects && !embed && ui === 'full' && <ProjectBar controller={controller} state={state} onManage={(panel) => setShowProjects(panel ?? 'list')} notify={notify} />}
 
       {trail.length > 0 && (
         <div className="wb-trail" role="navigation" aria-label="Diagramas recorridos" data-testid="trail">
@@ -403,6 +404,7 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
           template={(moduleId, kind) => controller.template(moduleId, kind)}
           onClose={() => setShowProjects(false)}
           notify={notify}
+          initialPanel={showProjects === 'storage' ? 'storage' : undefined}
         />
       )}
       {toast && (

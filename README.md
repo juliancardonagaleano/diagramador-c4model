@@ -770,6 +770,46 @@ server {
 - Un token con rol `editor` o `admin` puede escribir y borrar en la carpeta de trabajo: el control de versiones de la carpeta (git, copias de seguridad) es su red de seguridad. Cada diagrama se guarda de forma atómica y `ifUpdatedAt` detecta un guardado en medio, pero no hay edición simultánea en tiempo real ni historial de quién cambió qué.
 - El servidor no registra accesos. El resto de la API (validar, exportar…) no pide token y consume CPU de su servidor con cuerpos de hasta 5 MB.
 
+## Guardar en la nube (servidor propio) desde el navegador
+
+Por omisión los proyectos de la app web viven en **este navegador** (IndexedDB). Para verlos desde otros equipos y compartirlos con otras personas se pueden guardar en un **servidor propio**: el mismo `iark serve --workspace` de la sección anterior, cuya API de proyectos ya es lo que usa el navegador. No hay un servicio gestionado ni cuentas en un tercero: el servidor es tuyo y su carpeta de trabajo (la misma de `iark project`, pensada para ir en git) es la fuente de verdad.
+
+**1. Arrancar el servidor.** El navegador solo deja que la página lea las respuestas de otro origen si el servidor lo autoriza, así que hay que darle el origen exacto de la página con `--cors` (sin barra final ni ruta):
+
+```bash
+iark serve --workspace ./iark-workspace --cors https://mi-usuario.github.io   # la app publicada
+iark serve --workspace ./iark-workspace --cors http://localhost:5173          # desarrollo (npm run dev)
+```
+
+- Si sirves el propio sitio desde el servidor (`--static dist/app`), la página y la API comparten origen y `--cors` no hace falta.
+- Con `--tokens <archivo>` el servidor exige un token (cabecera `Authorization: Bearer`) y reparte permisos por rol; se configura como se explica en «Servidor para varias personas», que no se repite aquí. Sin él, **quien llegue al puerto lee y escribe los proyectos**: déjalo en `127.0.0.1`.
+- `iark serve` **no habla TLS**. Para usarlo por internet pon delante un proxy con https. Y una página publicada por https no puede llamar a una dirección `http://` que no sea la propia máquina (contenido mixto: el navegador lo bloquea, y el gestor lo avisa al escribir la dirección).
+
+**2. Conectar desde el gestor.** *Proyectos… ▸ Dónde se guardan ▸ Conectar a un servidor…* (en el banco de trabajo y en el editor C4, que comparten almacén):
+
+1. Escribe la dirección (`https://iark.ejemplo.org`, `http://localhost:8787`) y, si el servidor lo pide, el token. El nombre es opcional.
+2. **Probar conexión** dice quién eres y qué rol tienes, o por qué falla: sin conexión, el navegador rechazó el origen (CORS; te dice con qué `--cors` arrancar el servidor), el servidor no ofrece proyectos (¿sin `--workspace`?), token inválido, sin permiso o demasiados intentos.
+3. **Conectar** guarda lo que haya pendiente, anota la configuración y **recarga la página**: es la forma más simple y segura de cambiar de almacén. **Volver a este navegador** lo deshace (los proyectos del navegador no se tocan: estaban aparte).
+
+Con un servidor, la barra del proyecto del banco y el chip del editor dicen «Guardado en «X» · servidor». El último diagrama abierto se recuerda por servidor.
+
+**3. Qué se guarda en el navegador y qué tan seguro es.**
+
+- La dirección y el nombre del servidor, en `localStorage` (`iark.projects.backend`). No son secretos.
+- El **token**, por omisión, en `sessionStorage`: solo esa pestaña, y se olvida al cerrarla (si el servidor pide token, una pestaña nueva lo pide otra vez). Con la casilla **«Recordar en este equipo»** (desmarcada por omisión) pasa a `localStorage` y sigue ahí hasta que lo borres; **cualquier script que se ejecute en este sitio podría leerlo**, así que márcala solo en un equipo tuyo. Cada token se guarda junto a su dirección y solo se envía a ella, sin cookies.
+- Quien decide quién puede leer o escribir es el servidor, no la página.
+- Si el servidor deja de aceptar el token, un guardado lo avisa («El servidor no aceptó el token») con un botón para volver a conectar: el texto pendiente no se pierde y se guarda al dar el token bueno, sin recargar.
+- Si el token es válido pero su rol no alcanza (un `viewer` que edita), el guardado avisa «Sin permiso para guardar en el servidor», con el botón «Cambiar de token»: el texto pendiente tampoco se pierde y se guarda al dar un token de `editor`, sin recargar. Las lecturas siguen funcionando.
+
+**4. Copiar entre almacenes.** *Copiar a…* en el detalle de un proyecto lo lleva al otro almacén (del navegador al servidor, o al revés) con el archivo único del proyecto (`iark.project/1`): nunca pisa nada —si el nombre ya existe queda «Nombre (2)»— y, si algo falla a mitad, no deja un proyecto a medias. Sin un servidor conocido, el botón lleva al formulario de conexión, que ofrece copiar sin cambiar de almacén.
+
+**5. Límites reales.**
+
+- **No hay trabajo sin conexión.** Un fallo de red al guardar deja el aviso y «Reintentar», y se reintenta solo al volver la conexión o el foco, pero **solo lo que está en memoria**: si cierras la pestaña sin red, se pierde (el navegador avisa antes de cerrar si hay cambios sin enviar). Al cerrar o recargar, un guardado pequeño (hasta 60 KB) sigue su curso con `keepalive`; uno mayor no.
+- **No hay tiempo real entre personas.** La lista se vuelve a leer al volver el foco a la ventana y cada 30 s mientras el gestor está abierto o hay un diagrama abierto (con el gestor cerrado y sin diagrama abierto no se consulta nada). Si dos personas guardan el mismo diagrama, el segundo guardado lo detecta (`ifUpdatedAt`) y ofrece «Quedarme con mi versión» o «Cargar la otra»: **no se mezclan cambios**.
+- Cada guardado envía el documento entero (el límite del servidor es de 5 MB) y la lista de proyectos incluye todos los diagramas sin su texto: está pensado para carpetas pequeñas o medianas, no para miles de diagramas.
+- No se ha probado con la página publicada por https frente a un servidor en `localhost`: algunos navegadores piden permiso o bloquean ese acceso a la red local.
+
 ## CLI `iark`
 
 ```
@@ -1053,6 +1093,7 @@ packages/domain-platform/  @iark/domain-platform: módulo `platform` (entornos, 
 packages/domain-security/  @iark/domain-security: módulo `security` (zonas de confianza, activos, flujos de datos, amenazas STRIDE y controles; diagrama de flujo de datos, modelo de amenazas, riesgos y superficie de ataque; import Mermaid, export Mermaid/SVG/draw.io, IA)
 src/cli/               comandos de iark (commander): módulos, `trace`, `project` (con el almacén en carpeta `workspace.ts`), `auth` (tokens: `tokens.ts`), `serve` (y su API de proyectos, con la autenticación de `serveAuth.ts`); carga los módulos del registro
 src/embed/             protocolo postMessage (C4 y de módulos), SDK de anfitrión y Web Component <iark-module>
+src/projects/          proyectos guardados en la app web: almacén en IndexedDB y almacén remoto (servidor), su configuración, la sesión con autoguardado y el gestor
 src/modules-app/       banco de trabajo genérico de módulos (controlador sin React, editor, protocolo del puente)
 src/shell/             shell de la suite (descubrimiento por manifiesto)
 src/trace-app/         vista web de trazabilidad entre módulos (tablero sin DOM + página)

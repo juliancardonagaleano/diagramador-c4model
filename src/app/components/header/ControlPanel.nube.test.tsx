@@ -1,0 +1,99 @@
+// @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { ReactFlowProvider } from '@xyflow/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sampleDocument } from '@core/model/sample';
+import { saveBackend } from '../../../projects/backend';
+import { fakeServer, type FakeServer } from '../../../projects/testing';
+import { useDocumentStore } from '../../store/documentStore';
+import { resetProjectSession, useProjectBinding } from '../../projects/useProjectBinding';
+import { ControlPanel } from './ControlPanel';
+
+/** El encabezado del editor C4 con los proyectos en un servidor: el chip y el estado dicen que es un servidor y cómo recuperarse. */
+const URL_ = 'http://localhost:8787';
+const doc = (name: string) => JSON.stringify({ ...structuredClone(sampleDocument), workspace: { ...sampleDocument.workspace, name } }, null, 2);
+
+function Host({ onManage }: { onManage: (panel?: 'storage') => void }) {
+  const binding = useProjectBinding();
+  return (
+    <ReactFlowProvider>
+      <ControlPanel projects={{ binding, onManage }} />
+    </ReactFlowProvider>
+  );
+}
+
+async function setup(server: FakeServer, options: { remote: boolean; token?: string }) {
+  if (options.remote) saveBackend({ url: URL_, token: options.token });
+  vi.stubGlobal('fetch', server.fetch);
+  const onManage = vi.fn();
+  render(<Host onManage={onManage} />);
+  return { onManage };
+}
+
+describe('encabezado del editor C4 con proyectos', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    resetProjectSession();
+    useDocumentStore.getState().newDocument();
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query, addEventListener: () => undefined, removeEventListener: () => undefined, addListener: () => undefined, removeListener: () => undefined, onchange: null, dispatchEvent: () => false }));
+  });
+  afterEach(() => {
+    cleanup();
+    resetProjectSession();
+    vi.unstubAllGlobals();
+  });
+
+  it('con un servidor, el chip y el estado dicen «· servidor» una vez abierto un diagrama', async () => {
+    const server = fakeServer();
+    const project = await server.store.createProject({ name: 'Banca' });
+    const meta = await server.store.saveDiagram(project.id, { module: 'c4', name: 'Contexto', text: doc('Banca A') });
+    await setup(server, { remote: true });
+    expect(await screen.findByTestId('project-chip')).toHaveTextContent('Sin proyecto · servidor');
+    // el último abierto es de ese servidor: se reabre solo
+    localStorage.setItem(`iark.projects.last:${URL_}`, JSON.stringify({ projectId: project.id, diagramId: meta.id }));
+    cleanup();
+    resetProjectSession();
+    await setup(server, { remote: true });
+    await waitFor(() => expect(screen.getByTestId('project-chip')).toHaveTextContent('Proyecto: Banca › Contexto · servidor'));
+    await waitFor(() => expect(screen.getByTestId('save-status')).toHaveTextContent('Guardado en «Banca» · servidor'));
+  });
+
+  it('en este navegador no menciona ningún servidor', async () => {
+    await setup(fakeServer(), { remote: false });
+    expect(await screen.findByTestId('project-chip')).toHaveTextContent(/^Sin proyecto$/);
+  });
+
+  it('un token rechazado al guardar avisa y ofrece «Volver a conectar», que abre el panel de conexión', async () => {
+    const server = fakeServer({ token: 'viejo' });
+    const project = await server.store.createProject({ name: 'Banca' });
+    const meta = await server.store.saveDiagram(project.id, { module: 'c4', name: 'Contexto', text: doc('Banca A') });
+    localStorage.setItem(`iark.projects.last:${URL_}`, JSON.stringify({ projectId: project.id, diagramId: meta.id }));
+    const { onManage } = await setup(server, { remote: true, token: 'viejo' });
+    await waitFor(() => expect(screen.getByTestId('save-status')).toHaveTextContent('Guardado en «Banca» · servidor'));
+    server.token = 'nuevo';
+    act(() => useDocumentStore.getState().setWorkspaceName('Banca B'));
+    await waitFor(() => expect(screen.getByTestId('save-status')).toHaveTextContent('El servidor no aceptó el token'), { timeout: 5000 });
+    expect(screen.queryByTestId('retry-save')).toBeNull();
+    await userEvent.click(screen.getByTestId('reconnect'));
+    expect(onManage).toHaveBeenCalledWith('storage');
+  });
+
+  it('un corte de red al guardar deja «Reintentar», y al volver la conexión se guarda', async () => {
+    const server = fakeServer();
+    const project = await server.store.createProject({ name: 'Banca' });
+    const meta = await server.store.saveDiagram(project.id, { module: 'c4', name: 'Contexto', text: doc('Banca A') });
+    localStorage.setItem(`iark.projects.last:${URL_}`, JSON.stringify({ projectId: project.id, diagramId: meta.id }));
+    await setup(server, { remote: true });
+    await waitFor(() => expect(screen.getByTestId('save-status')).toHaveTextContent('Guardado en «Banca» · servidor'));
+    server.down = true;
+    act(() => useDocumentStore.getState().setWorkspaceName('Banca B'));
+    await waitFor(() => expect(screen.getByTestId('save-status')).toHaveTextContent('No se pudo guardar'), { timeout: 5000 });
+    server.down = false;
+    await userEvent.click(screen.getByTestId('retry-save'));
+    await waitFor(() => expect(screen.getByTestId('save-status')).toHaveTextContent('Guardado en «Banca» · servidor'));
+    expect(JSON.parse((await server.store.getDiagram(project.id, meta.id))!.text).workspace.name).toBe('Banca B');
+  });
+});

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent, type ReactElement } from 'react';
-import type { DiagramMeta, ProjectSummary } from '@iark/kernel';
+import { ProjectError, type DiagramMeta, type ProjectSummary } from '@iark/kernel';
 import { downloadText } from '../modules-app/files';
+import { loadBackend } from './backend';
+import { copyProject, copyTargetFor, type CopyTarget } from './copy';
 import type { ProjectSession } from './session';
+import { StoragePanel, type StoragePanelProps } from './StoragePanel';
 import './projects.css';
 
 export type TemplateKind = 'example' | 'blank';
@@ -18,6 +21,12 @@ export interface ProjectsDialogProps {
   template?(moduleId: string, kind: TemplateKind): Promise<string | undefined>;
   onClose(): void;
   notify?(message: string): void;
+  /** Abre el diálogo con «Dónde se guardan» desplegado (para volver a conectar cuando el servidor no aceptó el token). */
+  initialPanel?: 'storage';
+  /** A dónde ofrece copiar el proyecto. Por defecto, el otro almacén (este navegador si hay servidor; el servidor conocido si no). */
+  copyTarget?: CopyTarget;
+  /** Ajustes de «Dónde se guardan» (las pruebas ponen un `fetch` simulado, otros almacenes del navegador o una recarga falsa). */
+  storage?: Pick<StoragePanelProps, 'fetch' | 'areas' | 'page' | 'reload'>;
 }
 
 const agoFormat = (iso: string): string => {
@@ -38,9 +47,11 @@ type Target = { kind: 'project' | 'diagram'; id: string };
  * Gestor de proyectos: lista, crea, renombra, borra, exporta e importa proyectos y abre, crea, renombra, duplica y borra sus
  * diagramas. Es el mismo en el banco de trabajo y en el editor C4; no conoce a ninguno de los dos (solo a la sesión).
  */
-export function ProjectsDialog({ session, modules, onOpen, current, template, onClose, notify }: ProjectsDialogProps) {
+export function ProjectsDialog({ session, modules, onOpen, current, template, onClose, notify, initialPanel, copyTarget, storage }: ProjectsDialogProps) {
   const state = useSyncExternalStore(session.subscribe, session.getState);
   const { projects } = state;
+  const remote = session.remote;
+  const host = session.backend.kind === 'remote' ? session.backend.host : undefined;
   const [selectedId, setSelectedId] = useState<string | undefined>(state.projectId ?? projects[0]?.id);
   const selected: ProjectSummary | undefined = projects.find((p) => p.id === selectedId) ?? projects[0];
   const [error, setError] = useState<string | undefined>();
@@ -50,31 +61,85 @@ export function ProjectsDialog({ session, modules, onOpen, current, template, on
   const [newProject, setNewProject] = useState('');
   const [newDiagram, setNewDiagram] = useState({ module: modules[0]?.id ?? '', name: '', template: 'example' as TemplateKind });
   const [saveName, setSaveName] = useState('');
+  const [note, setNote] = useState<string | undefined>();
+  const rejected = state.errorCode === 'unauthorized' || state.syncErrorCode === 'unauthorized' || state.saveErrorCode === 'unauthorized';
+  const [storageOpen, setStorageOpen] = useState(initialPanel === 'storage' || (remote && rejected));
+  /** El proyecto que se quería copiar a un servidor aún no conectado (o que lo rechazó): el panel ofrece copiarlo al conectar. */
+  const [copyIntent, setCopyIntent] = useState<{ id: string; name: string } | undefined>();
+  const [serverVersion, setServerVersion] = useState(0);
   const dialogRef = useRef<HTMLDivElement>(null);
   const moduleLabel = useMemo(() => new Map(modules.map((m) => [m.id, m.label])), [modules]);
   const live = current?.();
 
   useEffect(() => {
+    // Si el panel ya llevó el foco a su campo (el servidor rechazó el token: abre directamente en el token), se respeta.
+    if (dialogRef.current?.contains(document.activeElement)) return;
     dialogRef.current?.querySelector<HTMLElement>('input, button')?.focus();
   }, []);
+  // Con un servidor, mientras el gestor está abierto la lista se mantiene al día (no hay aviso entre equipos); lee al abrir.
+  useEffect(() => session.watch(), [session]);
   useEffect(() => {
     if (!selected && projects.length > 0) setSelectedId(projects[0].id);
   }, [selected, projects]);
   useEffect(() => {
     setEditing(undefined);
     setConfirming(undefined);
+    setCopyIntent(undefined);
   }, [selected?.id]);
 
   const act = async (work: () => Promise<void>): Promise<void> => {
     setBusy(true);
     setError(undefined);
+    setNote(undefined);
     try {
       await work();
     } catch (e) {
       setError((e as Error).message);
+      // El servidor no aceptó el token (o su rol no alcanza): el formulario para escribir otro está en «Dónde se guardan».
+      if (e instanceof ProjectError && (e.code === 'unauthorized' || e.code === 'forbidden')) setStorageOpen(true);
     } finally {
       setBusy(false);
     }
+  };
+
+  // «Copiar a…»: el otro almacén. Se recalcula al cambiar el servidor conocido (el panel avisa con `onChange`).
+  const resolveTarget = (): CopyTarget => copyTarget ?? copyTargetFor(session.backend, { fetch: storage?.fetch, config: loadBackend(storage?.areas) });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const target = useMemo(resolveTarget, [copyTarget, session, storage?.fetch, storage?.areas, serverVersion]);
+
+  /** Copia el proyecto con el archivo único del núcleo a un almacén temporal del destino (la sesión sigue en el suyo). */
+  const copyTo = (project: ProjectSummary, to: CopyTarget): void =>
+    void act(async () => {
+      await session.flush();
+      const { store, close } = to.open();
+      try {
+        const imported = await copyProject(session.store, project.id, store);
+        const text = `Copiado como «${imported.project.name}» ${to.where}${imported.renamedFrom ? `: ya había uno llamado «${imported.renamedFrom}»` : ''}.`;
+        setNote(text);
+        setCopyIntent(undefined);
+        notify?.(text);
+      } catch (error) {
+        if (error instanceof ProjectError) {
+          if (error.code === 'unauthorized' || error.code === 'forbidden') {
+            setCopyIntent({ id: project.id, name: project.name });
+            setStorageOpen(true);
+          }
+          throw new ProjectError(error.code, `No se pudo copiar «${project.name}» ${to.where}: ${error.message}`, error.info);
+        }
+        throw error;
+      } finally {
+        await close();
+      }
+    });
+
+  const copySelected = (project: ProjectSummary): void => {
+    if (!target.ready) {
+      // Sin servidor al que copiar: se lleva al formulario de conexión, que ofrece copiar en cuanto el servidor responde.
+      setCopyIntent({ id: project.id, name: project.name });
+      setStorageOpen(true);
+      return;
+    }
+    copyTo(project, target);
   };
 
   const open = (projectId: string, diagram: DiagramMeta): Promise<void> =>
@@ -158,6 +223,7 @@ export function ProjectsDialog({ session, modules, onOpen, current, template, on
   escape.current = () => {
     if (editing) setEditing(undefined);
     else if (confirming) setConfirming(undefined);
+    else if (storageOpen) setStorageOpen(false);
     else onClose();
   };
   useEffect(() => {
@@ -257,7 +323,14 @@ export function ProjectsDialog({ session, modules, onOpen, current, template, on
 
         {!state.available && (
           <p className="pj-warn" role="alert">
-            El almacenamiento del navegador no está disponible{state.error ? `: ${state.error}` : ''}. Los proyectos no se pueden guardar aquí; sí puedes exportar e importar archivos.
+            {remote
+              ? `No se pudo usar el servidor${host ? ` ${host}` : ''}${state.error ? `: ${state.error}` : ''}. Revisa «Dónde se guardan» aquí abajo.`
+              : `El almacenamiento del navegador no está disponible${state.error ? `: ${state.error}` : ''}. Los proyectos no se pueden guardar aquí; sí puedes exportar e importar archivos.`}
+          </p>
+        )}
+        {remote && state.available && state.syncError && (
+          <p className="pj-warn" role="status" data-testid="projects-sync-error">
+            Sin conexión con el servidor{host ? ` ${host}` : ''}: la lista puede estar desactualizada ({state.syncError}). Se vuelve a intentar sola.
           </p>
         )}
         {error && (
@@ -265,6 +338,31 @@ export function ProjectsDialog({ session, modules, onOpen, current, template, on
             {error}
           </p>
         )}
+        {note && (
+          <p className="pj-ok" role="status" data-testid="projects-note">
+            {note}
+          </p>
+        )}
+
+        <StoragePanel
+          session={session}
+          open={storageOpen}
+          onToggle={(open) => {
+            setStorageOpen(open);
+            if (!open) setCopyIntent(undefined);
+          }}
+          copyFor={copyIntent && !remote ? { name: copyIntent.name } : undefined}
+          onCopy={() => {
+            const project = projects.find((p) => p.id === copyIntent?.id);
+            setServerVersion((v) => v + 1);
+            setStorageOpen(false);
+            // el servidor que el panel acaba de guardar ya es el destino: se lee de nuevo, no del `useMemo` del render anterior
+            if (project) copyTo(project, resolveTarget());
+          }}
+          onChange={() => setServerVersion((v) => v + 1)}
+          notify={notify}
+          {...storage}
+        />
 
         <div className="pj-body">
           <nav className="pj-list" aria-label="Proyectos">
@@ -321,6 +419,9 @@ export function ProjectsDialog({ session, modules, onOpen, current, template, on
                     )}
                     <button type="button" onClick={() => exportProject(selected)} disabled={busy}>
                       Exportar
+                    </button>
+                    <button type="button" onClick={() => copySelected(selected)} disabled={busy} data-testid="copy-project">
+                      {target.label}
                     </button>
                     {deleteControls('project', selected.id, selected.name, `¿Borrar «${selected.name}» y sus ${plural(selected.diagrams.length, 'diagrama', 'diagramas')}? No se puede deshacer.`)}
                   </span>
@@ -430,8 +531,17 @@ export function ProjectsDialog({ session, modules, onOpen, current, template, on
           </section>
         </div>
 
-        <footer className="pj-foot">
-          Los proyectos se guardan en este navegador. Para llevarlos a otro equipo o tener una copia de seguridad, usa <strong>Exportar</strong> e <strong>Importar proyecto</strong>.
+        <footer className="pj-foot" data-testid="projects-foot">
+          {remote ? (
+            <>
+              Los proyectos se guardan en el servidor {host}: los ven las personas y equipos que se conecten a él (la lista se actualiza sola mientras la miras). Para una copia de seguridad en un archivo, usa <strong>Exportar</strong> e{' '}
+              <strong>Importar proyecto</strong>.
+            </>
+          ) : (
+            <>
+              Los proyectos se guardan en este navegador. Para llevarlos a otro equipo o tener una copia de seguridad, usa <strong>Exportar</strong> e <strong>Importar proyecto</strong>.
+            </>
+          )}
         </footer>
       </div>
     </div>

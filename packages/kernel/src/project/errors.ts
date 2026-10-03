@@ -7,13 +7,26 @@ export type ProjectErrorCode =
   | 'invalid'
   /** Alguien cambió el diagrama desde que se leyó (ver `SaveDiagramInput.ifUpdatedAt`). */
   | 'conflict'
-  /** El almacenamiento no está disponible (ventana privada, permisos, disco). */
-  | 'unavailable';
+  /** El almacenamiento no está disponible (ventana privada, permisos, disco, o un servidor al que no se llega). */
+  | 'unavailable'
+  /** Un servidor remoto pide un token, o el que se usa no existe o ya no vale. */
+  | 'unauthorized'
+  /** Un servidor remoto reconoce el token, pero su rol (o el origen de la petición) no permite esa operación. */
+  | 'forbidden';
+
+/** Detalle opcional de un error que vino de un servidor remoto (el cliente HTTP lo rellena; los almacenes locales no). */
+export interface ProjectErrorInfo {
+  /** Código de estado HTTP de la respuesta. */
+  status?: number;
+  /** `true` si ni siquiera hubo respuesta (red caída, tiempo agotado, o el navegador bloqueó la petición por CORS o por contenido mixto). */
+  network?: boolean;
+}
 
 export class ProjectError extends Error {
   constructor(
     readonly code: ProjectErrorCode,
     message: string,
+    readonly info: ProjectErrorInfo = {},
   ) {
     super(message);
     this.name = 'ProjectError';
