@@ -5,16 +5,21 @@ const example = (file: string): string => readFileSync(new URL(`../../examples/$
 
 const diagram = (page: Page) => page.locator('[data-testid="diagram-stage"] img');
 
-/** Los módulos con lienzo interactivo abren en «Lienzo»; estas pruebas miran la vista SVG y el JSON. */
+/**
+ * Los módulos con lienzo interactivo (todos los del banco de trabajo) abren en «Lienzo»; estas pruebas miran la vista SVG y el JSON.
+ * El módulo se carga bajo demanda y hasta que llega el panel se llama «Diagrama» y no existe «Vista SVG»: se espera a esa pestaña
+ * (en vez de mirar una sola vez si ya está, que solo acertaba cuando `networkidle` había dado tiempo a la carga).
+ */
 async function showSvg(page: Page): Promise<void> {
   const tab = page.getByRole('tab', { name: 'Vista SVG' });
-  if (await tab.isVisible().catch(() => false)) await tab.click();
+  await expect(tab).toBeVisible({ timeout: 20000 });
+  await tab.click();
 }
 
 async function open(page: Page, module: string): Promise<string[]> {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(`/modulos.html?module=${module}`, { waitUntil: 'networkidle' });
+  await page.goto(`/modulos.html?module=${module}`, { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('tablist', { name: 'Paneles' })).toBeVisible({ timeout: 20000 });
   await showSvg(page);
   await expect(diagram(page)).toBeVisible({ timeout: 20000 });
@@ -156,7 +161,7 @@ test.describe('banco de trabajo de módulos', () => {
   });
 
   test('ui=min oculta la marca y las pestañas de módulos pero conserva las acciones', async ({ page }) => {
-    await page.goto('/modulos.html?module=data&ui=min', { waitUntil: 'networkidle' });
+    await page.goto('/modulos.html?module=data&ui=min', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('tablist', { name: 'Paneles' })).toBeVisible({ timeout: 20000 });
     await showSvg(page);
     await expect(diagram(page)).toBeVisible({ timeout: 20000 });
@@ -170,7 +175,7 @@ test.describe('banco de trabajo de módulos', () => {
     const doc = JSON.parse(await editor.inputValue());
     doc.workspace.name = 'Mi borrador';
     await editor.fill(JSON.stringify(doc, null, 2));
-    await page.reload({ waitUntil: 'networkidle' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('tablist', { name: 'Paneles' })).toBeVisible({ timeout: 20000 });
     await showSvg(page);
     await expect(page.getByLabel('Documento JSON')).toHaveValue(/Mi borrador/);

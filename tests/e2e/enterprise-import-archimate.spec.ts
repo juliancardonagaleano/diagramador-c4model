@@ -13,7 +13,7 @@ test.use({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1.5 });
 async function open(page: Page): Promise<string[]> {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/modulos.html?module=enterprise', { waitUntil: 'networkidle' });
+  await page.goto('/modulos.html?module=enterprise', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('module-canvas')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
   await canvasReady(page);
@@ -108,7 +108,8 @@ test.describe('importar ArchiMate en el módulo empresarial', () => {
     await expect(page.getByRole('alert')).toContainText('XML mal formado: se esperaba «</elements>» (abierta en la línea 8, columna 3) y se encontró «</model>» (línea 20, columna 1).');
 
     // Un XML de otro formato (sin nombre de archivo que oriente) no lo reclama ArchiMate; si se fuerza, dice por qué no vale.
-    await page.reload({ waitUntil: 'networkidle' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await canvasReady(page);
     await page.getByRole('tab', { name: 'Importar' }).click();
     await page.getByLabel('Texto a importar').fill('<?xml version="1.0"?><mxfile><diagram/></mxfile>');
     await page.getByRole('button', { name: 'Importar', exact: true }).click();

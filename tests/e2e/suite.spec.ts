@@ -44,14 +44,14 @@ test.describe('shell de la suite (federación por manifiesto)', () => {
         }),
       }),
     );
-    await page.goto('/suite.html?manifest=' + encodeURIComponent('/otra/.well-known/iark.json'), { waitUntil: 'networkidle' });
+    await page.goto('/suite.html?manifest=' + encodeURIComponent('/otra/.well-known/iark.json'), { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('status')).toContainText('Instancia de datos v9.9.9 · 1 módulos');
     await expect(page.getByRole('navigation', { name: 'Módulos' }).getByRole('button')).toHaveCount(1);
     await expect.poll(() => page.frames().some((f) => f.url().includes('module=data'))).toBe(true);
   });
 
   test('un manifiesto que no existe o no es válido se explica sin romper la página', async ({ page }) => {
-    await page.goto('/suite.html?manifest=' + encodeURIComponent('/no-existe.json'), { waitUntil: 'networkidle' });
+    await page.goto('/suite.html?manifest=' + encodeURIComponent('/no-existe.json'), { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('alert')).toContainText('respondió 404');
     await page.route('**/roto.json', (route) => route.fulfill({ contentType: 'application/json', body: '{"schema":"otro"}' }));
     await page.getByLabel('Manifiesto de la instancia').fill('/roto.json');
