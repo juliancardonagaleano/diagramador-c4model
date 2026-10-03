@@ -486,3 +486,35 @@ pre.wb-out {
 .at-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px 8px; }
 .at-chip { padding: 2px 8px; font-size: 12px; font-family: var(--wb-mono); border-radius: 10px; }
 .at-used small { color: var(--wb-text-2); }
+
+/* Pestaña «Comparar»: qué se añadió, quitó y modificó respecto a otra versión del documento. */
+.wb-compare { display: flex; flex-direction: column; gap: 10px; }
+.wb-compare .wb-hint { margin: 0; color: var(--wb-text-2); font-size: 12px; }
+.wb-compare .wb-toolbar { padding: 0; border: 0; background: transparent; }
+.wb-compare .wb-note { margin: 0; }
+.wb-compare-paste summary { cursor: pointer; font-size: 12px; color: var(--wb-text-2); }
+.wb-compare-paste textarea { display: block; width: 100%; margin: 6px 0; font-family: var(--wb-mono); font-size: 12px; }
+.wb-compare-summary { margin: 0; font-size: 13px; }
+.wb-compare-section h3 { margin: 4px 0; font-size: 13px; }
+.wb-compare-section h4 { margin: 8px 0 2px; color: var(--wb-text-2); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; font-family: var(--wb-mono); }
+.wb-compare-section ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.wb-compare-sign { display: inline-block; width: 18px; height: 18px; border-radius: 4px; color: #fff; font-weight: 700; text-align: center; line-height: 18px; }
+.wb-compare-sign.added { background: var(--wb-ok); }
+.wb-compare-sign.removed { background: var(--wb-error); }
+.wb-compare-sign.changed { background: var(--wb-warning); }
+.wb-change { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 3px 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--wb-text); font: inherit; font-size: 12px; text-align: left; }
+button.wb-change { cursor: pointer; }
+button.wb-change:hover { border-color: var(--wb-primary); background: var(--wb-info-bg); }
+.wb-change.static { cursor: default; }
+.wb-change strong { font-weight: 600; }
+.wb-change small { color: var(--wb-text-2); font-size: 11px; }
+.wb-compare-fields { margin: 0 0 4px 28px !important; font-size: 12px; color: var(--wb-text-2); font-family: var(--wb-mono); }
+.wb-compare-fields code { color: var(--wb-text); }
+.wb-compare-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 4px 12px; border-bottom: 1px solid var(--wb-border); background: var(--wb-info-bg); color: var(--wb-info); font-size: 12px; }
+.wb-compare-bar > span:first-child { flex: 1 1 auto; min-width: 0; }
+.wb-compare-bar button { font: inherit; font-size: 12px; padding: 2px 8px; border: 1px solid var(--wb-border); border-radius: 6px; background: var(--wb-surface); color: var(--wb-text); cursor: pointer; }
+.wb-compare-legend { display: inline-flex; align-items: center; gap: 4px; color: var(--wb-text-2); }
+.wb-compare-legend i { display: inline-block; width: 10px; height: 10px; margin-left: 6px; border-radius: 3px; background: currentColor; }
+.wb-compare-legend i[data-diff='added'] { background: var(--wb-ok); }
+.wb-compare-legend i[data-diff='modified'] { background: var(--wb-warning); }
+.wb-compare-legend i[data-diff='removed'] { background: var(--wb-error); opacity: 0.6; }

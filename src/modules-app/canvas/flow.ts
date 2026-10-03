@@ -9,6 +9,9 @@ export interface ExtraHandle {
   side: PortSide;
 }
 
+/** Al comparar versiones: qué le pasó a un elemento respecto a la versión base (`removed`: ya no está y se dibuja como fantasma). */
+export type DiffMark = 'added' | 'modified' | 'removed';
+
 export interface FlowNodeData extends Record<string, unknown> {
   node: EditorNode;
   notation: NodeNotation;
@@ -16,6 +19,8 @@ export interface FlowNodeData extends Record<string, unknown> {
   width: number;
   height: number;
   handles?: ExtraHandle[];
+  /** Solo al comparar versiones. */
+  diff?: DiffMark;
 }
 
 export interface FlowNode {
@@ -30,6 +35,10 @@ export interface FlowNode {
   style: { width: number; height: number };
   zIndex: number;
   selected?: boolean;
+  /** Los fantasmas de lo quitado al comparar versiones no se arrastran, ni se seleccionan ni se conectan. */
+  draggable?: boolean;
+  selectable?: boolean;
+  connectable?: boolean;
 }
 
 export interface FlowEdgeData extends Record<string, unknown> {
@@ -44,6 +53,8 @@ export interface FlowEdgeData extends Record<string, unknown> {
    * en coordenadas del lienzo. Solo lo lleva mientras los nodos de sus extremos siguen donde la colocación los dejó (o se han movido juntos).
    */
   route?: Point[];
+  /** Solo al comparar versiones: la relación es nueva o cambió. */
+  diff?: Exclude<DiffMark, 'removed'>;
 }
 
 export interface FlowEdge {
@@ -303,4 +314,48 @@ export function buildFlow(
     });
 
   return { nodes, edges };
+}
+
+/** Nodos de la versión base que ya no están en el documento actual, tal como los dibuja esta vista (los quitados que la vista de la versión base mostraba). */
+export function removedNodes(spec: EditorSpec<unknown>, base: unknown, viewId: string | undefined, removed: ReadonlySet<string>, current: EditorGraph): EditorNode[] {
+  try {
+    const here = new Set(current.nodes.map((n) => n.id));
+    return spec.project(base, viewId).nodes.filter((n) => removed.has(n.id) && !here.has(n.id));
+  } catch {
+    return []; // la vista no existe en la versión base, o el módulo no sabe proyectarla: no hay fantasmas
+  }
+}
+
+const GHOST_COLUMNS = 5;
+const GHOST_GAP = 30;
+
+/**
+ * Los elementos quitados al comparar versiones, como fantasmas discontinuos en una fila (o varias) bajo el dibujo: no tienen sitio en
+ * la colocación del documento actual, que no los contiene. No se arrastran, ni se seleccionan ni se conectan.
+ */
+export function ghostNodes(spec: EditorSpec<unknown>, ghosts: readonly EditorNode[], placed: readonly FlowNode[]): FlowNode[] {
+  if (ghosts.length === 0) return [];
+  const absolute = absolutePositions(placed);
+  const boxes = placed.map((n) => ({ ...(absolute.get(n.id) ?? ORIGIN), height: n.height }));
+  const left = boxes.length > 0 ? Math.min(...boxes.map((b) => b.x)) : 0;
+  const bottom = boxes.length > 0 ? Math.max(...boxes.map((b) => b.y + b.height)) : 0;
+  const sized = ghosts.map((n) => {
+    const notation = notationOf(spec, n.kind);
+    return { node: n, notation, width: n.width ?? notation.width, height: n.height ?? notation.height };
+  });
+  const stepX = Math.max(...sized.map((g) => g.width)) + GHOST_GAP;
+  const stepY = Math.max(...sized.map((g) => g.height)) + GHOST_GAP;
+  return sized.map(({ node, notation, width, height }, i) => ({
+    id: `ghost:${node.id}`,
+    type: 'notation' as const,
+    position: { x: left + (i % GHOST_COLUMNS) * stepX, y: bottom + 70 + Math.floor(i / GHOST_COLUMNS) * stepY },
+    data: { node: { ...node, parentId: undefined, dashed: true }, notation, group: false, width, height, diff: 'removed' as const },
+    width,
+    height,
+    style: { width, height },
+    zIndex: 1,
+    draggable: false,
+    selectable: false,
+    connectable: false,
+  }));
 }

@@ -100,3 +100,22 @@
 .cv-legend ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; }
 .cv-legend li { display: flex; align-items: center; gap: 6px; }
 .cv-legend-swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgb(15 23 42 / 0.35); }
+
+/* Comparar versiones: lo nuevo y lo modificado se marcan con el color y una insignia discretos (el lienzo es siempre claro, en los dos temas); lo quitado, como fantasma discontinuo bajo el dibujo. */
+.cv-flow { --cv-diff-added: #1a7f43; --cv-diff-modified: #b86e00; --cv-diff-removed: #b42318; }
+.cv-node[data-diff='added'] { filter: drop-shadow(0 0 0 2px var(--cv-diff-added)) drop-shadow(0 0 4px var(--cv-diff-added)); }
+.cv-node[data-diff='modified'] { filter: drop-shadow(0 0 0 2px var(--cv-diff-modified)) drop-shadow(0 0 4px var(--cv-diff-modified)); }
+.cv-node[data-diff][data-selected] { filter: drop-shadow(0 0 0 2px var(--wb-primary)) drop-shadow(0 0 4px var(--wb-primary)); }
+.cv-group[data-diff='added'] { border-color: var(--cv-diff-added) !important; border-style: solid !important; }
+.cv-group[data-diff='modified'] { border-color: var(--cv-diff-modified) !important; }
+.cv-node[data-diff='removed'] { opacity: 0.6; }
+.cv-node[data-diff='removed'] .cv-node-text strong { text-decoration: line-through; }
+.cv-diff { position: absolute; bottom: -9px; right: 6px; z-index: 2; padding: 0 6px; border-radius: 8px; color: #fff; font-size: 9px; line-height: 15px; font-weight: 600; white-space: nowrap; pointer-events: none; }
+.cv-group .cv-diff { bottom: auto; top: -9px; }
+.cv-diff[data-diff='added'] { background: var(--cv-diff-added); }
+.cv-diff[data-diff='modified'] { background: var(--cv-diff-modified); }
+.cv-diff[data-diff='removed'] { background: var(--cv-diff-removed); }
+.cv-edge-halo[data-diff='added'] { stroke: var(--cv-diff-added); stroke-opacity: 0.4; }
+.cv-edge-halo[data-diff='modified'] { stroke: var(--cv-diff-modified); stroke-opacity: 0.4; }
+.cv-edge-label[data-diff='added'] { box-shadow: 0 0 0 2px var(--cv-diff-added); }
+.cv-edge-label[data-diff='modified'] { box-shadow: 0 0 0 2px var(--cv-diff-modified); }

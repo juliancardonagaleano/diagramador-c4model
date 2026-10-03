@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { WorkbenchController } from './controller';
-import { canRender, countBySeverity, locateId, type AttachmentSpec } from '@iark/kernel';
+import { canRender, countBySeverity, diffDocuments, diffSummaryLine, locateId, type AttachmentSpec } from '@iark/kernel';
 import { readFile } from './files';
 import { AttachmentsPanel } from './attachments';
 import { DiagramCanvas } from './canvas/DiagramCanvas';
@@ -9,8 +9,10 @@ import type { LinkTools } from './canvas/Inspector';
 import { resolveRef, SuiteLinks } from './links';
 import { EditHistory } from './canvas/history';
 import { DiagramPanel, ExportPanel, FilePicker, ImportPanel, IssuesPanel, ReportsPanel } from './panels';
+import { compareMarks, readComparable } from './compare';
+import { ComparePanel, type CompareState } from './ComparePanel';
 
-type PanelId = 'canvas' | 'attachments' | 'diagram' | 'issues' | 'reports' | 'export' | 'import';
+type PanelId = 'canvas' | 'attachments' | 'diagram' | 'issues' | 'reports' | 'compare' | 'export' | 'import';
 
 export interface WorkbenchProps {
   controller: WorkbenchController;
@@ -46,6 +48,9 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
   }, [focus, state.moduleId]);
   const [attachmentId, setAttachmentId] = useState<string | undefined>();
   useEffect(() => setAttachmentId(undefined), [state.moduleId]);
+  // Comparar versiones: la otra versión (la base) con la que se compara el documento actual. Es de cada módulo.
+  const [base, setBase] = useState<{ name: string; document: unknown } | undefined>();
+  useEffect(() => setBase(undefined), [state.moduleId]);
   const [toast, setToast] = useState<string | undefined>();
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const jsonEditor = useRef<HTMLTextAreaElement>(null);
@@ -141,6 +146,25 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
   }, []);
 
   const { module, analysis } = state;
+  // La diferencia se recalcula con cada edición válida del documento actual; con uno inválido no hay diferencia que mostrar.
+  const compare = useMemo<{ state: CompareState; canvas?: ReturnType<typeof compareMarks> } | undefined>(() => {
+    if (!base) return undefined;
+    if (!module || analysis.status !== 'ok') return { state: { name: base.name } };
+    const diff = diffDocuments(base.document, analysis.document, module.diff);
+    return { state: { name: base.name, diff }, canvas: compareMarks(diff, base.document) };
+  }, [base, module, analysis]);
+
+  const loadCompare = useCallback(
+    async (text: string, name: string): Promise<string | undefined> => {
+      if (!module) return 'No hay ningún módulo activo.';
+      const result = await readComparable(module, text, name);
+      if (!result.ok) return result.reason;
+      setBase({ name, document: result.document });
+      return undefined;
+    },
+    [module],
+  );
+
   // El diálogo de «Abrir archivo…» ofrece el JSON del módulo y las extensiones de todos sus importadores (.sql, .tf, .yaml, .archimate…).
   const openAccept = [...new Set(['.json', '.mmd', '.mermaid', '.md', ...(module?.importers.flatMap((i) => i.extensions.map((e) => `.${e.split('.').pop()}`)) ?? [])]), 'text/plain', 'application/json'].join(',');
   const counts = analysis.status === 'ok' ? countBySeverity(analysis.issues) : { error: 0, warning: 0, info: 0 };
@@ -161,6 +185,7 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
     ['diagram', hasCanvas ? (renders ? 'Vista SVG' : 'JSON') : 'Diagrama'],
     ['issues', `Problemas${problemCount ? ` (${problemCount})` : ''}`],
     ['reports', 'Informes'],
+    ['compare', compare?.state.diff ? `Comparar (${compare.state.diff.summary.total})` : 'Comparar'],
     ['export', 'Exportar'],
     ['import', 'Importar'],
   ];
@@ -260,6 +285,25 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
               </button>
             ))}
           </div>
+          {canvasMode && compare && (
+            <div className="wb-compare-bar" role="status" data-testid="compare-bar">
+              <span>
+                Comparando con <strong>{compare.state.name}</strong>
+                {compare.state.diff ? `: ${diffSummaryLine(compare.state.diff)}` : ': el documento actual no es válido.'}
+              </span>
+              {editor && (
+                <span className="wb-compare-legend" aria-hidden="true">
+                  <i data-diff="added" /> nuevo <i data-diff="modified" /> modificado <i data-diff="removed" /> quitado
+                </span>
+              )}
+              <button type="button" onClick={() => setPanel('compare')}>
+                Ver cambios
+              </button>
+              <button type="button" onClick={() => setBase(undefined)} data-testid="compare-bar-clear">
+                Quitar comparación
+              </button>
+            </div>
+          )}
           {canvasMode && !editor && (
             <C4EmbedCanvas
               document={analysis.status === 'ok' ? analysis.document : undefined}
@@ -291,6 +335,7 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
               onBack={trail.length > 0 ? () => void goBack() : undefined}
               onSelect={(id) => (selectedRef.current = id)}
               onOpenAttachment={openAttachment}
+              compare={compare?.canvas}
             />
           )}
           {active === 'attachments' && attachments && (
@@ -313,6 +358,16 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
           {active === 'diagram' && <DiagramPanel {...panelProps} />}
           {active === 'issues' && <IssuesPanel {...panelProps} />}
           {active === 'reports' && <ReportsPanel {...panelProps} />}
+          {active === 'compare' && (
+            <ComparePanel
+              accept={openAccept}
+              analysis={analysis}
+              compare={compare?.state}
+              onLoad={loadCompare}
+              onClear={() => setBase(undefined)}
+              onFocus={(id) => void goTo(state.moduleId!, id)}
+            />
+          )}
           {active === 'export' && <ExportPanel {...panelProps} />}
           {active === 'import' && <ImportPanel {...panelProps} />}
         </section>

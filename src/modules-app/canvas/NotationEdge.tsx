@@ -88,6 +88,7 @@ function NotationEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePositi
 
   return (
     <>
+      {data?.diff && <path d={path} className="cv-edge-halo" data-diff={data.diff} fill="none" strokeWidth={(typeof style?.strokeWidth === 'number' ? style.strokeWidth : 1.5) + 6} data-testid={`edge-diff-${id}`} />}
       {selected && <path d={path} className="cv-edge-halo" fill="none" strokeWidth={(typeof style?.strokeWidth === 'number' ? style.strokeWidth : 1.5) + 6} />}
       <BaseEdge id={id} path={path} markerStart={markerStart} markerEnd={markerEnd} style={style} />
       {data?.notation.tail && <Tail kind={data.notation.tail} x={sourceX} y={sourceY} color={String(style?.stroke ?? '#475569')} />}
@@ -101,6 +102,7 @@ function NotationEdgeImpl({ id, sourceX, sourceY, targetX, targetY, sourcePositi
             className="cv-edge-label nodrag nopan"
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
             data-selected={selected || undefined}
+            data-diff={data?.diff}
             data-testid={`edge-label-${id}`}
             onClick={(e) => onPick?.(id, e.ctrlKey || e.metaKey)}
           >
