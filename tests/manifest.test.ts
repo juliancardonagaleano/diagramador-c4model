@@ -36,4 +36,15 @@ describe('manifiesto de federación del sitio estático', () => {
     expect(manifest.version).toBe('1.2.3');
     expect(manifest.modules.find((m) => m.id === 'data')!.endpoints!.api).toBe('/api/data');
   });
+
+  it('una instancia con espacio de trabajo anuncia además su API de proyectos (relativa al manifiesto); el sitio estático, no', () => {
+    const registry = createDefaultRegistry();
+    const withWorkspace = suiteManifest(registry, { version: '1', api: '../api', projects: true });
+    expect(withWorkspace.projects).toBe('../api/projects');
+    expect(manifestSchema.safeParse(withWorkspace).success).toBe(true);
+    expect(suiteManifest(registry, { version: '1', api: '../api/', projects: true }).projects).toBe('../api/projects');
+    expect(suiteManifest(registry, { version: '1', api: '../api' }).projects).toBeUndefined();
+    expect(suiteManifest(registry, { version: '1', projects: true }).projects).toBeUndefined(); // sin API no hay a dónde apuntar
+    expect(published.projects).toBeUndefined();
+  });
 });
