@@ -90,5 +90,7 @@ export const enterpriseModule: DomainModule<EnterpriseDocument> = {
     { prefix: 'focus', label: 'Entorno', applies: (e) => e.kind !== 'unit' && e.kind !== 'stream' },
   ],
   cliCommands: enterpriseCommands,
+  // Comparar versiones: las etapas de un flujo de valor se dibujan en el orden de la lista, así que su orden es contenido.
+  diff: { ordered: ['valueStages'] },
   editor: enterpriseEditor,
 };

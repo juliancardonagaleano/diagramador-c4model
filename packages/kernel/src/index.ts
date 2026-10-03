@@ -37,3 +37,6 @@ export {
 
 export * from './mermaid';
 export * from './graph';
+
+// Versionado: comparar dos versiones de un documento de cualquier módulo.
+export * from './diff';

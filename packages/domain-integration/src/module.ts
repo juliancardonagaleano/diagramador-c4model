@@ -65,5 +65,7 @@ export const integrationModule: DomainModule<IntegrationDocument> = {
   entities: (doc): EntityRef[] => doc.nodes.map((n) => ({ id: n.id, name: n.name, kind: n.kind })),
   views: (doc): ViewRef[] => listViews(doc).map((v) => ({ id: v.id, title: v.title })),
   cliCommands: integrationCommands,
+  // Comparar versiones: los pasos de un flujo son una secuencia, así que su orden es contenido.
+  diff: { ordered: ['flows.steps'] },
   editor: integrationEditor,
 };

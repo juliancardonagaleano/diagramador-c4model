@@ -100,5 +100,7 @@ export const platformModule: DomainModule<PlatformDocument> = {
     { prefix: 'compare', label: 'Comparar con el siguiente entorno', applies: (e) => e.kind === 'environment' },
   ],
   cliCommands: [...platformCommands, ...iconCommands],
+  // Comparar versiones: las etapas de un pipeline son una secuencia (de entorno en entorno), así que su orden es contenido.
+  diff: { ordered: ['pipelines.stages'] },
   editor: platformEditor,
 };

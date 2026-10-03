@@ -148,6 +148,24 @@ export interface CommandSpec {
   run(context: CommandContext): Promise<string | void> | string | void;
 }
 
+/**
+ * Cómo se comparan dos versiones de un documento del módulo (`diffDocuments`). La comparación es estructural y no
+ * necesita nada del módulo; esto solo declara lo que no es contenido. Las rutas son de claves separadas por punto, sin
+ * índices ni ids: `views.elements.x` es la `x` de los elementos de todas las vistas.
+ */
+export interface DiffSpec {
+  /**
+   * Rutas que NO cuentan como cambio de contenido: la maquetación guardada y los datos derivados (coordenadas, tamaños,
+   * rutas de aristas…). Una ruta cubre también todo lo que cuelga de ella. Por defecto, ninguna: todo es contenido.
+   */
+  ignore?: string[];
+  /**
+   * Rutas de listas cuyo orden es parte del contenido (los pasos de un flujo, las etapas de un pipeline…). En el resto de
+   * listas, cambiar solo el orden no es un cambio.
+   */
+  ordered?: string[];
+}
+
 export interface DomainModule<TDoc = unknown> {
   /** Identificador estable en minúsculas (`c4`, `integration`, `data`…): forma parte de las URN. */
   id: string;
@@ -172,6 +190,8 @@ export interface DomainModule<TDoc = unknown> {
   /** Vistas bajo demanda de un elemento. */
   traceViews?: TraceViewSpec[];
   cliCommands?: CommandSpec[];
+  /** Qué ignora y qué respeta de orden la comparación de versiones de un documento (`diffDocuments`). Opcional: sin él, todo cuenta. */
+  diff?: DiffSpec;
   /** Edición interactiva: notación, proyección a grafo, formularios y operaciones. Sin él, el módulo solo se ve y se edita como JSON. */
   editor?: EditorSpec<TDoc>;
 }

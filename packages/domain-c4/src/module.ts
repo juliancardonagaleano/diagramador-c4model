@@ -86,4 +86,7 @@ export const c4Module: DomainModule<C4Document> = {
   ai: c4AiSpec,
   entities: (document): EntityRef[] => document.model.elements.map((e) => ({ id: e.id, name: e.name, kind: e.type })),
   views: (document): ViewRef[] => document.views.map((v) => ({ id: v.id, title: v.title ?? v.id })),
+  // Comparar versiones: lo que guarda el autolayout (posiciones, tamaños, rutas de aristas y opciones de layout de cada vista) no es
+  // contenido. Qué elementos muestra cada vista (`views.elements`, por id) sí lo es.
+  diff: { ignore: ['views.elements.x', 'views.elements.y', 'views.elements.width', 'views.elements.height', 'views.edges', 'views.layout'] },
 };
