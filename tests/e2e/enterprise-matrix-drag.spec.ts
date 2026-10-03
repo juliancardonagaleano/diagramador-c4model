@@ -17,7 +17,7 @@ interface Doc {
 async function open(page: Page): Promise<string[]> {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/modulos.html?module=enterprise', { waitUntil: 'networkidle' });
+  await page.goto('/modulos.html?module=enterprise', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('module-canvas')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 20000 });
   await canvasReady(page);
@@ -104,7 +104,7 @@ test.describe('lienzo empresarial: arrastrar celdas de la matriz capacidad × ap
     expect(await documentOf(page)).toEqual(after);
 
     // Y se guarda como cualquier otro cambio: sobrevive a recargar.
-    await page.reload({ waitUntil: 'networkidle' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
     await canvasReady(page);
     expect(await documentOf(page)).toEqual(after);
     expect(errors).toEqual([]);
