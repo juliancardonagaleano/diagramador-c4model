@@ -1,5 +1,6 @@
 import { uniqueId, type EdgeNotation, type EditResult, type EditorAction, type EditorGraph, type EditorNode, type EditorSpec, type FieldSpec, type NodeNotation } from '@iark/kernel';
 import { capabilityChildren, stageCapabilities, streamStages } from './graph';
+import { buildMatrix, cellKey } from './matrix';
 import {
   CONTEXT_COLOR,
   EDGE_STYLES,
@@ -15,6 +16,8 @@ import {
   layoutCapabilityMap,
   layoutRoadmap,
   layoutValueStreams,
+  MATRIX_MARKS,
+  matrixCellId,
   matrixScene,
   parseMatrixCell,
   supportingApplications,
@@ -469,6 +472,7 @@ function matrixGraph(doc: EnterpriseDocument): EditorGraph {
       };
     }),
     edges: [],
+    legend: { title: 'Doble clic en una celda: marca o quita el soporte. Arrastra una celda con ● a otra: lo mueve.', items: [] },
   };
 }
 
@@ -482,6 +486,36 @@ function setSupport(doc: EnterpriseDocument, cell: { capabilityId: string; appli
   if (support === (existing !== undefined)) return { ok: true, document: doc };
   if (existing) return { ok: true, document: { ...doc, relations: doc.relations.filter((r) => r.id !== existing.id) } };
   return enterpriseEditor.addEdge(doc, 'supports', cell.applicationId, cell.capabilityId);
+}
+
+/**
+ * Mueve el soporte directo de la celda `from` a la pareja de la celda `to` (arrastrar una celda ● y soltarla en otra): la relación
+ * `supports` cambia de aplicación (misma fila), de capacidad (misma columna) o de ambas (en diagonal) y conserva el resto de sus campos,
+ * su posición en el documento y, si su id era el que se genera solo (`web-supports-online`), se renombra con la pareja nueva.
+ */
+function moveSupport(doc: EnterpriseDocument, from: { capabilityId: string; applicationId: string }, to: { capabilityId: string; applicationId: string }): EditResult<EnterpriseDocument> {
+  const name = (id: string): string => indexElements(doc).get(id)?.name ?? id;
+  const relation = directSupport(doc, from.capabilityId, from.applicationId);
+  if (!relation) {
+    const cell = buildMatrix(doc).cells.get(cellKey(from.capabilityId, from.applicationId));
+    if (!cell) return { ok: false, reason: 'La celda está vacía: no hay soporte que mover. Arrastra una celda con marca directa (●).' };
+    const how = cell.support === 'process' ? `por un proceso (${MATRIX_MARKS.process})` : `heredado de una capacidad hija (${MATRIX_MARKS.inherited})`;
+    return { ok: false, reason: `«${name(from.applicationId)}» soporta «${name(from.capabilityId)}» ${how}: solo se arrastran las celdas con marca directa (${MATRIX_MARKS.direct}); las demás se derivan de otras relaciones.` };
+  }
+  if (directSupport(doc, to.capabilityId, to.applicationId)) {
+    return { ok: false, reason: `«${name(to.applicationId)}» ya soporta «${name(to.capabilityId)}» (${MATRIX_MARKS.direct}): no se mueve para no duplicar la relación. Quita antes una de las dos.` };
+  }
+  const why = enterpriseEditor.canConnect?.(doc, 'supports', to.applicationId, to.capabilityId);
+  if (why) return { ok: false, reason: why };
+  // Un id que se generó solo (`web--supports--online` de los importadores, `web-supports-online` del editor; con o sin sufijo numérico) se rehace con la pareja nueva; uno puesto a mano se respeta.
+  const pair = `${relation.sourceId}--supports--${relation.targetId}`;
+  const generated = [pair, uniqueId(pair, [])].some((base) => relation.id.startsWith(base) && /^(-\d+)?$/.test(relation.id.slice(base.length)));
+  const id = generated ? uniqueId(`${to.applicationId}--supports--${to.capabilityId}`, doc.relations.filter((r) => r.id !== relation.id).map((r) => r.id)) : relation.id;
+  return {
+    ok: true,
+    id: matrixCellId(to.capabilityId, to.applicationId),
+    document: { ...doc, relations: doc.relations.map((r) => (r.id === relation.id ? { ...r, id, sourceId: to.applicationId, targetId: to.capabilityId } : r)) },
+  };
 }
 
 /** Celdas de la matriz entre los ids dados. */
@@ -603,7 +637,7 @@ const ACTIONS: Array<EditorAction<EnterpriseDocument>> = [
   {
     id: 'matrix-support',
     label: 'Soporta ⇄',
-    hint: 'Marca o quita el soporte (la relación «soporta») de las celdas seleccionadas de la matriz: si alguna no lo tiene, lo crea en todas; si todas lo tienen, lo quita (también con doble clic en la celda)',
+    hint: 'Marca o quita el soporte (la relación «soporta») de las celdas seleccionadas de la matriz: si alguna no lo tiene, lo crea en todas; si todas lo tienen, lo quita (también con doble clic en la celda). Para moverlo, arrastra una celda con marca directa (●) a otra: la relación pasa a la aplicación y la capacidad de la celda destino',
     needs: 'many',
     disabled: (doc, ids) => (cellsOf(doc, ids).length === 0 ? 'Selecciona una o varias celdas de la matriz capacidad × aplicación.' : undefined),
     run(doc, ids) {
@@ -667,6 +701,20 @@ export const enterpriseEditor: EditorSpec<EnterpriseDocument> = {
   activate(doc, id) {
     const cell = parseMatrixCell(doc, id);
     return cell ? setSupport(doc, cell, directSupport(doc, cell.capabilityId, cell.applicationId) === undefined) : undefined;
+  },
+
+  /**
+   * Matriz: arrastrar una celda con marca directa (●) y soltarla en otra mueve su relación `supports` a la pareja de la celda destino.
+   * Soltar una celda sin soporte directo o sobre algo que no es una celda se rechaza con un aviso; fuera de la matriz, o con otro nodo
+   * arrastrado (una cabecera, un total), no significa nada y el nodo se queda donde se dejó.
+   */
+  drop(doc, id, targetId, viewId) {
+    const from = viewId === 'matrix' ? parseMatrixCell(doc, id) : undefined;
+    if (!from) return undefined;
+    const to = parseMatrixCell(doc, targetId);
+    if (!to) return { ok: false, reason: 'Suelta la celda sobre otra celda de la matriz para mover su soporte.' };
+    if (from.capabilityId === to.capabilityId && from.applicationId === to.applicationId) return undefined;
+    return moveSupport(doc, from, to);
   },
 
   fields: (target, doc) => (target.type === 'node' ? nodeFields(target.kind, doc) : EDGE_FIELDS),

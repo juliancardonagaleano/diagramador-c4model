@@ -119,6 +119,8 @@ describe('matriz capacidad × aplicación en el lienzo', () => {
     // Las cabeceras de capacidad y aplicación siguen llevando su tipo.
     expect(screen.getByTestId('node-tienda-web').querySelector('.cv-kind')).not.toBeNull();
     expect(screen.queryByTestId('canvas-variant')).toBeNull();
+    // La pista visible dice cómo se edita: doble clic y arrastrar.
+    expect(screen.getByTestId('canvas-legend')).toHaveTextContent('Doble clic en una celda: marca o quita el soporte. Arrastra una celda con ● a otra: lo mueve.');
   }, 60000);
 
   it('«Soporta ⇄» crea la relación en las celdas seleccionadas y está deshabilitada sin celdas', async () => {

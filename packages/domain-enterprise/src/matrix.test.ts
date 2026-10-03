@@ -521,6 +521,117 @@ describe('editor: la matriz en el lienzo', () => {
     expect(buildMatrix(connected.document as EnterpriseDocument).rows.find((r) => r.capability.id === 'rrhh')!.status).toBe('single');
   });
 
+  describe('arrastrar una celda con marca directa a otra mueve su relación', () => {
+    const drop = (doc: EnterpriseDocument, from: string, to: string, viewId = 'matrix') => enterpriseEditor.drop!(doc, from, to, viewId);
+    const moved = (r: ReturnType<typeof enterpriseEditor.drop>): { document: EnterpriseDocument; id?: string } => {
+      if (!r || !r.ok) throw new Error(r ? r.reason : 'no significaba nada');
+      expect(enterpriseModule.schema.safeParse(r.document).success).toBe(true);
+      return { document: r.document as EnterpriseDocument, id: r.id };
+    };
+    const cell = matrixCellId;
+
+    it('la ayuda de la matriz lo dice: la leyenda del lienzo y la pista de «Soporta ⇄»', () => {
+      expect(project.legend?.title).toMatch(/Doble clic en una celda.*Arrastra una celda con ● a otra: lo mueve/);
+      expect(enterpriseEditor.actions!.find((a) => a.id === 'matrix-support')!.hint).toMatch(/arrastra una celda con marca directa \(●\) a otra/);
+      // Solo la matriz lleva esa leyenda.
+      expect(enterpriseEditor.project(small, 'capabilities').legend?.title).not.toMatch(/Arrastra/);
+    });
+
+    it('en la misma columna cambia la capacidad; en la misma fila, la aplicación; en diagonal, las dos, y siempre es una sola relación que conserva su sitio, su id y sus campos', () => {
+      const column = moved(drop(small, cell('online', 'web'), cell('precios', 'web')));
+      expect(supports(column.document, 'online', 'web')).toBeUndefined();
+      expect(supports(column.document, 'precios', 'web')).toMatchObject({ id: 'a', kind: 'supports', sourceId: 'web', targetId: 'precios' });
+      expect(column.id).toBe(cell('precios', 'web'));
+
+      const row = moved(drop(small, cell('envios', 'erp'), cell('envios', 'crm')));
+      expect(supports(row.document, 'envios', 'erp')).toBeUndefined();
+      expect(supports(row.document, 'envios', 'crm')).toMatchObject({ id: 'h', sourceId: 'crm', targetId: 'envios' });
+
+      // En diagonal y con criterio escrito: la descripción viaja con la relación.
+      const diagonal = moved(drop(small, cell('cobros', 'pagos'), cell('rrhh', 'web')));
+      expect(supports(diagonal.document, 'cobros', 'pagos')).toBeUndefined();
+      expect(supports(diagonal.document, 'rrhh', 'web')).toEqual({ id: 'i', kind: 'supports', sourceId: 'web', targetId: 'rrhh', description: 'tarjetas' });
+
+      for (const { document } of [column, row, diagonal]) {
+        // Ni se crea ni se borra nada: la misma cantidad de relaciones, en el mismo orden, y solo cambia la movida.
+        expect(document.relations).toHaveLength(small.relations.length);
+        expect(document.relations.map((r) => r.id)).toEqual(small.relations.map((r) => r.id));
+        expect(document.relations.filter((r, i) => JSON.stringify(r) !== JSON.stringify(small.relations[i]))).toHaveLength(1);
+        expect({ ...document, relations: [] }).toEqual({ ...small, relations: [] });
+      }
+    });
+
+    it('la matriz se recalcula: la celda de origen queda vacía, la de destino directa y los avisos de sus filas cambian', () => {
+      const { document } = moved(drop(small, cell('online', 'web'), cell('precios', 'web')));
+      const m = buildMatrix(document);
+      expect(m.cells.get(cellKey('online', 'web'))).toBeUndefined();
+      expect(m.cells.get(cellKey('precios', 'web'))).toMatchObject({ support: 'direct' });
+      expect(m.rows.find((r) => r.capability.id === 'online')!.status).toBe('gap');
+      expect(m.rows.find((r) => r.capability.id === 'precios')!.status).toBe('single');
+      // La agrupación sigue heredando de sus hijas.
+      expect(m.cells.get(cellKey('ventas', 'web'))).toMatchObject({ support: 'inherited' });
+    });
+
+    it('el id que se generó solo se rehace con la pareja nueva (sin pisar otro) y uno puesto a mano se respeta', () => {
+      const marked = edit(enterpriseEditor.update(small, cell('envios', 'web'), { support: true }));
+      expect(supports(marked, 'envios', 'web')?.id).toBe('web-supports-envios');
+      const { document } = moved(drop(marked, cell('envios', 'web'), cell('rrhh', 'web')));
+      expect(supports(document, 'rrhh', 'web')?.id).toBe('web-supports-rrhh');
+      expect(document.relations.map((r) => r.id)).toEqual(marked.relations.map((r) => (r.id === 'web-supports-envios' ? 'web-supports-rrhh' : r.id)));
+
+      // Si ese id ya lo lleva otra relación (puesto a mano), se desambigua.
+      const taken = parse({ ...marked, relations: [...marked.relations, { id: 'web-supports-rrhh', kind: 'depends-on', sourceId: 'web', targetId: 'erp' }] });
+      expect(supports(moved(drop(taken, cell('envios', 'web'), cell('rrhh', 'web'))).document, 'rrhh', 'web')?.id).toBe('web-supports-rrhh-2');
+
+      // El de los importadores y los ejemplos (`--`) también.
+      const dashed = parse({ ...marked, relations: marked.relations.map((r) => (r.id === 'web-supports-envios' ? { ...r, id: 'web--supports--envios' } : r)) });
+      expect(supports(moved(drop(dashed, cell('envios', 'web'), cell('rrhh', 'web'))).document, 'rrhh', 'web')?.id).toBe('web-supports-rrhh');
+
+      // Con sufijo numérico también es un id generado.
+      const suffixed = parse({ ...marked, relations: marked.relations.map((r) => (r.id === 'web-supports-envios' ? { ...r, id: 'web-supports-envios-2' } : r)) });
+      expect(supports(moved(drop(suffixed, cell('envios', 'web'), cell('rrhh', 'web'))).document, 'rrhh', 'web')?.id).toBe('web-supports-rrhh');
+    });
+
+    it('si la pareja de destino ya tiene la relación no se hace nada y se avisa', () => {
+      // «Tienda web» ya soporta «Pedidos» (relación `d`): mover la de «Ventas online» a esa celda la duplicaría.
+      const result = drop(small, cell('online', 'web'), cell('pedidos', 'web'));
+      expect(result).toMatchObject({ ok: false, reason: expect.stringContaining('ya soporta') });
+      expect((result as { reason: string }).reason).toContain('«Tienda web»');
+      expect((result as { reason: string }).reason).toContain('«Pedidos»');
+      expect(result).not.toHaveProperty('document');
+    });
+
+    it('solo se arrastran las celdas con marca directa: las vacías, las que soportan por un proceso (○) y las heredadas (·) avisan y no cambian nada', () => {
+      expect(drop(small, cell('rrhh', 'web'), cell('precios', 'web'))).toMatchObject({ ok: false, reason: expect.stringContaining('vacía') });
+      expect(drop(small, cell('pedidos', 'erp'), cell('precios', 'erp'))).toMatchObject({ ok: false, reason: expect.stringMatching(/por un proceso \(○\).*solo se arrastran.*\(●\)/) });
+      expect(drop(small, cell('ventas', 'web'), cell('rrhh', 'web'))).toMatchObject({ ok: false, reason: expect.stringMatching(/heredado de una capacidad hija \(·\)/) });
+    });
+
+    it('una celda que soporta por un proceso (○) puede recibir el soporte directo: queda directa y conserva sus procesos', () => {
+      const { document } = moved(drop(small, cell('online', 'web'), cell('pedidos', 'erp')));
+      expect(buildMatrix(document).cells.get(cellKey('pedidos', 'erp'))).toMatchObject({ support: 'direct', processIds: ['alta'] });
+      expect(document.relations.filter((r) => r.kind === 'realizes' || r.targetId === 'alta')).toEqual(small.relations.filter((r) => r.kind === 'realizes' || r.targetId === 'alta'));
+    });
+
+    it('soltar sobre algo que no es una celda se avisa; fuera de la matriz, con otro nodo arrastrado o sobre sí misma no significa nada', () => {
+      expect(drop(small, cell('online', 'web'), 'erp')).toMatchObject({ ok: false, reason: expect.stringContaining('otra celda de la matriz') });
+      expect(drop(small, cell('online', 'web'), 'total:all')).toMatchObject({ ok: false, reason: expect.stringContaining('otra celda de la matriz') });
+      expect(drop(small, cell('online', 'web'), cell('precios', 'web'), 'landscape')).toBeUndefined();
+      expect(enterpriseEditor.drop!(small, cell('online', 'web'), cell('precios', 'web'), undefined)).toBeUndefined();
+      expect(drop(small, 'web', cell('precios', 'web'))).toBeUndefined();
+      expect(drop(small, 'total:all', cell('precios', 'web'))).toBeUndefined();
+      expect(drop(small, cell('online', 'web'), cell('online', 'web'))).toBeUndefined();
+    });
+
+    it('la relación movida sigue siendo una aplicación que soporta una capacidad (RELATION_RULES) y el documento valida', () => {
+      const { document } = moved(drop(small, cell('cobros', 'pagos'), cell('rrhh', 'web')));
+      const relation = supports(document, 'rrhh', 'web')!;
+      expect(document.applications.some((a) => a.id === relation.sourceId)).toBe(true);
+      expect(document.capabilities.some((c) => c.id === relation.targetId)).toBe(true);
+      expect(validateEnterpriseDocument(document)).toMatchObject({ ok: true });
+    });
+  });
+
   it('borrar una cabecera quita su fila o su columna y las relaciones', () => {
     const noWeb = enterpriseEditor.remove(small, 'web');
     if (!noWeb.ok) throw new Error(noWeb.reason);
