@@ -549,3 +549,209 @@ describe('scanRepo: un clon temporal de un repositorio remoto (opción remote)',
     expect(() => scanRepo(join(sinNada, 'no-existe'), { remote: { name: 'x' } })).toThrow('El repositorio «x» no existe.');
   });
 });
+
+describe('scanRepo: --repo-exclude y --repo-include', () => {
+  const fixture = (): string => {
+    const dir = copyFixtureRepo();
+    dirs.push(dir);
+    return dir;
+  };
+  const base = paths(scanRepo(fixture()));
+
+  it('sin filtros nada cambia: ni en el resumen ni en el encabezado', () => {
+    const d = scanRepo(fixture());
+    expect(d.omittedCounts.excluido).toBeUndefined();
+    expect(d.omittedCounts['no-incluido']).toBeUndefined();
+    expect(d.text).not.toContain('Filtros del usuario');
+    expect(formatSummary(d)).not.toContain('--repo-');
+    expect(base).toContain('services/facturacion/pom.xml');
+  });
+
+  describe('--repo-exclude', () => {
+    it('quita un archivo del resumen entero (contenido, árbol y componentes) y lo lista como omitido con su motivo', () => {
+      const d = scanRepo(fixture(), { exclude: ['docker-compose.yml', '*.controller.ts'] });
+      expect(paths(d)).not.toContain('docker-compose.yml');
+      expect(paths(d)).toContain('README.md');
+      expect(d.text).not.toContain('===== docker-compose.yml');
+      expect(d.text).not.toContain('pedidos.controller.ts'); // ni en la lista de componentes
+      expect(d.text).not.toMatch(/sueltos en la raíz:[^\n]*docker-compose\.yml/);
+      expect(omittedPaths(d, 'excluido').sort()).toEqual(['docker-compose.yml', 'services/pedidos/src/pedidos.controller.ts']);
+      expect(d.omittedCounts.excluido).toBe(2);
+      expect(d.filesSeen).toBe(scanRepo(fixture()).filesSeen - 2);
+      const report = formatReport(d);
+      expect(report).toContain('excluido por --repo-exclude (2): ');
+      expect(report).toMatch(/excluido por --repo-exclude \(2\): .*docker-compose\.yml/);
+      expect(formatSummary(d)).toContain('2 excluida(s) por --repo-exclude');
+    });
+
+    it('una carpeta con barra final se corta entera, sin recorrerla', () => {
+      const d = scanRepo(fixture(), { exclude: ['services/facturacion/'] });
+      expect(paths(d).some((p) => p.startsWith('services/facturacion/'))).toBe(false);
+      expect(paths(d)).toContain('services/pedidos/package.json');
+      expect(omittedPaths(d, 'excluido')).toEqual(['services/facturacion/']);
+      expect(d.text).not.toContain('FacturacionApplication');
+      // Ni el árbol ni los componentes la listan (el README y el compose sí pueden mencionarla por su nombre, en su texto).
+      expect(d.text).not.toContain('services/facturacion/');
+      expect(d.text).not.toContain('<artifactId>facturacion');
+    });
+
+    it('patrones con **, anclados y escapes; varios a la vez', () => {
+      const d = scanRepo(fixture(), { exclude: ['k8s/**', '/db', '**/*.xml', 'api/openapi.yaml'] });
+      for (const gone of ['k8s/deployment.yaml', 'db/migrations/001_pedidos.sql', 'services/facturacion/pom.xml', 'api/openapi.yaml']) expect(paths(d), gone).not.toContain(gone);
+      expect(omittedPaths(d, 'excluido').sort()).toEqual(['api/openapi.yaml', 'db/', 'k8s/deployment.yaml', 'services/facturacion/pom.xml']);
+      expect(d.included.length).toBeGreaterThan(0);
+    });
+
+    it('el encabezado le dice al modelo que lo que falta puede existir', () => {
+      const d = scanRepo(fixture(), { exclude: ['docker-compose.yml'] });
+      expect(d.text).toContain('Filtros del usuario: 1 entrada(s) excluida(s) con --repo-exclude (no salen ni en el árbol). Lo que falte en el resumen no implica que no exista en el repositorio.');
+    });
+
+    it('si un secreto y un exclude coinciden, el motivo es «secreto» (nunca se lee) y el resto sigue igual', () => {
+      const dir = fixture();
+      plantSecrets(dir);
+      const d = scanRepo(dir, { exclude: ['.env', 'credentials.json'] });
+      expect(omittedPaths(d, 'secreto')).toEqual(expect.arrayContaining(['.env', 'credentials.json']));
+      expect(omittedPaths(d, 'excluido')).not.toContain('.env');
+      for (const value of ALL_FAKE_VALUES) expect(d.text).not.toContain(value);
+    });
+
+    it('si se excluye todo, el error cuenta lo omitido por este motivo', () => {
+      expect(() => scanRepo(fixture(), { exclude: ['**'] })).toThrow(/no contiene archivos de texto que leer \(omitidos: .*excluido por --repo-exclude/);
+    });
+  });
+
+  describe('--repo-include', () => {
+    it('limita el contenido a lo que cuadre; el árbol y los componentes siguen enteros', () => {
+      const d = scanRepo(fixture(), { include: ['services/pedidos/'] });
+      expect(paths(d)).toEqual(['services/pedidos/package.json', 'services/pedidos/src/server.ts']);
+      // El árbol sigue entero: aparecen carpetas y archivos de fuera del include.
+      expect(d.text).toContain('services/facturacion/');
+      expect(d.text).toContain('PedidoCreadoListener.java'); // lista de componentes
+      expect(d.text).toContain('Lenguajes y formatos');
+      expect(d.text).not.toContain('===== docker-compose.yml');
+      expect(d.text).not.toContain('===== README.md');
+      expect(d.filesSeen).toBe(scanRepo(fixture()).filesSeen);
+      // Lo que quedó fuera se lista con su motivo.
+      expect(omittedPaths(d, 'no-incluido')).toEqual(expect.arrayContaining(['README.md', 'docker-compose.yml', 'api/openapi.yaml', 'k8s/deployment.yaml', 'services/facturacion/pom.xml']));
+      expect(formatReport(d)).toMatch(/fuera de --repo-include \(el contenido se limitó a otros archivos\) \(\d+\): /);
+      expect(formatSummary(d)).toMatch(/\d+ archivo\(s\) clave fuera de --repo-include/);
+    });
+
+    it('un archivo suelto, un patrón sin barra, y varios patrones (basta con que cuadre uno)', () => {
+      const d = scanRepo(fixture(), { include: ['README.md', '*.xml', 'k8s'] });
+      expect(paths(d).sort()).toEqual(['README.md', 'k8s/deployment.yaml', 'services/facturacion/pom.xml']);
+    });
+
+    it('include solo reduce: nombrar un archivo que la lista de archivos clave no lee no lo añade', () => {
+      const d = scanRepo(fixture(), { include: ['services/pedidos/src/pedidos.controller.ts', 'services/pedidos/package.json'] });
+      expect(paths(d)).toEqual(['services/pedidos/package.json']); // el controlador es código: solo sale su ruta
+      expect(d.text).toContain('services/pedidos/src/pedidos.controller.ts'); // en los componentes
+      expect(d.text).not.toContain('===== services/pedidos/src/pedidos.controller.ts');
+    });
+
+    it('los YAML sin pista en el nombre solo se abren (para clasificarlos) si cuadran con el include', () => {
+      const dir = repo({ 'README.md': '# T\n', 'misc/uno.yaml': 'openapi: 3.0.0\ninfo:\n  title: x\n', 'otro/dos.yaml': 'openapi: 3.0.0\ninfo:\n  title: y\n' });
+      const d = scanRepo(dir, { include: ['misc/'] });
+      expect(paths(d)).toEqual(['misc/uno.yaml']);
+      expect(omittedPaths(d, 'no-incluido')).not.toContain('otro/dos.yaml'); // no se sabía que fuera clave: no se abrió
+      expect(paths(scanRepo(dir, { include: ['otro/'] }))).toEqual(['otro/dos.yaml']);
+    });
+
+    it('si ningún archivo clave cuadra, error claro (código 2) en vez de un resumen vacío', () => {
+      let error: CliError | undefined;
+      try {
+        scanRepo(fixture(), { include: ['no-existe/'] });
+      } catch (e) {
+        error = e as CliError;
+      }
+      expect(error).toBeInstanceOf(CliError);
+      expect(error!.exitCode).toBe(2);
+      expect(error!.message).toMatch(/Ningún archivo clave de «.*» cuadra con --repo-include \(\d+ archivo\(s\) clave quedaron fuera\)/);
+      expect(error!.message).toMatch(/solo reduce lo que la lista de archivos clave ya lee/);
+    });
+
+    it('el encabezado dice que el contenido está limitado y que el árbol sigue completo', () => {
+      const d = scanRepo(fixture(), { include: ['services/pedidos/'] });
+      expect(d.text).toMatch(/Filtros del usuario: el contenido de los archivos clave se limitó con --repo-include \(\d+ archivo\(s\) clave quedaron fuera; el árbol de carpetas sigue completo\)\. Lo que falte/);
+    });
+  });
+
+  it('include y exclude juntos: gana el exclude', () => {
+    const d = scanRepo(fixture(), { include: ['services/'], exclude: ['**/package.json'] });
+    expect(paths(d)).not.toContain('services/pedidos/package.json');
+    expect(paths(d).every((p) => p.startsWith('services/'))).toBe(true);
+    expect(omittedPaths(d, 'excluido')).toEqual(['services/pedidos/package.json']);
+    expect(d.text).toContain('Filtros del usuario: 1 entrada(s) excluida(s) con --repo-exclude (no salen ni en el árbol); el contenido de los archivos clave se limitó con --repo-include');
+  });
+
+  describe('NUNCA saltan la lista de secretos ni la redacción', () => {
+    const named = ['.env', '.env.production', 'config/server.pem', 'config/id_rsa', '.npmrc', 'infra/terraform.tfstate', 'infra/terraform.tfvars', 'credentials.json', 'secrets.yaml'];
+
+    it('un --repo-include que nombra los archivos secretos no los abre: siguen omitidos como «secreto» y sus valores no salen', () => {
+      const dir = fixture();
+      plantSecrets(dir);
+      const d = scanRepo(dir, { include: [...named, '.env*', '**/*.pem', '*', '**', 'config/', 'infra/'] });
+      for (const file of named) {
+        expect(paths(d), file).not.toContain(file);
+        expect(omittedPaths(d, 'secreto'), file).toContain(file);
+      }
+      for (const value of ALL_FAKE_VALUES) expect(d.text, `se coló: ${value.slice(0, 14)}…`).not.toContain(value);
+    });
+
+    it('con un include que abarca todo, lo que sí entra sigue redactado (README, compose, manifiestos, migraciones)', () => {
+      const dir = fixture();
+      plantSecrets(dir);
+      const d = scanRepo(dir, { include: ['**'] });
+      expect(paths(d)).toEqual(expect.arrayContaining(['README.md', 'docker-compose.yml', 'k8s/secretos.yaml', 'db/migrations/002_semilla.sql']));
+      expect(d.redactions).toBeGreaterThan(0);
+      for (const value of ALL_FAKE_VALUES) expect(d.text, `se coló: ${value.slice(0, 14)}…`).not.toContain(value);
+      expect(d.text).toContain('[REDACTADO]');
+    });
+
+    it('el .env.example sigue dando solo los nombres de las variables aunque lo nombre un include', () => {
+      const dir = fixture();
+      plantSecrets(dir);
+      const d = scanRepo(dir, { include: ['.env.example'] });
+      expect(paths(d)).toEqual(['.env.example']);
+      expect(d.text).toContain('DATABASE_URL');
+      expect(d.text).not.toContain(FAKE.connectionPassword);
+      expect(d.text).not.toContain(FAKE.password);
+    });
+
+    it('un exclude o un include sobre carpetas de credenciales o excluidas por nombre no las hace recorribles', () => {
+      const dir = repo({ 'README.md': '# T\n', '.aws/credentials': `aws_secret_access_key = ${FAKE.awsSecret}\n`, 'secrets/clave.txt': `${FAKE.password}\n`, 'node_modules/x/package.json': '{"name":"MARCA_NM"}', '.git/config': `[user]\n\ttoken = ${FAKE.github}\n` });
+      const d = scanRepo(dir, { include: ['.aws/', 'secrets/', 'node_modules/', '.git/', '**'] });
+      expect(paths(d)).toEqual(['README.md']);
+      expect(d.text).not.toContain('MARCA_NM');
+      for (const value of ALL_FAKE_VALUES) expect(d.text).not.toContain(value);
+      expect(omittedPaths(d, 'secreto')).toEqual(expect.arrayContaining(['.aws/', 'secrets/']));
+    });
+  });
+
+  it('patrones inválidos: error de uso (código 2) antes de leer nada', () => {
+    for (const [options, text] of [
+      [{ exclude: ['!x'] }, /de --repo-exclude no vale/],
+      [{ include: ['../x'] }, /de --repo-include no vale/],
+      [{ include: ['a\nb'] }, /de --repo-include no vale/],
+    ] as const) {
+      expect(() => scanRepo(fixture(), options), JSON.stringify(options)).toThrow(text);
+    }
+  });
+
+  it('funciona igual con un clon temporal (remote)', () => {
+    const d = scanRepo(fixture(), { remote: { name: 'tienda' }, include: ['services/pedidos/'], exclude: ['**/server.ts'] });
+    expect(paths(d)).toEqual(['services/pedidos/package.json']);
+    expect(d.name).toBe('tienda');
+    expect(omittedPaths(d, 'excluido')).toEqual(['services/pedidos/src/server.ts']);
+  });
+
+  it('un patrón hostil no cuelga el escaneo', () => {
+    const name = `${'a'.repeat(200)}.ts`;
+    const dir = repo({ 'README.md': '# T\n', 'package.json': '{"name":"x"}', [`src/${name}`]: 'x\n' });
+    const started = Date.now();
+    const d = scanRepo(dir, { exclude: [`${'*a'.repeat(300)}b`], include: [`${'**/'.repeat(100)}README.md`] });
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(paths(d)).toEqual(['README.md']);
+  });
+});
