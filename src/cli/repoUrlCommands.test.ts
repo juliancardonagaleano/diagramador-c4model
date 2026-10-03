@@ -217,6 +217,49 @@ describe('iark generate --from-repo <url>', () => {
   });
 });
 
+describe('--from-repo <url> con --repo-include y --repo-exclude', () => {
+  const keyPaths = (out: string): string[] => [...out.split('## Archivos clave')[1].split(/^<<<FIN-DEL-REPOSITORIO-/m)[0].matchAll(/^===== (\S+) \[/gm)].map((m) => m[1]);
+
+  it('se aplican al clon (igual que a una carpeta): exclude quita, include limita, y los secretos del clon siguen sin leerse', () => {
+    const r = run(['generate', 'x', '--from-repo', URL_OK, '--repo-exclude', 'docker-compose.yml', '--repo-include', 'README.md', '--repo-include', '*.yaml', '--repo-include', '.env*', '--repo-include', '**/*.pem', '--dry-run']);
+    expect(r.status, r.stderr).toBe(0);
+    expect(calls()).toHaveLength(1); // un solo git clone
+    const files = keyPaths(r.stdout);
+    expect(files).toEqual(expect.arrayContaining(['README.md', 'k8s/deployment.yaml']));
+    expect(files).not.toContain('docker-compose.yml');
+    expect(files).not.toContain('.env');
+    expect(files.some((f) => f.endsWith('.pem'))).toBe(false);
+    expect(r.stderr).toMatch(/excluido por --repo-exclude \(1\): docker-compose\.yml/);
+    expect(r.stderr).toMatch(/secreto \(nunca se lee\)/);
+    expect(r.stdout).toContain('Repositorio: tienda');
+    noLeaks(r.stdout, r.stderr);
+    sinRutasTemporales(r.stdout, r.stderr);
+    sinClonesPendientes();
+  });
+
+  it('un patrón inválido se rechaza antes de clonar: git no llega a lanzarse', () => {
+    for (const [option, glob] of [['--repo-exclude', '!x'], ['--repo-include', '../x'], ['--repo-include', 'a\nb']]) {
+      const r = run(['prompt', 'x', '--from-repo', URL_OK, option, glob]);
+      expect(r.status, `${option} ${JSON.stringify(glob)}`).not.toBe(0);
+      expect(r.stderr).toContain(`El patrón de ${option} no vale`);
+      expect(r.stderr).not.toContain('Clonando');
+      expect(r.stdout).toBe('');
+      expect(calls()).toHaveLength(0);
+    }
+    sinClonesPendientes();
+  });
+
+  it('si el include no deja ningún archivo clave, error de uso (2) y el directorio temporal desaparece', () => {
+    const r = run(['prompt', 'x', '--from-repo', URL_OK, '--repo-include', '.env']);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/Ningún archivo clave de «tienda» cuadra con --repo-include/);
+    expect(r.stdout).toBe('');
+    noLeaks(r.stdout, r.stderr);
+    sinRutasTemporales(r.stderr);
+    sinClonesPendientes();
+  });
+});
+
 describe('--from-repo <url>: lo que se rechaza (git no llega a lanzarse)', () => {
   const token = ['gh', 'p_', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'].join('');
   it.each([

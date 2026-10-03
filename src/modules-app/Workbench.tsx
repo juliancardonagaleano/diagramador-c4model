@@ -11,6 +11,8 @@ import { EditHistory } from './canvas/history';
 import { DiagramPanel, ExportPanel, FilePicker, ImportPanel, IssuesPanel, ReportsPanel } from './panels';
 import { compareMarks, readComparable } from './compare';
 import { ComparePanel, type CompareState } from './ComparePanel';
+import { ProjectBar } from './ProjectBar';
+import { ProjectsDialog } from '../projects/ProjectsDialog';
 
 type PanelId = 'canvas' | 'attachments' | 'diagram' | 'issues' | 'reports' | 'compare' | 'export' | 'import';
 
@@ -35,6 +37,8 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
   // ── Enlaces entre diagramas: seguir una URN lleva al módulo destino con el elemento encuadrado; la miga permite volver.
   interface Stop {
     moduleId: string;
+    /** En un proyecto, el diagrama en el que se estaba (un módulo puede tener varios). */
+    diagramId?: string;
     viewId?: string;
     elementId?: string;
     label: string;
@@ -51,6 +55,8 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
   // Comparar versiones: la otra versión (la base) con la que se compara el documento actual. Es de cada módulo.
   const [base, setBase] = useState<{ name: string; document: unknown } | undefined>();
   useEffect(() => setBase(undefined), [state.moduleId]);
+  const projects = controller.projects;
+  const [showProjects, setShowProjects] = useState(false);
   const [toast, setToast] = useState<string | undefined>();
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const jsonEditor = useRef<HTMLTextAreaElement>(null);
@@ -62,8 +68,11 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
   }, []);
 
   const goTo = useCallback(
-    async (moduleId: string, elementId?: string): Promise<void> => {
-      await controller.selectModule(moduleId);
+    async (moduleId: string, elementId?: string, diagramId?: string): Promise<void> => {
+      const project = controller.projects?.project;
+      // Con varios diagramas por módulo, ir a un módulo es ir a un diagrama concreto del proyecto.
+      if (diagramId && project && controller.projects?.getState().diagramId !== diagramId) await controller.openDiagram(project.id, diagramId);
+      else await controller.selectModule(moduleId);
       if (!elementId) return;
       const { module: target, analysis } = controller.getState();
       // En C4 no hay lienzo propio: se abre la vista cuyo alcance es el elemento (o la primera que lo dibuja).
@@ -83,13 +92,22 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
       const ref = resolveRef(urn);
       if (!ref) return notify(`La referencia «${urn}» no es una URN válida (urn:iark:<módulo>:<id>).`);
       if (!controller.moduleIds.includes(ref.moduleId)) return notify(`El módulo «${ref.moduleId}» no está en este banco de trabajo.`);
-      if ((await suiteLinks.exists(urn)) === false) notify(`El elemento «${ref.elementId}» no existe en el documento actual de ${suiteLinks.label(ref.moduleId)}.`);
+      const exists = await suiteLinks.exists(urn);
+      const inProject = !!controller.projects?.project;
+      if (exists === false) notify(`El elemento «${ref.elementId}» no existe en ${inProject ? 'ningún diagrama del proyecto' : `el documento actual de ${suiteLinks.label(ref.moduleId)}`}.`);
+      const owners = exists ? await suiteLinks.owners(urn) : [];
+      const currentDiagram = controller.projects?.getState().diagramId;
+      // En un proyecto, la URN puede estar en varios diagramas del mismo módulo: se prefiere el actual y si no el primero.
+      const target = owners.find((o) => o.diagramId === currentDiagram) ?? owners[0];
+      if (owners.length > 1 && owners.some((o) => o.diagramId)) {
+        notify(`«${ref.elementId}» está en varios diagramas (${owners.map((o) => o.label).join(', ')}): se abre «${target.label}».`);
+      }
       const from = controller.getState();
       if (from.moduleId) {
         const label = `${suiteLinks.label(from.moduleId)}${selectedRef.current ? ` · ${selectedRef.current}` : ''}`;
-        setTrail((t) => [...t, { moduleId: from.moduleId!, viewId: from.viewId, elementId: selectedRef.current, label }]);
+        setTrail((t) => [...t, { moduleId: from.moduleId!, diagramId: currentDiagram, viewId: from.viewId, elementId: selectedRef.current, label }]);
       }
-      await goTo(ref.moduleId, ref.elementId);
+      await goTo(ref.moduleId, ref.elementId, target?.diagramId);
     },
     [controller, goTo, notify, suiteLinks],
   );
@@ -98,7 +116,7 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
     const stop = trail[trail.length - 1];
     if (!stop) return;
     setTrail((t) => t.slice(0, -1));
-    await goTo(stop.moduleId, stop.elementId);
+    await goTo(stop.moduleId, stop.elementId, stop.diagramId);
     if (stop.viewId) controller.setView(stop.viewId);
   }, [controller, goTo, trail]);
 
@@ -233,6 +251,8 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
             )}
           </div>
       </header>
+
+      {projects && !embed && ui === 'full' && <ProjectBar controller={controller} state={state} onManage={() => setShowProjects(true)} notify={notify} />}
 
       {trail.length > 0 && (
         <div className="wb-trail" role="navigation" aria-label="Diagramas recorridos" data-testid="trail">
@@ -374,6 +394,17 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
         </section>
       </main>
 
+      {showProjects && projects && (
+        <ProjectsDialog
+          session={projects}
+          modules={controller.sources.map((s) => ({ id: s.id, label: s.label }))}
+          onOpen={(projectId, diagram) => controller.openDiagram(projectId, diagram.id)}
+          current={() => controller.currentDocument()}
+          template={(moduleId, kind) => controller.template(moduleId, kind)}
+          onClose={() => setShowProjects(false)}
+          notify={notify}
+        />
+      )}
       {toast && (
         <div className="wb-toast" role="status">
           {toast}

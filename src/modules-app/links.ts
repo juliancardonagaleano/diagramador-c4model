@@ -1,10 +1,12 @@
 import { analyzeText, buildTraceGraph, formatUrn, parseUrn, type AnyModule, type EntityRef, type TraceGraph, type TraceInput } from '@iark/kernel';
-import type { WorkbenchController } from './controller';
+import type { SuiteDocument, WorkbenchController } from './controller';
 
 /**
  * Enlaces entre diagramas de distintos módulos. Los documentos solo guardan URN (`urn:iark:<módulo>:<id>`); ningún
- * módulo conoce a otro. El banco de trabajo reúne el documento activo y los borradores (o ejemplos) de los demás módulos,
- * construye el grafo de trazabilidad del núcleo y con él resuelve a dónde lleva un enlace y quién apunta a un elemento.
+ * módulo conoce a otro. El banco de trabajo reúne los documentos disponibles, construye el grafo de trazabilidad del núcleo y
+ * con él resuelve a dónde lleva un enlace y quién apunta a un elemento. Sin proyecto, los documentos son el activo y los
+ * borradores (o ejemplos) de los demás módulos; con un proyecto abierto, son sus diagramas, varios por módulo si los hay: la
+ * URN se resuelve en todo el proyecto y, si dos diagramas del mismo módulo definen el mismo id, apunta al primero.
  */
 
 export interface ResolvedRef {
@@ -27,35 +29,66 @@ export function resolveRef(urn: string): ResolvedRef | undefined {
   return parsed ? { moduleId: parsed.module, elementId: parsed.id, urn } : undefined;
 }
 
+/** Dónde está definido un elemento: los diagramas del proyecto que lo contienen (uno solo si no hay proyecto). */
+export interface Owner {
+  /** `undefined` fuera de un proyecto: el documento es el borrador del módulo. */
+  diagramId?: string;
+  label: string;
+}
+
+interface Snapshot {
+  graph: TraceGraph;
+  /** URN → documentos que la definen, en el orden del conjunto. */
+  owners: Map<string, Owner[]>;
+  /** Entidades referenciables por módulo, sin repetir ids. */
+  entities: Map<string, EntityRef[]>;
+}
+
 export class SuiteLinks {
-  private graph: TraceGraph | undefined;
+  private snapshot: Snapshot | undefined;
   private signature = '';
 
   constructor(private readonly controller: WorkbenchController) {}
 
-  /** Grafo de trazabilidad con todos los documentos disponibles; se reconstruye solo si algún texto cambió. */
-  async graphOf(): Promise<TraceGraph> {
-    const texts = new Map<string, string>();
-    for (const id of this.controller.moduleIds) {
-      const text = await this.controller.draftText(id);
-      if (text?.trim()) texts.set(id, text);
-    }
-    const signature = [...texts].map(([id, text]) => `${id}:${text.length}:${hash(text)}`).join('|');
-    if (this.graph && signature === this.signature) return this.graph;
+  /** Grafo, dueños y entidades con todos los documentos disponibles; se reconstruye solo si algún texto cambió. */
+  private async build(): Promise<Snapshot> {
+    const docs: SuiteDocument[] = await this.controller.suiteDocuments();
+    const signature = docs.map((d) => `${d.moduleId}:${d.diagramId ?? ''}:${d.text.length}:${hash(d.text)}`).join('|');
+    if (this.snapshot && signature === this.signature) return this.snapshot;
     const inputs: TraceInput[] = [];
-    for (const [id, text] of texts) {
+    const owners = new Map<string, Owner[]>();
+    const entities = new Map<string, EntityRef[]>();
+    for (const doc of docs) {
       let module: AnyModule;
       try {
-        module = await this.controller.loadModule(id);
+        module = await this.controller.loadModule(doc.moduleId);
       } catch {
         continue;
       }
-      const analysis = analyzeText(module, text);
-      if (analysis.status === 'ok') inputs.push({ module, document: analysis.document, source: id });
+      const analysis = analyzeText(module, doc.text);
+      if (analysis.status !== 'ok') continue;
+      inputs.push({ module, document: analysis.document, source: doc.label });
+      const known = entities.get(module.id) ?? [];
+      for (const entity of module.entities?.(analysis.document) ?? []) {
+        const urn = formatUrn(module.id, entity.id);
+        owners.set(urn, [...(owners.get(urn) ?? []), { diagramId: doc.diagramId, label: doc.label }]);
+        if (!known.some((e) => e.id === entity.id)) known.push(entity);
+      }
+      entities.set(module.id, known);
     }
-    this.graph = buildTraceGraph(inputs);
+    this.snapshot = { graph: buildTraceGraph(inputs, { allowRepeatedModules: true }), owners, entities };
     this.signature = signature;
-    return this.graph;
+    return this.snapshot;
+  }
+
+  /** Grafo de trazabilidad con todos los documentos disponibles. */
+  async graphOf(): Promise<TraceGraph> {
+    return (await this.build()).graph;
+  }
+
+  /** Los documentos que definen la URN (en un proyecto, los diagramas; si hay varios, la referencia es ambigua). */
+  async owners(urn: string): Promise<Owner[]> {
+    return (await this.build()).owners.get(urn) ?? [];
   }
 
   /** Quién apunta al elemento `elementId` del módulo `moduleId`. */
@@ -71,13 +104,9 @@ export class SuiteLinks {
       });
   }
 
-  /** Elementos referenciables de un módulo, para elegir el destino de un enlace sin escribir la URN. */
+  /** Elementos referenciables de un módulo (de todos sus diagramas si hay proyecto), para elegir el destino de un enlace sin escribir la URN. */
   async entities(moduleId: string): Promise<EntityRef[]> {
-    const text = await this.controller.draftText(moduleId);
-    if (!text?.trim()) return [];
-    const module = await this.controller.loadModule(moduleId);
-    const analysis = analyzeText(module, text);
-    return analysis.status === 'ok' ? (module.entities?.(analysis.document) ?? []) : [];
+    return (await this.build()).entities.get(moduleId) ?? [];
   }
 
   /** ¿Existe el destino de esta URN en los documentos disponibles? `undefined` si el módulo no se conoce. */

@@ -55,7 +55,7 @@ const severe = (s: Service): boolean => s.criticality === 'high' || s.criticalit
  * replican lo que tiene otro, datos en redes públicas, puntos únicos de fallo en producción y pipelines que se saltan
  * entornos o aprobaciones. Los recursos transversales (certificados, monitorización, regiones y espacios de nombres) tienen
  * las suyas: certificados caducados o a punto de caducar (`expiresAt`), servicios de producción que ninguna monitorización cubre,
- * recursos sin región donde el proveedor la exige y recursos sin dependencias. `today` es la fecha con la que se miden las caducidades.
+ * recursos sin región donde el proveedor (el del recurso o, si no lo declara, el de su entorno) la exige y recursos sin dependencias. `today` es la fecha con la que se miden las caducidades.
  */
 export function analyzePlatform(doc: PlatformDocument, today: Date = new Date()): ModuleIssue[] {
   const issues: ModuleIssue[] = [];
@@ -205,11 +205,14 @@ export function analyzePlatform(doc: PlatformDocument, today: Date = new Date())
   }
 
   // Región: en un proveedor de nube todo recurso está en una; basta que la indique el recurso, su entorno o una región modelada en el entorno.
+  // El proveedor es el del recurso (`provider`, que puede ser otro que el del entorno) y, si no lo declara, el del entorno.
   for (const env of doc.environments) {
-    if (!env.provider || !REGIONAL_PROVIDERS.test(env.provider) || env.region?.trim()) continue;
+    if (env.region?.trim()) continue;
     if (doc.resources.some((r) => r.environmentId === env.id && r.kind === 'region' && statusOf(r) !== 'decommissioned')) continue;
     for (const r of doc.resources.filter((x) => x.environmentId === env.id && REGIONAL_KINDS.includes(x.kind) && statusOf(x) !== 'decommissioned' && !x.region?.trim())) {
-      add(gap(env.id), r.id, `${label(at(r.id))} está en «${env.name}» (proveedor ${env.provider}), que exige región, y ni el recurso ni el entorno la indican.`);
+      const provider = r.provider?.trim() || env.provider;
+      if (!provider || !REGIONAL_PROVIDERS.test(provider)) continue;
+      add(gap(env.id), r.id, `${label(at(r.id))} está en «${env.name}» (proveedor ${provider}), que exige región, y ni el recurso ni el entorno la indican.`);
     }
   }
 

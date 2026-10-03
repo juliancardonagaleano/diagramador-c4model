@@ -518,3 +518,45 @@ button.wb-change:hover { border-color: var(--wb-primary); background: var(--wb-i
 .wb-compare-legend i[data-diff='added'] { background: var(--wb-ok); }
 .wb-compare-legend i[data-diff='modified'] { background: var(--wb-warning); }
 .wb-compare-legend i[data-diff='removed'] { background: var(--wb-error); opacity: 0.6; }
+
+/* ───────────── Barra del proyecto ───────────── */
+.wb-projectbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 6px 14px;
+  background: var(--wb-surface-2);
+  border-bottom: 1px solid var(--wb-border);
+  font-size: 13px;
+}
+.wb-projectbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--wb-text-2);
+}
+.wb-projectbar select {
+  max-width: 260px;
+  color: var(--wb-text);
+}
+.wb-save {
+  color: var(--wb-text-2);
+}
+.wb-save[data-save='error'],
+.wb-save[data-save='conflict'] {
+  color: var(--wb-error);
+}
+.wb-save[data-save='draft'] {
+  color: var(--wb-warning);
+}
+.wb-conflict {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--wb-warning-bg);
+  color: var(--wb-text);
+}

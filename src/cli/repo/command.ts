@@ -1,6 +1,7 @@
 import { InvalidArgumentError } from 'commander';
 import { CliError, info } from '../io';
 import { withClonedRepo } from './clone';
+import { repoGlobProblem } from './filter';
 import { formatReport, formatSummary } from './format';
 import { repoInstruction } from './prompt';
 import { MAX_BUDGET_BYTES, scanRepo, type RepoDigest } from './scan';
@@ -16,6 +17,8 @@ import { classifyRepoSource, isValidRepoRef, REF_ERROR } from './source';
 export const FROM_REPO_HELP = 'dibuja la arquitectura leyendo un repositorio: una carpeta local o la URL de git (https://, ssh:// o git@host:grupo/repo.git; se clona en superficial a un directorio temporal que se borra); al modelo solo se envía un resumen acotado y sin secretos (ver «Privacidad» abajo)';
 export const FROM_REPO_PROMPT_HELP = 'incluye en el prompt un resumen de un repositorio: una carpeta local o la URL de git (se clona en superficial a un directorio temporal que se borra), acotado y sin secretos; ver `iark prompt --help`';
 export const REPO_REF_HELP = 'con una URL en --from-repo: rama o etiqueta que se clona (por defecto, la rama por defecto del repositorio)';
+export const REPO_INCLUDE_HELP = 'con --from-repo (repetible): limita el CONTENIDO del resumen a los archivos clave que cuadren con el patrón (formato .gitignore, relativo a la raíz); el árbol de carpetas sigue entero';
+export const REPO_EXCLUDE_HELP = 'con --from-repo (repetible): quita del resumen (árbol y contenido) lo que cuadre con el patrón (formato .gitignore); se lista como omitido «excluido por --repo-exclude»';
 export const REPO_BUDGET_HELP = 'con --from-repo: tamaño máximo del resumen en KB (por defecto 60, máximo 1024)';
 export const DRY_RUN_HELP = 'con --from-repo: imprime el prompt completo (lo que se enviaría) y, por stderr, los archivos incluidos y omitidos con su motivo; no llama a ningún modelo (con una URL sí clona el repositorio, que necesita su contenido)';
 
@@ -34,6 +37,18 @@ URL de git (--from-repo <url> [--repo-ref <rama|etiqueta>]):
   - ${destino}`;
 }
 
+/** Los filtros `--repo-include` y `--repo-exclude`; sale en `--help` de `generate` y de `prompt`. */
+const REPO_FILTER_HELP = `
+Filtros (--repo-include <glob>, --repo-exclude <glob>; se pueden repetir):
+  - Los patrones se escriben como en un .gitignore (sin «!») y son relativos a la raíz del repositorio: *.md vale en cualquier carpeta,
+    docs/*.md solo en docs/, /src ancla a la raíz, legacy/ solo carpetas, ** cruza carpetas. Ejemplo: --repo-include 'services/pedidos/'
+    --repo-exclude '**/*.test.ts' --repo-exclude 'legacy/'.
+  - --repo-exclude quita lo que cuadre de TODO el resumen (árbol, componentes y contenido) y lo lista como «excluido por --repo-exclude».
+  - --repo-include limita el contenido a los archivos clave que cuadren; el árbol de carpetas y la lista de componentes siguen enteros.
+    Si ambos cuadran con un archivo, gana --repo-exclude. Solo reducen: no añaden archivos que la lista de archivos clave no lea.
+  - Nunca hacen legible lo que la lista de secretos prohíbe: un --repo-include que nombre .env, una clave o *.tfstate no lo abre, y lo
+    que entra sigue pasando por la redacción de secretos.`;
+
 export const REPO_PRIVACY_HELP = `
 Desde un repositorio (--from-repo <carpeta|url>):
   Lee una CARPETA LOCAL o CLONA una URL de git (ver abajo) y envía al modelo, junto a tu instrucción, un resumen acotado:
@@ -42,6 +57,7 @@ Desde un repositorio (--from-repo <carpeta|url>):
   de entrada). El resto del código fuente solo aparece como nombres de carpetas y archivos, nunca su contenido. Combínalo con
   --module y con --from (refinar un documento existente).
 ${repoUrlHelp('--dry-run también clona (necesita el contenido) pero no llama a ningún modelo; sin --dry-run, el resumen\n    (acotado y sin secretos) va al modelo que elijas con --provider y --model.')}
+${REPO_FILTER_HELP}
 
 Privacidad:
   - Con una carpeta no ejecuta git ni nada del repositorio; con una URL ejecuta únicamente el \`git clone\` de arriba y nada del clon.
@@ -52,10 +68,11 @@ Privacidad:
     en asignaciones y cadenas de conexión, claves privadas PEM): el valor se sustituye por [REDACTADO].
   - El contenido del repositorio va al modelo como datos, no como instrucciones.
   - Topes: presupuesto del resumen (--repo-budget), máximo de archivos y de bytes por archivo.
+  - --repo-include y --repo-exclude solo pueden reducir lo que se envía: nunca saltan la lista de secretos ni la redacción.
   - Antes de enviar, \`iark generate … --from-repo <carpeta|url> --dry-run\` (o \`iark prompt … --from-repo <carpeta|url>\`) muestra exactamente qué se enviaría, sin llamar a ningún modelo.`;
 
 /** `--help` de `prompt`: lo de la URL (no lleva el bloque de privacidad entero, que está en `generate --help`). */
-export const REPO_PROMPT_HELP = repoUrlHelp('`iark prompt` clona la URL (necesita el contenido) pero no llama a ningún modelo: imprime el prompt (con el resumen acotado y sin\n    secretos) para que lo pegues donde quieras. Privacidad completa (qué se lee, qué se omite, redacción de secretos): `iark generate --help`.');
+export const REPO_PROMPT_HELP = repoUrlHelp('`iark prompt` clona la URL (necesita el contenido) pero no llama a ningún modelo: imprime el prompt (con el resumen acotado y sin\n    secretos) para que lo pegues donde quieras. Privacidad completa (qué se lee, qué se omite, redacción de secretos): `iark generate --help`.') + REPO_FILTER_HELP;
 
 /** `--repo-budget`: KB (admite decimales) → bytes. */
 export function parseRepoBudget(value: string): number {
@@ -72,9 +89,22 @@ export function parseRepoRef(value: string): string {
   return value;
 }
 
+/** `--repo-include` / `--repo-exclude`: cada uso añade un patrón (validado al leer la opción). */
+function globCollector(option: string): (value: string, previous: string[] | undefined) => string[] {
+  return (value, previous) => {
+    const problem = repoGlobProblem(value);
+    if (problem) throw new InvalidArgumentError(`El patrón de ${option} no vale: ${problem}.`);
+    return [...(previous ?? []), value];
+  };
+}
+export const collectRepoInclude = globCollector('--repo-include');
+export const collectRepoExclude = globCollector('--repo-exclude');
+
 export interface RepoFlags {
   fromRepo?: string;
   repoRef?: string;
+  repoInclude?: string[];
+  repoExclude?: string[];
   repoBudget?: number;
   dryRun?: boolean;
 }
@@ -93,6 +123,8 @@ export function assertRepoFlags(opts: RepoFlags): void {
   }
   if (opts.repoRef !== undefined) throw new CliError('--repo-ref solo se usa junto con --from-repo <url> (la rama o etiqueta que se clona).', 2);
   if (opts.repoBudget !== undefined) throw new CliError('--repo-budget solo se usa junto con --from-repo <carpeta|url>.', 2);
+  if (opts.repoInclude?.length) throw new CliError('--repo-include solo se usa junto con --from-repo <carpeta|url> (limita el contenido del resumen).', 2);
+  if (opts.repoExclude?.length) throw new CliError('--repo-exclude solo se usa junto con --from-repo <carpeta|url> (quita archivos del resumen).', 2);
   if (opts.dryRun) throw new CliError('--dry-run solo se usa junto con --from-repo <carpeta|url> (es la vista previa de lo que se enviaría).', 2);
 }
 
@@ -111,10 +143,10 @@ export async function prepareRepo(instruction: string, opts: RepoFlags, moduleId
   const source = classifyRepoSource(opts.fromRepo);
   let digest: RepoDigest;
   if (source.kind === 'folder') {
-    digest = scanRepo(source.path, { budgetBytes: opts.repoBudget });
+    digest = scanRepo(source.path, { budgetBytes: opts.repoBudget, include: opts.repoInclude, exclude: opts.repoExclude });
   } else {
     info(`Clonando ${source.display} (${opts.repoRef !== undefined ? `rama ${opts.repoRef}` : 'rama por defecto'}, historial superficial)…`);
-    digest = await withClonedRepo({ url: source.url, ref: opts.repoRef, display: source.display }, (folder) => scanRepo(folder, { budgetBytes: opts.repoBudget, remote: { name: source.name } }));
+    digest = await withClonedRepo({ url: source.url, ref: opts.repoRef, display: source.display }, (folder) => scanRepo(folder, { budgetBytes: opts.repoBudget, remote: { name: source.name }, include: opts.repoInclude, exclude: opts.repoExclude }));
   }
   return { digest, instruction: repoInstruction(instruction, digest, moduleId) };
 }
