@@ -289,6 +289,71 @@ describe('catálogo: editor', () => {
     expect(dataEditor.read(doc, 'ventas-360')).toMatchObject({ kind: 'data-product' });
   });
 
+  describe('la columna de un enlace «define» se elige entre las del activo enlazado', () => {
+    const edge = 'defines:ingresos>dwh-fact-ventas';
+    const columnOf = (target: Parameters<typeof dataEditor.fields>[0], d: DataDocument = doc, values?: Record<string, unknown>) => dataEditor.fields(target, d, values).find((f) => f.key === 'column');
+    const select = (field: ReturnType<typeof columnOf>) => field as { type: string; label: string; options: Array<{ value: string; label: string }> };
+
+    it('con la relación (id y extremos) es un desplegable con «Todo el activo» y las columnas del activo', () => {
+      const field = select(columnOf({ type: 'edge', kind: 'defines', id: edge, source: 'ingresos', target: 'dwh-fact-ventas' }));
+      expect(field).toMatchObject({ type: 'select', label: 'Columna enlazada' });
+      expect(field.options).toEqual([
+        { value: '', label: 'Todo el activo' },
+        { value: 'venta_key', label: 'venta_key' },
+        { value: 'cliente_key', label: 'cliente_key' },
+        { value: 'fecha', label: 'fecha' },
+        { value: 'importe', label: 'importe' },
+      ]);
+      expect(dataEditor.fields({ type: 'edge', kind: 'defines', id: edge, source: 'ingresos', target: 'dwh-fact-ventas' }, doc).map((f) => f.key)).toEqual(['column']);
+    });
+
+    it('basta el id de la relación, o los extremos sin id (en cualquier orden), para saber a qué activo apunta', () => {
+      const columns = (target: Parameters<typeof columnOf>[0]) => select(columnOf(target)).options.map((o) => o.value).slice(1);
+      expect(columns({ type: 'edge', kind: 'defines', id: 'defines:venta>erp-pedidos' })).toEqual(['id', 'cliente_id', 'fecha', 'total']);
+      expect(columns({ type: 'edge', kind: 'defines', source: 'venta', target: 'erp-pedidos' })).toEqual(['id', 'cliente_id', 'fecha', 'total']);
+      expect(columns({ type: 'edge', kind: 'defines', source: 'erp-pedidos', target: 'venta' })).toEqual(['id', 'cliente_id', 'fecha', 'total']);
+    });
+
+    it('el segundo enlace de un término al mismo activo ofrece las mismas columnas', () => {
+      const d = edited(dataEditor.addEdge(doc, 'defines', 'ingresos', 'dwh-fact-ventas'));
+      const id = `${edge}#2`;
+      expect(select(columnOf({ type: 'edge', kind: 'defines', id, source: 'ingresos', target: 'dwh-fact-ventas' }, d)).options).toHaveLength(5);
+    });
+
+    it('una columna ya escrita que el activo no declara se conserva como opción, sin perderla', () => {
+      const d = parse({ ...doc, terms: (doc.terms ?? []).map((t) => (t.id === 'ingresos' ? { ...t, links: [{ assetId: 'dwh-fact-ventas', column: 'importe_neto' }, { assetId: 'panel-ventas' }] } : t)) });
+      const target = { type: 'edge' as const, kind: 'defines', id: 'defines:ingresos>dwh-fact-ventas', source: 'ingresos', target: 'dwh-fact-ventas' };
+      const options = select(columnOf(target, d)).options;
+      expect(options.map((o) => o.value)).toEqual(['', 'venta_key', 'cliente_key', 'fecha', 'importe', 'importe_neto']);
+      expect(options.at(-1)).toEqual({ value: 'importe_neto', label: 'importe_neto (el activo no la declara)' });
+      // Sin id, el valor que el panel ya leyó también cuenta.
+      expect(select(columnOf({ ...target, id: undefined }, doc, { column: 'antigua' })).options.at(-1)).toMatchObject({ value: 'antigua' });
+      // Una columna que sí existe no se duplica.
+      expect(select(columnOf(target, doc, { column: 'importe' })).options.filter((o) => o.value === 'importe')).toHaveLength(1);
+    });
+
+    it('sin saber a qué activo apunta, o si el activo no declara columnas, sigue siendo un campo de texto', () => {
+      expect(columnOf({ type: 'edge', kind: 'defines' })).toMatchObject({ key: 'column', type: 'text', label: 'Columna enlazada' });
+      expect(columnOf({ type: 'edge', kind: 'defines', id: 'defines:nada>nada', source: 'nada', target: 'nada' })).toMatchObject({ type: 'text' });
+      // Un informe y un modelo no declaran columnas y aceptan cualquier nombre.
+      expect(columnOf({ type: 'edge', kind: 'defines', id: 'defines:ingresos>panel-ventas', source: 'ingresos', target: 'panel-ventas' })).toMatchObject({ type: 'text' });
+    });
+
+    it('elegir una columna del desplegable, o «Todo el activo», lo guarda en el término', () => {
+      const chosen = edited(dataEditor.update(doc, edge, { column: 'venta_key' }));
+      expect(chosen.terms?.find((t) => t.id === 'ingresos')?.links).toEqual([{ assetId: 'dwh-fact-ventas', column: 'venta_key' }, { assetId: 'panel-ventas' }]);
+      expect(dataEditor.read(chosen, edge)?.values).toEqual({ column: 'venta_key' });
+      const cleared = edited(dataEditor.update(chosen, edge, { column: '' }));
+      expect(cleared.terms?.find((t) => t.id === 'ingresos')?.links?.[0]).toEqual({ assetId: 'dwh-fact-ventas' });
+    });
+
+    it('las demás relaciones del catálogo y de datos no cambian sus campos', () => {
+      for (const kind of ['publishes', 'consumes', 'exposes']) expect(dataEditor.fields({ type: 'edge', kind, id: 'x', source: 'a', target: 'b' }, doc)).toEqual([]);
+      expect(dataEditor.fields({ type: 'edge', kind: 'pipeline', id: 'x', source: 'a', target: 'b' }, doc)).toEqual([]);
+      expect(dataEditor.fields({ type: 'edge', kind: 'relation', id: 'x', source: 'a', target: 'b' }, doc)).toEqual(dataEditor.fields({ type: 'edge', kind: 'relation' }, doc));
+    });
+  });
+
   it('crea productos, APIs, glosarios y términos desde la paleta; el término nace en el glosario elegido o en el único que hay', () => {
     let d = edited(dataEditor.addNode(base(), 'data-product', 'Ventas 360'));
     d = edited(dataEditor.addNode(d, 'data-api', 'API de ventas'));

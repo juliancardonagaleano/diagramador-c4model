@@ -311,8 +311,8 @@ export const dataEditor: EditorSpec<DataDocument> = {
   defaultEdgeKind: 'pipeline',
   project,
 
-  fields: (target, doc) =>
-    catalogFields(target, doc, () => assetFields(doc, target.kind)) ??
+  fields: (target, doc, values) =>
+    catalogFields(target, doc, () => assetFields(doc, target.kind), values) ??
     (target.type === 'edge' ? (target.kind === 'pipeline' ? [] : RELATION_FIELDS) : target.kind === PIPELINE_KIND ? PIPELINE_FIELDS : assetFields(doc, target.kind)),
 
   read(doc, id) {

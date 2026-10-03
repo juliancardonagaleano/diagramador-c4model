@@ -509,6 +509,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
           id={single ?? ''}
           selection={selectedItems}
           readOnly={readOnly}
+          graph={graph}
           moduleId={moduleId}
           links={links}
           onPatch={patch}
