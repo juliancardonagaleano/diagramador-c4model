@@ -162,6 +162,49 @@ describe('avisos del modelo por motor', () => {
     expect(issues[0].message).toContain('La columna «a» de Tabla «T» declara el tipo «varchar2(10)», que no existe en PostgreSQL. ¿Quisiste decir «varchar(255)»');
   });
 
+  describe('clave primaria de un tipo que el motor no admite como clave', () => {
+    const mysql = (columns: unknown[], engine = 'mysql', kind = 'table') =>
+      parse({ assets: [{ id: 'db', kind: 'database', name: 'B', engine, owner: 'x' }, { id: 't', kind, name: 'Líneas', parentId: 'db', columns }] });
+    const keyIssues = (d: DataDocument) => analyzeData(d).filter((i) => i.elementId === 't' && /clave/.test(i.message));
+
+    it('una clave primaria text, blob o json en MySQL es un aviso accionable, no un error', () => {
+      for (const type of ['text', 'TEXT', 'longtext', 'tinytext', 'blob', 'mediumblob', 'json']) {
+        const found = keyIssues(mysql([{ name: 'sku', type, keys: ['pk'] }]));
+        expect(found, type).toHaveLength(1);
+        expect(found[0].severity).toBe('warning');
+        expect(found[0].message).toBe(`La columna «sku» de Tabla «Líneas» es clave primaria de tipo «${type}», que MySQL no admite como clave: su CREATE TABLE falla. Usa varchar(n) o una clave sustituta.`);
+      }
+    });
+
+    it('MariaDB es un alias de MySQL y se avisa igual; una clave compuesta avisa de cada columna afectada', () => {
+      expect(keyIssues(mysql([{ name: 'sku', type: 'text', keys: ['pk'] }], 'mariadb'))).toHaveLength(1);
+      const compuesta = keyIssues(mysql([{ name: 'pedido_id', type: 'bigint', keys: ['pk', 'fk'] }, { name: 'sku', type: 'text', keys: ['pk'] }, { name: 'extra', type: 'json', keys: ['pk'] }]));
+      expect(compuesta.map((i) => i.message.match(/«(\w+)»/)![1])).toEqual(['sku', 'extra']);
+    });
+
+    it('el tipo que se escribiría en MySQL también cuenta: jsonb no existe y se sustituye por json', () => {
+      const found = keyIssues(mysql([{ name: 'doc', type: 'jsonb', keys: ['pk'] }]));
+      expect(found).toHaveLength(1);
+      expect(found[0].message).toContain('de tipo «json»');
+    });
+
+    it('no avisa si el tipo sirve de clave, si la columna no es clave, si el motor lo admite o si no es una tabla', () => {
+      expect(keyIssues(mysql([{ name: 'sku', type: 'varchar(40)', keys: ['pk'] }, { name: 'id', type: 'char(36)', keys: ['pk'] }, { name: 'n', type: 'bigint', keys: ['pk'] }])).length).toBe(0);
+      expect(keyIssues(mysql([{ name: 'sku', type: 'varchar', keys: ['pk'] }, { name: 'sin tipo', keys: ['pk'] }, { name: 'notas', type: 'text' }, { name: 'ref', type: 'text', keys: ['fk'] }])).length).toBe(0);
+      expect(keyIssues(mysql([{ name: 'sku', type: 'text', keys: ['pk'] }], 'postgresql')).length).toBe(0);
+      expect(keyIssues(mysql([{ name: 'sku', type: 'text', keys: ['pk'] }], 'mongodb')).length).toBe(0);
+      expect(keyIssues(mysql([{ name: 'sku', type: 'text', keys: ['pk'] }], 'mysql', 'view')).length).toBe(0);
+      // Sin motor declarado no se evalúa nada: un documento sin motores no recibe avisos nuevos.
+      expect(keyIssues(parse({ assets: [{ id: 't', kind: 'table', name: 'Líneas', columns: [{ name: 'sku', type: 'text', keys: ['pk'] }] }] }))).toEqual([]);
+    });
+
+    it('un motor registrado por el usuario declara sus propios tipos que no admite como clave', () => {
+      registerEngine({ ...engine('sqlite'), id: 'motor-clave', label: 'Motor de prueba', aliases: [], lenient: false, types: ['varchar', 'blobby'], concepts: Object.fromEntries(TYPE_CONCEPTS.map((c) => [c, 'varchar'])) as never, sql: { quote: ['"', '"'], noKeyTypes: ['blobby'] } });
+      const found = keyIssues(mysql([{ name: 'k', type: 'blobby', keys: ['pk'] }], 'motor-clave'));
+      expect(found[0].message).toContain('que Motor de prueba no admite como clave');
+    });
+  });
+
   it('SQLite acepta cualquier nombre de tipo: una nota, no un aviso', () => {
     const d = parse({ assets: [{ id: 'db', kind: 'database', name: 'B', engine: 'sqlite', owner: 'x' }, { id: 't', kind: 'table', name: 'T', parentId: 'db', columns: [{ name: 'a', type: 'raro' }] }] });
     expect(analyzeData(d).find((i) => /raro/.test(i.message))?.severity).toBe('info');
@@ -338,6 +381,57 @@ describe('DDL por motor', () => {
     expect(text).toContain('    email varchar(80) NOT NULL UNIQUE, -- Correo de contacto');
   });
 
+  describe('clave primaria de un tipo que el motor no admite como clave', () => {
+    const aviso = 'La clave primaria «líneas de pedido.producto» es de tipo «text», que MySQL no admite como clave: su CREATE TABLE falla. Usa varchar(n) o una clave sustituta.';
+
+    it('MySQL: el DDL no cambia, pero avisa en un comentario sobre la tabla y en los avisos', () => {
+      const { text, warnings } = toDdl(doc, { assetId: 'erp-lineas', engine: 'mysql' });
+      expect(warnings).toEqual([aviso]);
+      expect(text).toBe(
+        [
+          '-- líneas de pedido · ERP de pedidos',
+          `-- AVISO: ${aviso}`,
+          'CREATE TABLE lineas_de_pedido (',
+          '    pedido_id bigint NOT NULL,',
+          '    producto text NOT NULL,',
+          '    cantidad int NOT NULL,',
+          '    precio numeric(18,2) NOT NULL,',
+          '    PRIMARY KEY (pedido_id, producto)',
+          ');',
+          '',
+        ].join('\n'),
+      );
+    });
+
+    it('solo la tabla afectada lleva el comentario, y no lo lleva el mismo documento en otro motor', () => {
+      const all = toDdl(doc, { assetId: 'erp', engine: 'mysql' }).text;
+      expect(all.match(/-- AVISO:/g)).toHaveLength(1);
+      expect(all.indexOf('-- AVISO:')).toBeGreaterThan(all.indexOf('-- líneas de pedido'));
+      expect(toDdl(doc, { assetId: 'erp' }).text).not.toContain('AVISO');
+      expect(toDdl(doc, { assetId: 'erp', engine: 'oracle' }).text).not.toContain('AVISO');
+      // Con el motor declarado en el activo, sin forzarlo.
+      const declared = parse({ assets: [{ id: 'db', kind: 'database', name: 'B', engine: 'mariadb' }, { id: 't', kind: 'table', name: 'Archivo', parentId: 'db', columns: [{ name: 'contenido', type: 'longblob', keys: ['pk'] }] }] });
+      expect(toDdl(declared).text).toMatch(/^-- Archivo · B\n-- AVISO: La clave primaria «Archivo\.contenido» es de tipo «longblob», que MySQL no admite como clave/);
+    });
+
+    it('un tipo lógico de un contrato que acaba en text o json también avisa; uno que acaba en varchar, no', () => {
+      const contrato = (props: string) => parse({ assets: [{ id: 'db', kind: 'database', name: 'B', engine: 'mysql' }, { id: 't', kind: 'table', name: 'T', parentId: 'db', contractId: 'c' }], contracts: [{ id: 'c', name: 'C', format: 'odcs', content: `schema:\n  - name: clientes\n    properties:\n${props}` }] });
+      const bad = toDdl(contrato('      - name: ref\n        physicalType: text\n        primaryKey: true\n'), { contractId: 'c' });
+      expect(bad.text).toContain('-- AVISO: La clave primaria «clientes.ref» es de tipo «text»');
+      expect(bad.warnings).toHaveLength(1);
+      const ok = toDdl(contrato('      - name: ref\n        logicalType: string\n        primaryKey: true\n'), { contractId: 'c' });
+      expect(ok.text).not.toContain('AVISO');
+      expect(ok.warnings).toEqual([]);
+    });
+
+    it('un nombre con saltos de línea no rompe el comentario', () => {
+      const d = parse({ assets: [{ id: 'db', kind: 'database', name: 'B', engine: 'mysql' }, { id: 't', kind: 'table', name: 'T', parentId: 'db', columns: [{ name: 'a\nb', type: 'text', keys: ['pk'] }] }] });
+      const lines = toDdl(d).text.split('\n').filter((l) => l.includes('AVISO'));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain('«T.a b»');
+    });
+  });
+
   it('traduce el tipo que el motor no tiene y lo avisa', () => {
     const { text, warnings } = toDdl(doc, { assetId: 'erp', engine: 'oracle' });
     expect(text).toContain('id number(19) NOT NULL,');
@@ -435,6 +529,16 @@ describe('módulo: exportador y comandos', () => {
     expect(exporter).toMatchObject({ extension: '.sql', mime: 'text/plain' });
     expect(await exporter.export(doc, {})).toContain('CREATE TABLE pedidos (');
     expect(await exporter.export(doc, { options: { engine: 'mysql', schema: 'ventas' } })).toContain('CREATE TABLE ventas.pedidos (');
+  });
+
+  it('el exportador de DDL y iark data ddl llevan el aviso de la clave en el propio esquema', async () => {
+    const exporter = dataModule.exporters.find((e) => e.id === 'ddl')!;
+    const exported = (await exporter.export(doc, { options: { engine: 'mysql' } })) as string;
+    expect(exported).toMatch(/-- líneas de pedido · ERP de pedidos\n-- AVISO: La clave primaria «líneas de pedido\.producto» es de tipo «text», que MySQL no admite como clave/);
+    const { out, warnings } = run('ddl', [], example, { asset: 'erp-lineas', engine: 'mysql' });
+    expect(out).toContain('-- AVISO: La clave primaria «líneas de pedido.producto»');
+    expect(out).toContain('    producto text NOT NULL,');
+    expect(warnings).toEqual(['aviso: La clave primaria «líneas de pedido.producto» es de tipo «text», que MySQL no admite como clave: su CREATE TABLE falla. Usa varchar(n) o una clave sustituta.']);
   });
 
   it('iark data ddl genera el esquema y deja los avisos aparte', () => {
