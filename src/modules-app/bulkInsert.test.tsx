@@ -99,7 +99,7 @@ describe('cuadro «Texto a importar» del banco de trabajo', () => {
     const text = lines(2000);
     expect(beforeInput(area, text).defaultPrevented).toBe(true);
     expect(area.value).toBe(text);
-    await userEvent.click(screen.getByRole('button', { name: 'Importar', exact: true }));
+    await userEvent.click(screen.getByRole('button', { name: 'Importar' }));
     await waitFor(() => expect(importado).toEqual([text]));
   });
 });
