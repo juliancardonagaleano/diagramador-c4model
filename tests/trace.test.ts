@@ -72,6 +72,13 @@ describe('trazabilidad entre módulos', () => {
   it('no admite dos documentos del mismo módulo (las URN colisionarían)', () => {
     const one = { module: securityModule, document: parse(securityModule, 'seguridad-ejemplo.json') };
     expect(() => buildTraceGraph([one, one])).toThrow(/aparece más de una vez/);
+    // con `allowRepeatedModules` (los diagramas de un proyecto) se admite, y el id repetido queda como ambiguo
+    const repeated = buildTraceGraph([{ ...one, source: 'uno.json' }, { ...one, source: 'dos.json' }], { allowRepeatedModules: true });
+    expect(repeated.documents.map((d) => d.source)).toEqual(['uno.json', 'dos.json']);
+    expect(repeated.nodes).toHaveLength(buildTraceGraph([one]).nodes.length);
+    const ambiguous = repeated.problems.filter((p) => p.reason === 'ambiguous');
+    expect(ambiguous.length).toBe(repeated.nodes.length);
+    expect(ambiguous[0].message).toMatch(/«dos\.json»[\s\S]*«uno\.json»/);
   });
 
   it('informes y Mermaid', () => {
