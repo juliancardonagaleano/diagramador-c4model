@@ -130,6 +130,18 @@ describe('scanRepo: prioridad, topes y presupuesto', () => {
     expect(categories.get('.github/workflows/ci.yml')).toBe('ci');
   });
 
+  it('lo de las carpetas de pruebas solo entra con lo que sobra: no le quita sitio a lo que describe el sistema', () => {
+    const f: Record<string, string> = { 'README.md': '# x\n'.repeat(200), 'src/main.ts': 'import x from "x";\n'.repeat(80) };
+    for (let i = 0; i < 12; i += 1) f[`tests/fixtures/k8s/p${i}.yaml`] = `apiVersion: v1\nkind: Pod\nmetadata:\n  name: p${i}\n${'# relleno de linea para ocupar sitio\n'.repeat(60)}`;
+    const chico = scanRepo(repo(f), { budgetBytes: 6 * 1024 });
+    expect(paths(chico)).toContain('src/main.ts');
+    expect(paths(chico).filter((p) => p.startsWith('tests/')).length).toBeLessThan(12);
+    // Con presupuesto de sobra, las de pruebas también entran (después).
+    const grande = scanRepo(repo(f), { budgetBytes: 200 * 1024 });
+    expect(paths(grande).filter((p) => p.startsWith('tests/'))).toHaveLength(12);
+    expect(paths(grande).indexOf('src/main.ts')).toBeLessThan(paths(grande).indexOf('tests/fixtures/k8s/p0.yaml'));
+  });
+
   it('reconoce un YAML de Kubernetes por su cabecera aunque la ruta no lo diga', () => {
     const d = scanRepo(repo({ 'README.md': '# x\n', 'cosas/algo.yaml': 'apiVersion: v1\nkind: Service\nmetadata:\n  name: x\n', 'cosas/otro.yaml': 'solo: datos\n' }));
     expect(paths(d)).toContain('cosas/algo.yaml');

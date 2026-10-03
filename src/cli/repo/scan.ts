@@ -491,6 +491,7 @@ export function scanRepo(folder: string, options: ScanOptions = {}): RepoDigest 
   for (const pass of [1, 2] as const) {
     for (const cand of order) {
       if (included.has(cand.file.rel) || settled.has(cand.file.rel)) continue;
+      if (pass === 1 && isTestPath(cand.file.rel)) continue; // lo de las carpetas de pruebas solo entra con lo que sobre
       if (blocks.length >= maxFiles) break;
       if (remaining < MIN_USEFUL + 80) break;
       const loaded = load(cand);
