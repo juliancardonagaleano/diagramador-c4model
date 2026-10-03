@@ -358,8 +358,10 @@ export function ImportPanel({ controller, state, notify }: PanelProps) {
   const [importer, setImporter] = useState('');
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState<string | undefined>();
-  const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | undefined>();
+  // Los avisos viven en el controlador (no aquí): así se ven también tras «Abrir archivo…» del encabezado y al volver a esta pestaña.
+  const lastImport = state.lastImport;
+  const warnings = lastImport?.warnings ?? [];
 
   // Si el texto parece Mermaid se dibuja debajo, para comprobar que es lo que se quiere importar (la librería se descarga la primera vez).
   const isMermaid = useMemo(() => text.trim().length > 0 && looksLikeMermaid(text) && importers.some((i) => i.id === 'mermaid'), [text, importers]);
@@ -368,11 +370,9 @@ export function ImportPanel({ controller, state, notify }: PanelProps) {
 
   const run = async () => {
     setError(undefined);
-    setWarnings([]);
     try {
       const auto = !importer && fileName ? state.module?.importers.find((i) => i.extensions.some((ext) => fileName.toLowerCase().endsWith(ext)))?.id : undefined;
       const result = await controller.importFrom(text, importer || auto, { file: fileName });
-      setWarnings(result.warnings);
       notify(`Importado desde ${result.importer}${result.warnings.length ? ` con ${result.warnings.length} avisos` : ''}`);
     } catch (e) {
       setError((e as Error).message);
@@ -421,9 +421,13 @@ export function ImportPanel({ controller, state, notify }: PanelProps) {
             {error}
           </div>
         )}
-        {warnings.length > 0 && (
-          <div className="wb-note" style={{ margin: 0 }}>
+        {lastImport && warnings.length > 0 && (
+          <div className="wb-note" style={{ margin: 0 }} data-testid="import-warnings">
             <strong>{warnings.length === 1 ? 'Aviso de la importación:' : `${warnings.length} avisos de la importación:`}</strong>
+            <div style={{ fontSize: 12 }}>
+              Origen: {lastImport.importer}
+              {lastImport.file ? ` · ${lastImport.file}` : ''}
+            </div>
             <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
               {warnings.map((w, i) => (
                 <li key={i}>{w}</li>
