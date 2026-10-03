@@ -7,8 +7,10 @@ export type ProjectErrorCode =
   | 'invalid'
   /** Alguien cambió el diagrama desde que se leyó (ver `SaveDiagramInput.ifUpdatedAt`). */
   | 'conflict'
-  /** El almacenamiento no está disponible (ventana privada, permisos, disco). */
-  | 'unavailable';
+  /** El almacenamiento no está disponible (ventana privada, permisos, disco, o un servidor al que no se llega). */
+  | 'unavailable'
+  /** Un servidor remoto pide un token, o el que se usa no sirve o no alcanza para esa operación. */
+  | 'unauthorized';
 
 export class ProjectError extends Error {
   constructor(
