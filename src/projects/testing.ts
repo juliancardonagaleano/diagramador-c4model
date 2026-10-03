@@ -24,7 +24,7 @@ export interface FakeServer {
   noProjects: boolean;
 }
 
-const STATUS: Record<ProjectErrorCode, number> = { 'not-found': 404, exists: 409, conflict: 409, invalid: 400, unavailable: 500, unauthorized: 401 };
+const STATUS: Record<ProjectErrorCode, number> = { 'not-found': 404, exists: 409, conflict: 409, invalid: 400, unavailable: 500, unauthorized: 401, forbidden: 403 };
 
 export function fakeServer(options: Partial<Pick<FakeServer, 'token' | 'role' | 'name' | 'noProjects'>> & { store?: ProjectStore } = {}): FakeServer {
   const server: FakeServer = {

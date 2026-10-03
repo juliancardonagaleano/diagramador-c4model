@@ -79,6 +79,7 @@ export function StoragePanel({ session, open, onToggle, copyFor, onCopy, onChang
   }, [session, remote, state.available]);
 
   const rejected = state.errorCode === 'unauthorized' || state.syncErrorCode === 'unauthorized' || state.saveErrorCode === 'unauthorized';
+  const forbidden = !rejected && state.saveErrorCode === 'forbidden';
   const status: Status = !state.ready ? 'connecting' : rejected ? 'rejected' : !state.available || state.syncError || state.saveErrorCode === 'unavailable' ? 'offline' : 'connected';
 
   // Al abrir el formulario el foco va a la dirección o, si el servidor rechazó el token, directamente al token.
@@ -140,6 +141,7 @@ export function StoragePanel({ session, open, onToggle, copyFor, onCopy, onChang
         // Mismo servidor: solo cambia el token (o el nombre). Sin recargar, para no perder lo que está pendiente de guardar.
         const saved = saveBackend({ url: result.url, token: inputToken, label }, { remember, active: true }, areas);
         await session.useToken(tokenToUse);
+        setWho(await session.whoami().catch(() => undefined)); // otro token, otra persona (u otro rol)
         setToken('');
         changed();
         const text = saved.saved ? 'Token actualizado: se retoma el guardado.' : `Token actualizado solo hasta que recargues la página. ${saved.problem ?? ''}`;
@@ -223,6 +225,11 @@ export function StoragePanel({ session, open, onToggle, copyFor, onCopy, onChang
           {remote && rejected && (
             <p className="pj-error" role="alert" data-testid="storage-rejected">
               El servidor no aceptó el token. Escribe el correcto y pulsa «Usar este token»: lo pendiente de guardar no se pierde.
+            </p>
+          )}
+          {remote && forbidden && (
+            <p className="pj-error" role="alert" data-testid="storage-forbidden">
+              El servidor reconoce el token, pero su rol no permite guardar aquí{who?.role ? ` (es «${who.role}»)` : ''}. Escribe un token con rol editor y pulsa «Usar este token»: lo pendiente de guardar no se pierde.
             </p>
           )}
           <form className="pj-connect" onSubmit={submit} aria-label="Conectar a un servidor">

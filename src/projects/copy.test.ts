@@ -86,7 +86,7 @@ describe('copiar un proyecto entre almacenes', () => {
     const { project } = await seed(local);
     const server = fakeServer({ token: 'lector', role: 'viewer' });
     const remote = new HttpProjectStore({ baseUrl: BASE, token: 'lector', fetch: server.fetch });
-    await expect(copyProject(local, project.id, remote)).rejects.toMatchObject({ code: 'unauthorized', info: { status: 403 } });
+    await expect(copyProject(local, project.id, remote)).rejects.toMatchObject({ code: 'forbidden', info: { status: 403 } });
     expect(await server.store.listProjects()).toEqual([]);
   });
 

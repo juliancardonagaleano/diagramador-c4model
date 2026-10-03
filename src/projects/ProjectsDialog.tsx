@@ -95,8 +95,8 @@ export function ProjectsDialog({ session, modules, onOpen, current, template, on
       await work();
     } catch (e) {
       setError((e as Error).message);
-      // El servidor no aceptó el token: el formulario para escribirlo de nuevo está en «Dónde se guardan».
-      if (e instanceof ProjectError && e.code === 'unauthorized') setStorageOpen(true);
+      // El servidor no aceptó el token (o su rol no alcanza): el formulario para escribir otro está en «Dónde se guardan».
+      if (e instanceof ProjectError && (e.code === 'unauthorized' || e.code === 'forbidden')) setStorageOpen(true);
     } finally {
       setBusy(false);
     }
@@ -120,7 +120,7 @@ export function ProjectsDialog({ session, modules, onOpen, current, template, on
         notify?.(text);
       } catch (error) {
         if (error instanceof ProjectError) {
-          if (error.code === 'unauthorized') {
+          if (error.code === 'unauthorized' || error.code === 'forbidden') {
             setCopyIntent({ id: project.id, name: project.name });
             setStorageOpen(true);
           }

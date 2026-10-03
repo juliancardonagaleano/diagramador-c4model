@@ -9,8 +9,10 @@ export type ProjectErrorCode =
   | 'conflict'
   /** El almacenamiento no está disponible (ventana privada, permisos, disco, o un servidor al que no se llega). */
   | 'unavailable'
-  /** Un servidor remoto pide un token, o el que se usa no sirve o no alcanza para esa operación. */
-  | 'unauthorized';
+  /** Un servidor remoto pide un token, o el que se usa no existe o ya no vale. */
+  | 'unauthorized'
+  /** Un servidor remoto reconoce el token, pero su rol (o el origen de la petición) no permite esa operación. */
+  | 'forbidden';
 
 /** Detalle opcional de un error que vino de un servidor remoto (el cliente HTTP lo rellena; los almacenes locales no). */
 export interface ProjectErrorInfo {

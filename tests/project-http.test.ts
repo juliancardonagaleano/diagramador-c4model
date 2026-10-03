@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { HttpProjectStore, ProjectError } from '@iark/kernel';
 import { createDefaultRegistry } from '../src/cli/registry';
 import { createSuiteServer } from '../src/cli/serve';
+import { createToken, revokeToken, TokenStore, type TokenRole } from '../src/cli/tokens';
 import { FolderProjectStore } from '../src/cli/workspace';
 import { projectStoreContract } from './helpers/projectStoreContract';
 
@@ -58,7 +59,7 @@ describe('HttpProjectStore contra iark serve', () => {
     await expect(one.saveDiagram(project.id, { id: diagram.id, text: '{"v":3}', ifUpdatedAt: diagram.updatedAt })).rejects.toMatchObject({ code: 'conflict' });
   });
 
-  it('whoami reconoce un servidor sin autenticación y «probar la conexión» avisa si no hay proyectos o no se llega', async () => {
+  it('whoami reconoce un servidor sin autenticación y se avisa si no ofrece proyectos o no se llega a él', async () => {
     const running = await startServer();
     cleanups.push(running.close);
     expect(await new HttpProjectStore({ baseUrl: running.base }).whoami()).toEqual({ auth: false, name: undefined, role: undefined });
@@ -68,7 +69,9 @@ describe('HttpProjectStore contra iark serve', () => {
     await new Promise<void>((resolve) => bare.listen(0, '127.0.0.1', resolve));
     cleanups.push(() => new Promise<void>((resolve) => bare.close(() => resolve())));
     const url = `http://127.0.0.1:${(bare.address() as AddressInfo).port}`;
-    const error = await new HttpProjectStore({ baseUrl: url }).whoami().catch((e: unknown) => e);
+    const bareClient = new HttpProjectStore({ baseUrl: url });
+    expect((await bareClient.whoami()).auth).toBe(false); // `whoami` lo responde cualquier servidor de IArk…
+    const error = await bareClient.listProjects().catch((e: unknown) => e); // …pero los proyectos solo si hay espacio de trabajo
     expect(error).toBeInstanceOf(ProjectError);
     expect(error).toMatchObject({ code: 'unavailable', message: expect.stringContaining('espacio de trabajo'), info: { status: 404 } });
 
@@ -119,5 +122,111 @@ describe('HttpProjectStore contra iark serve', () => {
     store.setToken(undefined);
     await expect(store.listProjects()).rejects.toMatchObject({ code: 'unauthorized' });
     expect(seen).toBeNull();
+  });
+});
+
+/** Un servidor con `--tokens`: un token por rol (`ana` es editor, `vic` viewer, `root` admin) en un archivo temporal. */
+async function startAuthServer(): Promise<Running & { tokens: Record<'admin' | 'editor' | 'viewer', string>; tokenFile: string }> {
+  const running = await startServer();
+  running.server.close();
+  const dir = mkdtempSync(join(tmpdir(), 'iark-http-tokens-'));
+  const tokenFile = join(dir, 'tokens.json');
+  const tokens = {} as Record<TokenRole, string>;
+  for (const [name, role] of [['root', 'admin'], ['ana', 'editor'], ['vic', 'viewer']] as const) tokens[role] = createToken(tokenFile, { name, role }).token;
+  const server = createSuiteServer({
+    registry: createDefaultRegistry(),
+    version: '1',
+    projects: new FolderProjectStore(running.root),
+    tokens: TokenStore.open(tokenFile, () => undefined),
+    cors: ['https://app.example'],
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const close = async (): Promise<void> => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(running.root, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true });
+  };
+  return { base, root: running.root, server, close, tokens, tokenFile };
+}
+
+projectStoreContract('HttpProjectStore (servidor con tokens, rol admin)', async () => {
+  const running = await startAuthServer();
+  return { store: new HttpProjectStore({ baseUrl: running.base, token: running.tokens.admin }), cleanup: running.close };
+});
+
+describe('HttpProjectStore contra iark serve --tokens', () => {
+  it('whoami dice quién es el token y su rol; sin token o con uno que no existe, el servidor no deja pasar', async () => {
+    const running = await startAuthServer();
+    cleanups.push(running.close);
+    expect(await new HttpProjectStore({ baseUrl: running.base, token: running.tokens.editor }).whoami()).toEqual({ auth: true, name: 'ana', role: 'editor' });
+    expect(await new HttpProjectStore({ baseUrl: running.base, token: running.tokens.viewer }).whoami()).toMatchObject({ name: 'vic', role: 'viewer' });
+    await expect(new HttpProjectStore({ baseUrl: running.base }).whoami()).rejects.toMatchObject({ code: 'unauthorized', info: { status: 401 } });
+    await expect(new HttpProjectStore({ baseUrl: running.base }).listProjects()).rejects.toMatchObject({ code: 'unauthorized' });
+    await expect(new HttpProjectStore({ baseUrl: running.base, token: 'iark_que-no-existe' }).listProjects()).rejects.toMatchObject({ code: 'unauthorized' });
+  });
+
+  it('cada rol llega hasta donde le toca: el 403 es `forbidden`, no «token inválido»', async () => {
+    const running = await startAuthServer();
+    cleanups.push(running.close);
+    const admin = new HttpProjectStore({ baseUrl: running.base, token: running.tokens.admin });
+    const editor = new HttpProjectStore({ baseUrl: running.base, token: running.tokens.editor });
+    const viewer = new HttpProjectStore({ baseUrl: running.base, token: running.tokens.viewer });
+    const project = await editor.createProject({ name: 'Tienda' });
+    const diagram = await editor.saveDiagram(project.id, { module: 'c4', name: 'Contexto', text: '{}' });
+    await editor.saveDiagram(project.id, { id: diagram.id, text: '{"v":2}', ifUpdatedAt: diagram.updatedAt });
+    await editor.renameDiagram(project.id, diagram.id, 'Visión general');
+    // el editor no borra proyectos
+    await expect(editor.deleteProject(project.id)).rejects.toMatchObject({ code: 'forbidden', info: { status: 403 } });
+    // el viewer lee, pero no escribe nada
+    expect((await viewer.listProjects()).map((p) => p.name)).toEqual(['Tienda']);
+    expect((await viewer.getDiagram(project.id, diagram.id))?.text).toBe('{"v":2}');
+    await expect(viewer.createProject({ name: 'Otro' })).rejects.toMatchObject({ code: 'forbidden' });
+    await expect(viewer.saveDiagram(project.id, { id: diagram.id, text: 'x' })).rejects.toMatchObject({ code: 'forbidden' });
+    await expect(viewer.deleteDiagram(project.id, diagram.id)).rejects.toMatchObject({ code: 'forbidden' });
+    expect((await admin.getDiagram(project.id, diagram.id))?.text).toBe('{"v":2}'); // nada de lo anterior llegó al disco
+    await admin.deleteProject(project.id);
+    expect(await admin.listProjects()).toEqual([]);
+  });
+
+  it('revocar un token lo corta en la siguiente petición, sin reiniciar el servidor', async () => {
+    const running = await startAuthServer();
+    cleanups.push(running.close);
+    const editor = new HttpProjectStore({ baseUrl: running.base, token: running.tokens.editor });
+    await editor.listProjects();
+    revokeToken(running.tokenFile, 'ana');
+    await expect(editor.listProjects()).rejects.toMatchObject({ code: 'unauthorized' });
+    await expect(new HttpProjectStore({ baseUrl: running.base, token: running.tokens.viewer }).listProjects()).resolves.toEqual([]);
+  });
+
+  it('adivinar tokens se frena: tras varios intentos fallidos la dirección recibe 429, que el cliente traduce con la espera', async () => {
+    const running = await startAuthServer();
+    cleanups.push(running.close);
+    const guesser = new HttpProjectStore({ baseUrl: running.base, token: 'iark_adivinando' });
+    for (let i = 0; i < 5; i++) await expect(guesser.listProjects()).rejects.toMatchObject({ code: 'unauthorized' });
+    const blocked = await guesser.listProjects().catch((e: unknown) => e);
+    expect(blocked).toMatchObject({ code: 'unavailable', info: { status: 429 }, message: expect.stringContaining('espere') });
+    // y con la dirección frenada ni siquiera un token bueno pasa (si no, el freno serviría de oráculo)
+    await expect(new HttpProjectStore({ baseUrl: running.base, token: running.tokens.admin }).listProjects()).rejects.toMatchObject({ info: { status: 429 } });
+  });
+
+  it('el preflight de CORS con Authorization se acepta para un origen de --cors y el token nunca viaja en la dirección', async () => {
+    const running = await startAuthServer();
+    cleanups.push(running.close);
+    const preflight = await fetch(`${running.base}/api/projects`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://app.example', 'Access-Control-Request-Method': 'PUT', 'Access-Control-Request-Headers': 'authorization,content-type' },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('https://app.example');
+    expect(preflight.headers.get('access-control-allow-headers')).toMatch(/authorization/i);
+    expect(preflight.headers.get('access-control-allow-methods')).toMatch(/PUT/);
+    const urls: string[] = [];
+    const spy: typeof fetch = (input, init) => {
+      urls.push(String(input));
+      return fetch(input, init);
+    };
+    await new HttpProjectStore({ baseUrl: running.base, token: running.tokens.viewer, fetch: spy }).listProjects();
+    expect(urls.join(' ')).not.toContain(running.tokens.viewer);
   });
 });

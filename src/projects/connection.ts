@@ -80,11 +80,8 @@ async function explain(error: unknown, base: string, options: Required<Pick<Conn
   const host = hostOf(base);
   const status = error.info.status;
   if (error.code === 'invalid' && status === undefined) return { ok: false, problem: 'invalid-url', message: error.message };
-  if (error.code === 'unauthorized') {
-    return status === 403
-      ? { ok: false, problem: 'forbidden', message: 'El servidor reconoce el token, pero no te da permiso para esto.', detail: error.message }
-      : { ok: false, problem: 'unauthorized', message: 'El servidor no aceptó el token: falta o no es válido.', detail: error.message };
-  }
+  if (error.code === 'forbidden') return { ok: false, problem: 'forbidden', message: 'El servidor reconoce el token, pero no te da permiso para esto.', detail: error.message };
+  if (error.code === 'unauthorized') return { ok: false, problem: 'unauthorized', message: 'El servidor no aceptó el token: falta o no es válido.', detail: error.message };
   if (error.info.network) {
     const crossOrigin = new URL(base).origin !== page.origin;
     if (crossOrigin && (await respondsWithoutCors(base, options.fetch ?? ((...args) => fetch(...args)), options.timeoutMs))) {

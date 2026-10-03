@@ -239,6 +239,7 @@ export function ControlPanel({ onEmbedSave, onEmbedExit, projects }: ControlPane
   const remote = projectSession?.remote === true;
   const rejected =
     remote && !!projectState && (projectState.errorCode === 'unauthorized' || projectState.syncErrorCode === 'unauthorized' || projectState.saveErrorCode === 'unauthorized');
+  const forbidden = remote && !rejected && projectState?.saveErrorCode === 'forbidden';
   const projectStatus =
     remote && projectState && !projectState.available
       ? projectState.errorCode === 'unauthorized'
@@ -247,7 +248,9 @@ export function ControlPanel({ onEmbedSave, onEmbedExit, projects }: ControlPane
       : attached && projectState
         ? projectState.save === 'error' && projectState.saveErrorCode === 'unauthorized'
           ? 'El servidor no aceptó el token'
-          : `${SAVE_LABEL[projectState.save]}${projectState.save === 'saved' || projectState.save === 'idle' ? ` en «${openProject?.name}»${remote ? ' · servidor' : ''}` : ''}`
+          : projectState.save === 'error' && projectState.saveErrorCode === 'forbidden'
+            ? 'Sin permiso para guardar en el servidor'
+            : `${SAVE_LABEL[projectState.save]}${projectState.save === 'saved' || projectState.save === 'idle' ? ` en «${openProject?.name}»${remote ? ' · servidor' : ''}` : ''}`
         : undefined;
   const status = statusMessage ?? projectStatus ?? (modified ? 'Cambios sin guardar' : relativeTime(lastSavedAt));
 
@@ -306,6 +309,11 @@ export function ControlPanel({ onEmbedSave, onEmbedExit, projects }: ControlPane
         {rejected && (
           <Button size="small" type="warning" onClick={() => projects?.onManage('storage')} data-testid="reconnect">
             Volver a conectar
+          </Button>
+        )}
+        {forbidden && (
+          <Button size="small" type="warning" onClick={() => projects?.onManage('storage')} data-testid="reconnect">
+            Cambiar de token
           </Button>
         )}
         {remote && attached && projectState?.save === 'error' && projectState.saveErrorCode !== 'unauthorized' && (

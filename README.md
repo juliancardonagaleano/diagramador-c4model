@@ -798,6 +798,7 @@ Con un servidor, la barra del proyecto del banco y el chip del editor dicen «Gu
 - El **token**, por omisión, en `sessionStorage`: solo esa pestaña, y se olvida al cerrarla (si el servidor pide token, una pestaña nueva lo pide otra vez). Con la casilla **«Recordar en este equipo»** (desmarcada por omisión) pasa a `localStorage` y sigue ahí hasta que lo borres; **cualquier script que se ejecute en este sitio podría leerlo**, así que márcala solo en un equipo tuyo. Cada token se guarda junto a su dirección y solo se envía a ella, sin cookies.
 - Quien decide quién puede leer o escribir es el servidor, no la página.
 - Si el servidor deja de aceptar el token, un guardado lo avisa («El servidor no aceptó el token») con un botón para volver a conectar: el texto pendiente no se pierde y se guarda al dar el token bueno, sin recargar.
+- Si el token es válido pero su rol no alcanza (un `viewer` que edita), el guardado avisa «Sin permiso para guardar en el servidor», con el botón «Cambiar de token»: el texto pendiente tampoco se pierde y se guarda al dar un token de `editor`, sin recargar. Las lecturas siguen funcionando.
 
 **4. Copiar entre almacenes.** *Copiar a…* en el detalle de un proyecto lo lleva al otro almacén (del navegador al servidor, o al revés) con el archivo único del proyecto (`iark.project/1`): nunca pisa nada —si el nombre ya existe queda «Nombre (2)»— y, si algo falla a mitad, no deja un proyecto a medias. Sin un servidor conocido, el botón lleva al formulario de conexión, que ofrece copiar sin cambiar de almacén.
 

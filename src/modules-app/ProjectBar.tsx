@@ -26,6 +26,7 @@ export function ProjectBar({
   const remote = session.remote;
   const where = remote ? ' · servidor' : '';
   const rejected = projects.errorCode === 'unauthorized' || projects.syncErrorCode === 'unauthorized' || projects.saveErrorCode === 'unauthorized';
+  const forbidden = projects.saveErrorCode === 'forbidden';
   const run = (work: () => Promise<void>): void => void work().catch((error: Error) => notify(error.message));
 
   const byModule = new Map<string, NonNullable<typeof project>['diagrams']>();
@@ -87,7 +88,9 @@ export function ProjectBar({
               : projects.save === 'error'
                 ? projects.saveErrorCode === 'unauthorized'
                   ? `El servidor no aceptó el token: ${projects.saveError ?? 'no se guardaron los últimos cambios'}`
-                  : `No se pudo guardar: ${projects.saveError ?? 'error desconocido'}`
+                  : projects.saveErrorCode === 'forbidden'
+                    ? `Sin permiso para guardar en el servidor: ${projects.saveError ?? 'el rol de este token no lo permite'}`
+                    : `No se pudo guardar: ${projects.saveError ?? 'error desconocido'}`
                 : projects.save === 'conflict'
                   ? 'Hay un conflicto de guardado'
                   : `Guardado en «${project?.name}»${where}${projects.syncError ? ' (sin conexión con el servidor)' : ''}`
@@ -98,6 +101,11 @@ export function ProjectBar({
       {rejected && remote && (
         <button type="button" className="primary" onClick={() => onManage('storage')} data-testid="reconnect">
           Volver a conectar
+        </button>
+      )}
+      {forbidden && remote && !rejected && (
+        <button type="button" onClick={() => onManage('storage')} data-testid="reconnect">
+          Cambiar de token
         </button>
       )}
       {attached && projects.save === 'error' && projects.saveErrorCode !== 'unauthorized' && (

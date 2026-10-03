@@ -172,6 +172,22 @@ describe('sesión con un almacén remoto', () => {
       session.dispose();
     });
 
+    it('con un token de solo lectura el guardado deja el aviso forbidden sin perder el texto, y un token de editor lo retoma sin recargar', async () => {
+      const { server, session, project, meta } = await setup({ token: 'lector' });
+      server.role = 'viewer';
+      session.queueSave('lo que escribí');
+      await vi.advanceTimersByTimeAsync(60);
+      expect(session.getState()).toMatchObject({ save: 'error', saveErrorCode: 'forbidden' });
+      expect(session.dirty).toBe(true);
+      expect((await server.store.getDiagram(project.id, meta.id))?.text).toBe('v0');
+
+      server.role = 'editor'; // otra persona (o el administrador) le sube el rol, o se cambia a otro token
+      await session.useToken('lector');
+      expect(session.getState()).toMatchObject({ save: 'saved', saveErrorCode: undefined });
+      expect((await server.store.getDiagram(project.id, meta.id))?.text).toBe('lo que escribí');
+      session.dispose();
+    });
+
     it('al abrir sin token en un servidor que lo pide, el almacén queda no disponible con el código unauthorized, y useToken lo recupera', async () => {
       const server = fakeServer({ token: 'secreto' });
       await server.store.createProject({ name: 'Ya existía' });

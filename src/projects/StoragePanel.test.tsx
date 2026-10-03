@@ -272,6 +272,34 @@ describe('panel «Dónde se guardan»', () => {
       expect(screen.queryByTestId('storage-rejected')).toBeNull();
     });
 
+    it('con un token de solo lectura lo dice (no es un token rechazado) y el token de editor retoma el guardado', async () => {
+      const server = fakeServer({ token: 'lector', role: 'viewer', name: 'Vic' });
+      saveBackend({ url: URL_, token: 'lector' });
+      const session = await remoteSession(server, 'lector');
+      const project = await server.store.createProject({ name: 'Tienda' });
+      const meta = await server.store.saveDiagram(project.id, { module: 'c4', name: 'A', text: 'a0' });
+      await session.refresh();
+      await session.openDiagram(project.id, meta.id);
+      session.queueSave('lo que escribió un visor');
+      await waitFor(() => expect(session.getState().saveErrorCode).toBe('forbidden'));
+
+      renderPanel(session, server);
+      expect(screen.getByTestId('storage-forbidden')).toHaveTextContent('su rol no permite guardar');
+      expect(screen.queryByTestId('storage-rejected')).toBeNull();
+      expect(screen.getByTestId('storage-status')).toHaveTextContent('Conectado');
+      await waitFor(() => expect(screen.getByTestId('storage-summary')).toHaveTextContent('(Vic, viewer)'));
+
+      server.token = 'editor';
+      server.role = 'editor';
+      server.name = 'Ana';
+      await userEvent.type(field('Token de acceso'), 'editor');
+      await userEvent.click(screen.getByRole('button', { name: 'Usar este token' }));
+      expect(await screen.findByTestId('storage-message')).toHaveTextContent('Token actualizado');
+      expect((await server.store.getDiagram(project.id, meta.id))?.text).toBe('lo que escribió un visor');
+      await waitFor(() => expect(screen.getByTestId('storage-summary')).toHaveTextContent('(Ana, editor)'));
+      expect(screen.queryByTestId('storage-forbidden')).toBeNull();
+    });
+
     it('cambiar a otro servidor sí recarga, y no antes de probar que responde', async () => {
       const server = fakeServer();
       saveBackend({ url: URL_ });

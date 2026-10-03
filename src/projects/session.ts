@@ -295,12 +295,13 @@ export class ProjectSession {
 
   /**
    * Usa un token nuevo (o ninguno) sin recargar la página, para no perder lo que está pendiente de guardar: relee la lista y
-   * reintenta el guardado que falló por no tenerlo.
+   * reintenta el guardado que falló por no tenerlo (o porque su rol no alcanzaba).
    */
   async useToken(token: string | undefined): Promise<void> {
     (this.store as { setToken?: (token?: string) => void }).setToken?.(token);
     await this.refresh();
-    if (this.pendingText !== undefined && this.state.save === 'error' && this.state.saveErrorCode === 'unauthorized') await this.retry();
+    const refused = this.state.saveErrorCode === 'unauthorized' || this.state.saveErrorCode === 'forbidden';
+    if (this.pendingText !== undefined && this.state.save === 'error' && refused) await this.retry();
   }
 
   private remember(): void {

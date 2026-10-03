@@ -6,9 +6,10 @@ import type { Diagram, DiagramMeta, ProjectStore, ProjectSummary, SaveDiagramInp
  * servidor propio) y cumple el mismo contrato que los almacenes locales. Es lo que usa el navegador para «guardar en la
  * nube»; solo necesita `fetch`, así que sirve igual en el CLI.
  *
- * Los errores del servidor vuelven como `ProjectError` con el mismo código que daría un almacén local; hay dos más que
- * solo pasan aquí: `unauthorized` (el servidor pide un token, o el token no sirve o no alcanza para esa operación) y
- * `unavailable` (no se llega al servidor, responde con un fallo suyo o no ofrece proyectos).
+ * Los errores del servidor vuelven como `ProjectError` con el mismo código que daría un almacén local; hay tres más que
+ * solo pasan aquí: `unauthorized` (el servidor pide un token, o el token no existe o ya no vale), `forbidden` (reconoce el
+ * token, pero su rol no alcanza para esa operación) y `unavailable` (no se llega al servidor, responde con un fallo suyo o
+ * no ofrece proyectos).
  */
 
 export interface HttpProjectStoreOptions {
@@ -66,7 +67,7 @@ function errorFromResponse(status: number, payload: Payload, retryAfter: string 
   const info = { status };
   if (code && LOCAL_CODES.has(code)) return new ProjectError(code as ProjectErrorCode, message || `Error ${status}.`, info);
   if (status === 401 || code === 'unauthorized') return new ProjectError('unauthorized', message || 'El servidor pide un token de acceso válido.', info);
-  if (status === 403 || code === 'forbidden') return new ProjectError('unauthorized', message || 'Este token no tiene permiso para esa operación.', info);
+  if (status === 403 || code === 'forbidden') return new ProjectError('forbidden', message || 'Este token no tiene permiso para esa operación.', info);
   if (status === 429 || code === 'rate-limited') {
     const wait = Number(retryAfter);
     return new ProjectError('unavailable', message || `Demasiados intentos fallidos${Number.isFinite(wait) && wait > 0 ? `: espera ${Math.ceil(wait)} s` : ''}.`, info);
