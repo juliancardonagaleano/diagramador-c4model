@@ -19,7 +19,13 @@ export const MODULE_SOURCES: ModuleSource[] = [
     label: 'C4',
     load: () => import('@iark/domain-c4').then((m) => m.c4Module),
     example: example('banca.json'),
-    blank: () => import('@core/model/factories').then((m) => JSON.stringify(m.createEmptyDocument(), null, 2)),
+    // Igual que «Nuevo diagrama» del editor: un documento vacío con la vista de contexto del sistema, para poder empezar a dibujar.
+    blank: () =>
+      import('@core/model/factories').then((m) => {
+        const doc = m.createEmptyDocument();
+        doc.views.push(m.createView('systemContext', { title: 'Contexto del sistema' }));
+        return JSON.stringify(doc, null, 2);
+      }),
   },
   { id: 'integration', label: 'Integración', load: () => import('@iark/domain-integration').then((m) => m.integrationModule), example: example('pedidos-integracion.json') },
   { id: 'data', label: 'Datos', load: () => import('@iark/domain-data').then((m) => m.dataModule), example: example('ventas-datos.json') },
