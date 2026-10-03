@@ -25,7 +25,7 @@ async function setup(extra: Partial<ProjectsDialogProps> = {}) {
 
 const create = async (name: string): Promise<void> => {
   await userEvent.type(screen.getByPlaceholderText('Nombre del proyecto'), name);
-  await userEvent.click(screen.getByRole('button', { name: 'Crear', exact: true }));
+  await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
   await screen.findByRole('heading', { name });
 };
 
@@ -33,7 +33,7 @@ describe('gestor de proyectos', () => {
   it('sin proyectos invita a crear el primero; crear uno lo selecciona y lo deja abierto en la sesión', async () => {
     const { session } = await setup();
     expect(screen.getByText(/Aún no hay proyectos/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Crear', exact: true })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Crear' })).toBeDisabled();
     await create('Tienda');
     expect(session.getState().projectId).toBe(session.getState().projects[0].id);
     expect(screen.getByText('Este proyecto no tiene diagramas todavía.')).toBeInTheDocument();
@@ -59,7 +59,7 @@ describe('gestor de proyectos', () => {
     const { onClose } = await setup();
     await create('Tienda');
     await userEvent.type(screen.getByPlaceholderText('Nombre del proyecto'), 'tienda');
-    await userEvent.click(screen.getByRole('button', { name: 'Crear', exact: true }));
+    await userEvent.click(screen.getByRole('button', { name: 'Crear' }));
     expect(await screen.findByTestId('projects-error')).toHaveTextContent('Ya existe un proyecto llamado «tienda»');
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -109,7 +109,7 @@ describe('gestor de proyectos', () => {
     await session.init();
     render(<ProjectsDialog session={session} modules={MODULES} onOpen={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getAllByRole('alert')[0]).toHaveTextContent('El almacenamiento del navegador no está disponible: bloqueado');
-    expect(screen.getByRole('button', { name: 'Crear', exact: true })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Crear' })).toBeDisabled();
     expect(screen.getByLabelText('Importar proyecto desde un archivo')).toBeEnabled();
   });
 });

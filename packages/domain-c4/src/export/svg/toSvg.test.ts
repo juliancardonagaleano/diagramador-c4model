@@ -6,7 +6,7 @@ import { SvgExportError, toSvg } from './toSvg';
 describe('toSvg (C4)', () => {
   it('exige elementos colocados: sin autolayout falla con un error claro', () => {
     const doc = structuredClone(sampleDocument);
-    for (const v of doc.views) v.nodes = [];
+    for (const v of doc.views) v.elements = v.elements.map((e) => ({ id: e.id })); // sin x/y: nada colocado
     expect(() => toSvg(doc, { viewId: 'contexto' })).toThrow(SvgExportError);
   });
 

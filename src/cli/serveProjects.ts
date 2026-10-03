@@ -1,0 +1,242 @@
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { bundleFileName, bundleToText, checkProject, createBundle, importBundle, ProjectError, parseBundle, snapshotProject, type ModuleRegistry, type ProjectStore } from '@iark/kernel';
+import { HttpError } from './httpError';
+import type { Authenticator } from './serveAuth';
+import { roleAllows, type TokenRole } from './tokens';
+import { isWorkspaceId } from './workspace';
+
+/**
+ * API de proyectos de `iark serve` (con `--workspace`): los proyectos y diagramas del espacio de trabajo en carpeta. Todo es
+ * JSON salvo el archivo único del proyecto.
+ *
+ *   GET    /api/projects                              lista (con diagramas, sin documentos)
+ *   POST   /api/projects                              { name, description? } → crea
+ *   GET    /api/projects/<p>                          resumen
+ *   PATCH  /api/projects/<p>                          { name } → renombra
+ *   DELETE /api/projects/<p>
+ *   GET    /api/projects/<p>/diagrams/<d>             → { ...meta, text }
+ *   PUT    /api/projects/<p>/diagrams/<d>             { text, ifUpdatedAt? } → guarda (el diagrama debe existir)
+ *   POST   /api/projects/<p>/diagrams                 { module, name?, text } → crea
+ *   PATCH  /api/projects/<p>/diagrams/<d>             { name } → renombra
+ *   DELETE /api/projects/<p>/diagrams/<d>
+ *   GET    /api/projects/<p>/bundle                   archivo único (iark.project/1), con Content-Disposition
+ *   POST   /api/projects/import[?name=]               cuerpo: el archivo único → importa (nunca pisa un proyecto)
+ *   GET    /api/projects/<p>/check                    comprobación del proyecto (checkProject)
+ *
+ * Seguridad: `iark serve` escucha en localhost, y una página ajena abierta en el navegador podría intentar leer o escribir
+ * en el disco del usuario a través de él. Por eso, en estas rutas (y solo en ellas):
+ *  - si el servidor atiende en loopback, la cabecera `Host` debe ser `localhost`, `127.0.0.1` o `[::1]` (contra el
+ *    «DNS rebinding»: una página que hace que su dominio apunte a 127.0.0.1);
+ *  - una petición con cabecera `Origin` solo se acepta si es del mismo sitio (su host es el de `Host`) o está en `--cors`
+ *    (un `*` no basta: abrir la API de cálculo a cualquier sitio no es abrir el disco);
+ *  - POST, PUT, PATCH y DELETE exigen `Content-Type: application/json`, que un formulario o un `fetch` `no-cors` no pueden enviar.
+ *
+ * Con autenticación (`--tokens`, ver `serveAuth.ts`) cada petición trae su token en `Authorization: Bearer …` y se aplican los
+ * roles (ver `requiredRole`). Un token en una cabecera no es una credencial «ambiental» (el navegador no lo añade solo a las
+ * peticiones de otra página), así que ya no hay CSRF ni «DNS rebinding» que atajar: las comprobaciones de `Host` y de `Origin`
+ * dejan de aplicarse (el servidor, además, se expone con otros nombres y desde otros sitios). Se mantiene `Content-Type: application/json`.
+ */
+
+export interface ProjectsApiContext {
+  /** El almacén del espacio de trabajo; sin él, todas las rutas responden 404. */
+  store: ProjectStore | undefined;
+  registry: ModuleRegistry;
+  /** Orígenes autorizados con `--cors` (se compara el texto exacto del `Origin`). */
+  cors: string[];
+  /** Con autenticación por token (`--tokens`): quien identifica a quien llama. Sin él, las rutas no piden credenciales y valen las comprobaciones de `Host` y `Origin`. */
+  auth?: Authenticator;
+  readBody(req: IncomingMessage): Promise<string>;
+  send(res: ServerResponse, status: number, body: string | Buffer, headers?: Record<string, string>): void;
+  sendJson(res: ServerResponse, status: number, value: unknown, headers?: Record<string, string>): void;
+}
+
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/** `localhost:8787` → `localhost`; `[::1]:8787` → `[::1]`. */
+function hostName(host: string | undefined): string {
+  return /^(\[[^\]]+\]|[^:]+)(?::\d+)?$/.exec((host ?? '').trim().toLowerCase())?.[1] ?? '';
+}
+
+/** ¿La conexión llegó por una dirección de loopback del servidor? (`127.x`, `::1` o su forma IPv4-mapeada). */
+const isLoopbackAddress = (address: string | undefined): boolean => !!address && (address === '::1' || address.startsWith('127.') || address.startsWith('::ffff:127.'));
+
+/** ¿Puede este `Origin` usar la API de proyectos? Los de `--cors` por su texto exacto, y el propio sitio (mismo host y puerto que `Host`). */
+export function projectOriginAllowed(origin: string, host: string | undefined, cors: string[]): boolean {
+  if (cors.includes(origin)) return true;
+  try {
+    return !!host && new URL(origin).host.toLowerCase() === host.trim().toLowerCase();
+  } catch {
+    return false; // `Origin: null` (páginas sandbox, file://) y cualquier cosa que no sea una URL
+  }
+}
+
+const isJson = (req: IncomingMessage): boolean => (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() === 'application/json';
+
+/** Sin autenticación: `Host`, `Origin` y `Content-Type`. Con ella (`authenticated`), solo `Content-Type`: ver el comentario de arriba. */
+function guard(req: IncomingMessage, cors: string[], authenticated: boolean): void {
+  if (!authenticated && isLoopbackAddress(req.socket.localAddress) && !LOOPBACK_HOSTS.has(hostName(req.headers.host))) {
+    throw new HttpError(403, 'Host no permitido: este servicio solo atiende en localhost, 127.0.0.1 o [::1] (protección contra «DNS rebinding»).');
+  }
+  const origin = req.headers.origin;
+  if (!authenticated && origin !== undefined && !projectOriginAllowed(origin, req.headers.host, cors)) {
+    throw new HttpError(403, `Origen no autorizado «${origin.slice(0, 100)}»: para llamar a esta API desde otro sitio, arranque el servicio con --cors ${origin.slice(0, 100)}.`);
+  }
+  if (MUTATING.has(req.method ?? '') && !isJson(req)) {
+    throw new HttpError(415, 'Las operaciones que modifican proyectos exigen Content-Type: application/json.');
+  }
+}
+
+/**
+ * El rol mínimo que exige una operación. `parts` son los segmentos de la ruta sin `projects` (como en `createProjectsApi`).
+ *
+ *   viewer  leer: cualquier GET (lista, resumen, diagrama, archivo único, comprobación)
+ *   editor  además: crear, guardar, renombrar y borrar diagramas; crear y renombrar proyectos; importar
+ *   admin   además: borrar proyectos
+ *
+ * Lo que no es una lectura exige editor, también un método o una ruta que no existen (un viewer no escribe ni «probando»): la
+ * respuesta a un rol insuficiente no depende de si la ruta existe. Se decide **antes** de leer el cuerpo y de tocar el disco.
+ */
+export function requiredRole(method: string, parts: string[]): TokenRole {
+  if (method === 'GET' || method === 'HEAD') return 'viewer';
+  if (method === 'DELETE' && parts.length === 1) return 'admin'; // borrar un proyecto (incluso uno que se llame `import`)
+  return 'editor';
+}
+
+const STATUS: Record<ProjectError['code'], number> = { 'not-found': 404, exists: 409, conflict: 409, invalid: 400, unavailable: 500 };
+
+/** Los errores del almacén se responden con el código HTTP que les corresponde y su `code`; el resto se deja como está. */
+function toHttpError(error: unknown): unknown {
+  if (!(error instanceof ProjectError)) return error;
+  if (error.code === 'unavailable') {
+    process.stderr.write(`error del espacio de trabajo: ${error.message}\n`); // la ruta del disco no se le cuenta a quien llama
+    return new HttpError(500, 'El espacio de trabajo no está disponible (permisos, disco o carpeta).', { code: error.code });
+  }
+  return new HttpError(STATUS[error.code], error.message, { code: error.code });
+}
+
+const allow = (methods: string): never => {
+  throw new HttpError(405, `Este endpoint solo admite ${methods}.`, { allow: methods });
+};
+
+function id(value: string, what: string): string {
+  if (!isWorkspaceId(value)) throw new HttpError(400, `Identificador de ${what} inválido «${String(value).slice(0, 60)}».`);
+  return value;
+}
+
+/** El cuerpo como objeto JSON. */
+async function bodyObject(ctx: ProjectsApiContext, req: IncomingMessage): Promise<Record<string, unknown>> {
+  const raw = await ctx.readBody(req);
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new HttpError(400, 'El cuerpo debe ser JSON.');
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new HttpError(400, 'El cuerpo debe ser un objeto JSON.');
+  return value as Record<string, unknown>;
+}
+
+function text(body: Record<string, unknown>, field: string, options: { required?: boolean } = {}): string | undefined {
+  const value = body[field];
+  if (value === undefined || value === null) {
+    if (options.required) throw new HttpError(400, `Falta "${field}".`);
+    return undefined;
+  }
+  if (typeof value !== 'string') throw new HttpError(400, `"${field}" debe ser un texto.`);
+  return value;
+}
+
+/**
+ * El manejador de las rutas `/api/projects…`. `parts` son los segmentos de la ruta ya decodificados, sin `projects`.
+ * Sin espacio de trabajo responde 404 a todo.
+ */
+export function createProjectsApi(ctx: ProjectsApiContext): (req: IncomingMessage, res: ServerResponse, url: URL, parts: string[]) => Promise<void> {
+  const { store, sendJson } = ctx;
+
+  async function route(req: IncomingMessage, res: ServerResponse, url: URL, parts: string[], projects: ProjectStore): Promise<void> {
+    const method = req.method ?? 'GET';
+    const [first, second, third] = parts;
+
+    if (parts.length === 0) {
+      if (method === 'GET') return sendJson(res, 200, await projects.listProjects());
+      if (method === 'POST') {
+        const body = await bodyObject(ctx, req);
+        const created = await projects.createProject({ name: text(body, 'name', { required: true })!, description: text(body, 'description') });
+        return sendJson(res, 201, created, { Location: `/api/projects/${created.id}` });
+      }
+      return allow('GET, POST');
+    }
+    // `import` no es un proyecto: es la ruta para traer uno desde su archivo único
+    if (first === 'import' && parts.length === 1 && method === 'POST') {
+      const imported = await importBundle(projects, parseBundle(await ctx.readBody(req)), { name: url.searchParams.get('name') ?? undefined });
+      return sendJson(res, 201, imported, { Location: `/api/projects/${imported.project.id}` });
+    }
+
+    const projectId = id(first, 'proyecto');
+    if (parts.length === 1) {
+      if (method === 'GET') {
+        const found = await projects.getProject(projectId);
+        if (!found) throw new ProjectError('not-found', `No existe el proyecto «${projectId}».`);
+        return sendJson(res, 200, found);
+      }
+      if (method === 'PATCH') return sendJson(res, 200, await projects.renameProject(projectId, text(await bodyObject(ctx, req), 'name', { required: true })!));
+      if (method === 'DELETE') {
+        await projects.deleteProject(projectId);
+        return sendJson(res, 200, { deleted: projectId });
+      }
+      return allow('GET, PATCH, DELETE');
+    }
+
+    if (second === 'bundle' && parts.length === 2) {
+      if (method !== 'GET') return allow('GET');
+      const snapshot = await snapshotProject(projects, projectId);
+      const file = bundleToText(createBundle(snapshot, { generator: 'IArk - DIAgrams' }));
+      return ctx.send(res, 200, file, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': `attachment; filename="${bundleFileName(snapshot.name)}"` });
+    }
+    if (second === 'check' && parts.length === 2) {
+      if (method !== 'GET') return allow('GET');
+      return sendJson(res, 200, checkProject(await snapshotProject(projects, projectId), ctx.registry));
+    }
+    if (second === 'diagrams' && parts.length === 2) {
+      if (method !== 'POST') return allow('POST');
+      const body = await bodyObject(ctx, req);
+      const created = await projects.saveDiagram(projectId, { module: text(body, 'module', { required: true }), name: text(body, 'name'), text: text(body, 'text', { required: true })! });
+      return sendJson(res, 201, created, { Location: `/api/projects/${projectId}/diagrams/${created.id}` });
+    }
+    if (second === 'diagrams' && parts.length === 3) {
+      const diagramId = id(third, 'diagrama');
+      if (method === 'GET') {
+        const diagram = await projects.getDiagram(projectId, diagramId);
+        if (!diagram) throw new ProjectError('not-found', `No existe el diagrama «${diagramId}» en el proyecto «${projectId}».`);
+        return sendJson(res, 200, diagram);
+      }
+      if (method === 'PUT') {
+        const body = await bodyObject(ctx, req);
+        return sendJson(res, 200, await projects.saveDiagram(projectId, { id: diagramId, text: text(body, 'text', { required: true })!, ifUpdatedAt: text(body, 'ifUpdatedAt') }));
+      }
+      if (method === 'PATCH') return sendJson(res, 200, await projects.renameDiagram(projectId, diagramId, text(await bodyObject(ctx, req), 'name', { required: true })!));
+      if (method === 'DELETE') {
+        await projects.deleteDiagram(projectId, diagramId);
+        return sendJson(res, 200, { deleted: diagramId });
+      }
+      return allow('GET, PUT, PATCH, DELETE');
+    }
+    throw new HttpError(404, 'Ruta de proyectos desconocida. Ver la lista de rutas de /api/projects en el README.');
+  }
+
+  return async (req, res, url, parts) => {
+    if (!store) throw new HttpError(404, 'Este servicio no tiene espacio de trabajo (use --workspace <carpeta>)');
+    const identity = ctx.auth?.identify(req);
+    if (identity) {
+      const needed = requiredRole(req.method ?? 'GET', parts);
+      if (!roleAllows(identity.role, needed)) throw new HttpError(403, `El rol «${identity.role}» no permite esta operación (hace falta «${needed}»).`, { code: 'forbidden' });
+    }
+    guard(req, ctx.cors, !!ctx.auth);
+    try {
+      await route(req, res, url, parts, store);
+    } catch (error) {
+      throw toHttpError(error);
+    }
+  };
+}

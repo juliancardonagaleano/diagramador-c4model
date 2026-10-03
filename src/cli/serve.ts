@@ -20,10 +20,15 @@ import {
   viewChoices,
   type AnyModule,
   type ModuleRegistry,
+  type ProjectStore,
   type TraceDirection,
   type TraceInput,
 } from '@iark/kernel';
+import { HttpError } from './httpError';
+import { createAuthenticator, type FailureLimiterOptions } from './serveAuth';
+import { createProjectsApi } from './serveProjects';
 import { suiteManifest } from './suiteManifest';
+import type { TokenStore } from './tokens';
 
 /**
  * Servicio HTTP de la suite (`iark serve`): la misma API para todos los módulos, construida sobre las operaciones del
@@ -41,6 +46,20 @@ import { suiteManifest } from './suiteManifest';
  *   POST /api/<módulo>/run/<comando>            cuerpo: { input?, args?, options? } → { output, warnings, kind }
  *   POST /api/<módulo>/diff                     cuerpo: { before, after } (dos documentos del módulo) → DocumentDiff: qué se añadió, quitó y modificó
  *   POST /api/trace                             cuerpo: { documents: [{ module, document }], from?, direction?, depth? } → { graph, from?, reached?, report, mermaid, svg }
+ *
+ * Con un espacio de trabajo (`--workspace <carpeta>`), además, los proyectos guardados en esa carpeta (ver `serveProjects.ts`;
+ * sin él, estas rutas responden 404). Los que modifican exigen `Content-Type: application/json` y rechazan los orígenes ajenos:
+ *   GET|POST /api/projects                              lista los proyectos · crea uno { name, description? }
+ *   GET|PATCH|DELETE /api/projects/<p>                  resumen · renombra { name } · borra
+ *   POST /api/projects/<p>/diagrams                     crea un diagrama { module, name?, text }
+ *   GET|PUT|PATCH|DELETE /api/projects/<p>/diagrams/<d> documento · guarda { text, ifUpdatedAt? } · renombra { name } · borra
+ *   GET  /api/projects/<p>/bundle                       el proyecto en un solo archivo (iark.project/1)
+ *   POST /api/projects/import[?name=]                   cuerpo: ese archivo → crea un proyecto nuevo
+ *   GET  /api/projects/<p>/check                        comprobación del proyecto: cada diagrama y las referencias entre ellos
+ *
+ * Con tokens (`--tokens <archivo>`, ver `serveAuth.ts`) esas rutas y `/api/whoami` exigen `Authorization: Bearer <token>` y aplican los
+ * roles `viewer`, `editor` y `admin`; el resto de la API sigue siendo pública (no toca el disco):
+ *   GET  /api/whoami                                    { auth: true, name, role } con tokens (401 sin uno válido) · { auth: false } sin ellos
  */
 export interface ServeOptions {
   registry: ModuleRegistry;
@@ -51,19 +70,30 @@ export interface ServeOptions {
   cors?: string[];
   /** Tamaño máximo del cuerpo de una petición (bytes). Por defecto 5 MB. */
   maxBodyBytes?: number;
+  /** Espacio de trabajo con los proyectos (`FolderProjectStore`). Sin él, `/api/projects` responde 404. */
+  projects?: ProjectStore;
+  /** Los tokens de acceso (`--tokens`). Con ellos, `/api/projects…` y `/api/whoami` exigen un token y respetan su rol; sin ellos, no hay autenticación. */
+  tokens?: TokenStore;
+  /** Hay un proxy de confianza delante (`--trust-proxy`): el freno de intentos fallidos distingue a quien llama por `X-Forwarded-For` y no por la dirección del proxy. */
+  trustProxy?: boolean;
+  /** Ajustes del freno de intentos fallidos (los de por omisión, salvo en las pruebas). */
+  authLimits?: Partial<FailureLimiterOptions>;
 }
 
 const API = '/api';
 const MANIFEST_PATH = '/.well-known/iark.json';
 
-class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-    readonly extra: Record<string, unknown> = {},
-  ) {
-    super(message);
-  }
+/** Las rutas que exigen token cuando lo hay: la API de proyectos y `/api/whoami` (se leen los segmentos igual que `api()`, ya decodificados). */
+function isAuthRoute(pathname: string): boolean {
+  if (pathname !== API && !pathname.startsWith(`${API}/`)) return false;
+  const parts = pathname.slice(API.length).split('/').filter(Boolean).map((segment) => {
+    try {
+      return decodeURIComponent(segment);
+    } catch {
+      return segment; // la petición se rechazará con 400 más adelante
+    }
+  });
+  return parts[0] === 'projects' || (parts[0] === 'whoami' && parts.length === 1);
 }
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -80,6 +110,15 @@ const CONTENT_TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
+/** Un segmento de ruta decodificado; una codificación rota (`%zz`) es un error de la petición, no del servicio. */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    throw new HttpError(400, 'La ruta está mal codificada.');
+  }
+}
+
 /** Un `TypeError`/`RangeError`/`ReferenceError` es un fallo del programa; el resto, un problema de la petición. */
 const isBug = (error: unknown): boolean => error instanceof TypeError || error instanceof RangeError || error instanceof ReferenceError;
 
@@ -87,6 +126,7 @@ export function createSuiteServer(options: ServeOptions): Server {
   const maxBody = options.maxBodyBytes ?? 5 * 1024 * 1024;
   const staticRoot = options.staticDir ? resolve(options.staticDir) : undefined;
   const cors = options.cors ?? [];
+  const auth = options.tokens ? createAuthenticator({ tokens: options.tokens, trustProxy: options.trustProxy, limits: options.authLimits }) : undefined;
 
   const send = (res: ServerResponse, status: number, body: string | Buffer, headers: Record<string, string> = {}): void => {
     res.writeHead(status, { 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store', ...headers });
@@ -95,7 +135,7 @@ export function createSuiteServer(options: ServeOptions): Server {
   const sendJson = (res: ServerResponse, status: number, value: unknown, headers: Record<string, string> = {}): void =>
     send(res, status, `${JSON.stringify(value, null, 2)}\n`, { 'Content-Type': 'application/json; charset=utf-8', ...headers });
 
-  function applyCors(req: IncomingMessage, res: ServerResponse): void {
+  function applyCors(req: IncomingMessage, res: ServerResponse, pathname: string): void {
     const origin = req.headers.origin;
     if (!origin || cors.length === 0) return;
     if (cors.includes('*')) res.setHeader('Access-Control-Allow-Origin', '*');
@@ -103,8 +143,19 @@ export function createSuiteServer(options: ServeOptions): Server {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
     } else return;
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (auth && isAuthRoute(pathname)) {
+      // Con tokens, un `*` también vale para la API de proyectos y todos los métodos: la credencial es una cabecera que el navegador
+      // no añade por su cuenta (no se envían cookies: no se anuncia `Allow-Credentials`), así que un sitio ajeno no puede usar
+      // la API sin un token que alguien le haya dado, y sin token recibe 401. Se anuncia `Authorization` (sin él el preflight falla)
+      // y se exponen las cabeceras que el cliente necesita leer (`Retry-After` del 429, el nombre del archivo del proyecto).
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Expose-Headers', 'Retry-After, Content-Disposition, Location');
+    } else {
+      // Sin tokens, PUT, PATCH y DELETE (la API de proyectos) solo para los orígenes que se autorizaron por su nombre: un `*` no abre el disco.
+      res.setHeader('Access-Control-Allow-Methods', options.projects && cors.includes(origin) ? 'GET, POST, PUT, PATCH, DELETE, OPTIONS' : 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    }
     res.setHeader('Access-Control-Max-Age', '600');
   }
 
@@ -125,6 +176,8 @@ export function createSuiteServer(options: ServeOptions): Server {
       req.on('error', reject);
     });
   }
+
+  const projectsApi = createProjectsApi({ store: options.projects, registry: options.registry, cors, auth, readBody, send, sendJson });
 
   const requireMethod = (req: IncomingMessage, allowed: 'GET' | 'POST'): void => {
     if (req.method !== allowed) throw new HttpError(405, `Este endpoint solo admite ${allowed}.`, { allow: allowed });
@@ -199,7 +252,14 @@ export function createSuiteServer(options: ServeOptions): Server {
   }
 
   async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    const parts = url.pathname.slice(API.length).split('/').filter(Boolean).map(decodeURIComponent);
+    const parts = url.pathname.slice(API.length).split('/').filter(Boolean).map(decodeSegment);
+    if (parts[0] === 'projects') return projectsApi(req, res, url, parts.slice(1));
+    if (parts.length === 1 && parts[0] === 'whoami') {
+      requireMethod(req, 'GET');
+      if (!auth) return sendJson(res, 200, { auth: false });
+      const { name, role } = auth.identify(req);
+      return sendJson(res, 200, { auth: true, name, role });
+    }
     if (parts.length === 1 && parts[0] === 'modules') {
       requireMethod(req, 'GET');
       return sendJson(res, 200, options.registry.list().map(moduleCapabilities));
@@ -292,7 +352,7 @@ export function createSuiteServer(options: ServeOptions): Server {
   async function serveStatic(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     if (!staticRoot) throw new HttpError(404, 'Este servicio no sirve el sitio estático (use --static <carpeta>).');
     if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'Solo GET.', { allow: 'GET, HEAD' });
-    let pathname = decodeURIComponent(url.pathname);
+    let pathname = decodeSegment(url.pathname);
     if (pathname.endsWith('/')) pathname += 'index.html';
     const file = normalize(join(staticRoot, pathname));
     if (file !== staticRoot && !file.startsWith(staticRoot + sep)) throw new HttpError(403, 'Ruta no permitida.');
@@ -305,13 +365,13 @@ export function createSuiteServer(options: ServeOptions): Server {
 
   return createServer((req, res) => {
     const handle = async (): Promise<void> => {
-      applyCors(req, res);
       const url = new URL(req.url ?? '/', 'http://localhost');
+      applyCors(req, res, url.pathname);
       if (req.method === 'OPTIONS') return send(res, 204, '');
       if (url.pathname === MANIFEST_PATH) {
         requireMethod(req, 'GET');
         // Con sitio estático la instancia ofrece los editores embebibles; sin él, solo la API.
-        return sendJson(res, 200, suiteManifest(options.registry, { version: options.version, api: '../api', site: !!staticRoot }));
+        return sendJson(res, 200, suiteManifest(options.registry, { version: options.version, api: '../api', site: !!staticRoot, projects: !!options.projects, projectsAuth: auth ? 'bearer' : 'none' }));
       }
       if (url.pathname === API || url.pathname.startsWith(`${API}/`)) return api(req, res, url);
       return serveStatic(req, res, url);
@@ -319,7 +379,7 @@ export function createSuiteServer(options: ServeOptions): Server {
     handle().catch((error: unknown) => {
       if (res.headersSent) return void res.end();
       if (error instanceof HttpError) {
-        const headers: Record<string, string> = {};
+        const headers: Record<string, string> = { ...error.headers };
         if (error.status === 405) headers.Allow = String(error.extra.allow);
         if (error.status === 413) {
           // no se sigue leyendo el cuerpo: se responde y se cierra la conexión

@@ -36,4 +36,31 @@ describe('manifiesto de federación del sitio estático', () => {
     expect(manifest.version).toBe('1.2.3');
     expect(manifest.modules.find((m) => m.id === 'data')!.endpoints!.api).toBe('/api/data');
   });
+
+  it('una instancia con espacio de trabajo anuncia además su API de proyectos (relativa al manifiesto); el sitio estático, no', () => {
+    const registry = createDefaultRegistry();
+    const withWorkspace = suiteManifest(registry, { version: '1', api: '../api', projects: true });
+    expect(withWorkspace.projects).toBe('../api/projects');
+    expect(manifestSchema.safeParse(withWorkspace).success).toBe(true);
+    expect(suiteManifest(registry, { version: '1', api: '../api/', projects: true }).projects).toBe('../api/projects');
+    expect(suiteManifest(registry, { version: '1', api: '../api' }).projects).toBeUndefined();
+    expect(suiteManifest(registry, { version: '1', projects: true }).projects).toBeUndefined(); // sin API no hay a dónde apuntar
+    expect(published.projects).toBeUndefined();
+    expect(published.projectsAuth).toBeUndefined();
+  });
+
+  it('con espacio de trabajo anuncia también cómo se autentica (`projectsAuth`): `none` por omisión, `bearer` con tokens; nunca sin proyectos', () => {
+    const registry = createDefaultRegistry();
+    const open = suiteManifest(registry, { version: '1', api: '../api', projects: true });
+    expect(open.projectsAuth).toBe('none');
+    const protectedInstance = suiteManifest(registry, { version: '1', api: '../api', projects: true, projectsAuth: 'bearer' });
+    expect(protectedInstance).toMatchObject({ projects: '../api/projects', projectsAuth: 'bearer' });
+    // el manifiesto de la instancia lo lee un cliente con `manifestSchema`, que ya no descarta ninguno de los dos campos
+    expect(manifestSchema.parse(protectedInstance)).toMatchObject({ projects: '../api/projects', projectsAuth: 'bearer' });
+    expect(manifestSchema.parse(open).projectsAuth).toBe('none');
+    // sin espacio de trabajo (o sin API a la que apuntar) no hay nada que autenticar: no se anuncia
+    expect(suiteManifest(registry, { version: '1', api: '../api', projectsAuth: 'bearer' })).not.toHaveProperty('projectsAuth');
+    expect(suiteManifest(registry, { version: '1', projects: true, projectsAuth: 'bearer' })).not.toHaveProperty('projectsAuth');
+    expect(suiteManifest(registry, { version: '1', api: '../api' })).not.toHaveProperty('projects');
+  });
 });

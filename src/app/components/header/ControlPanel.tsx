@@ -1,4 +1,4 @@
-import { Button, Dropdown, Input, Modal, Tag, Tooltip } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Input, Modal, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
 import { IconDownload, IconEdit, IconExit, IconSave } from '@douyinfe/semi-icons';
 import { useEffect, useState } from 'react';
 import { useActions } from '../../hooks/useActions';
@@ -6,6 +6,7 @@ import { isEmbedMode, useDocumentStore, useTemporalStore } from '../../store/doc
 import { relativeTime } from '../../utils/files';
 import { AboutModal, ShortcutsModal } from './HelpModals';
 import { MermaidPreviewModal } from './MermaidPreviewModal';
+import { C4_MODULE, type ProjectBinding } from '../../projects/useProjectBinding';
 import { DIRECTIONS, DISTRIBUTIONS } from './FloatingToolbar';
 
 const Logo = () => (
@@ -66,9 +67,13 @@ export interface ControlPanelProps {
   /** Callbacks del modo embebido. */
   onEmbedSave?: (exit: boolean) => void;
   onEmbedExit?: () => void;
+  /** Proyectos guardados (solo fuera del modo embebido). */
+  projects?: { binding: ProjectBinding; onManage: () => void };
 }
 
-export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
+const SAVE_LABEL = { idle: 'Guardado', pending: 'Guardando…', saving: 'Guardando…', saved: 'Guardado', error: 'No se pudo guardar', conflict: 'Conflicto de guardado' } as const;
+
+export function ControlPanel({ onEmbedSave, onEmbedExit, projects }: ControlPanelProps) {
   const name = useDocumentStore((s) => s.doc.workspace.name);
   const setWorkspaceName = useDocumentStore((s) => s.setWorkspaceName);
   const ui = useDocumentStore((s) => s.ui);
@@ -95,7 +100,26 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
 
   // Descartar el documento actual (Nuevo/Cargar ejemplo/Abrir JSON/Importar .drawio o DSL) sin guardar antes pide
   // confirmación, igual que ya hace `useEmbedBridge.exit()` cuando hay cambios sin guardar.
+  const projectState = projects?.binding.state;
+  const projectSession = projects?.binding.session;
+  const attached = projectSession && projectSession.attached && projectSession.diagram?.module === C4_MODULE ? projectSession.diagram : undefined;
+  const openProject = projectSession?.project;
+  const resolveConflict = (choice: 'overwrite' | 'reload'): void => {
+    void projects?.binding.resolveConflict(choice).catch((error: Error) => Toast.error(error.message));
+  };
   const confirmDiscard = (proceed: () => void) => {
+    // Con un diagrama de proyecto abierto, sustituir el documento también sustituye lo guardado en el proyecto.
+    if (attached && openProject) {
+      Modal.confirm({
+        title: 'Reemplazar el diagrama del proyecto',
+        content: `El diagrama «${attached.name}» del proyecto «${openProject.name}» se guarda solo: lo que cargues lo reemplazará en el proyecto. ¿Deseas continuar?`,
+        okText: 'Reemplazar',
+        cancelText: 'Cancelar',
+        okType: 'danger',
+        onOk: proceed,
+      });
+      return;
+    }
     if (!modified) {
       proceed();
       return;
@@ -109,6 +133,24 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
       onOk: proceed,
     });
   };
+
+  const saveToProject = (): void => {
+    if (!projectSession || !openProject) return;
+    const { module, text, name: docName } = projects!.binding.current();
+    void projectSession
+      .createDiagram({ module, name: docName, text })
+      .then((meta) => Toast.success(`Guardado como «${meta.name}» en el proyecto «${openProject.name}». Los cambios se guardan solos.`))
+      .catch((error: Error) => Toast.error(error.message));
+  };
+
+  const projectItems: MenuProps['items'] = projects
+    ? [
+        { key: 'projects', label: 'Proyectos…', onClick: projects.onManage, closeMenu: true },
+        ...(openProject && !attached ? [{ key: 'save-project', label: `Guardar en el proyecto «${openProject.name}»`, onClick: saveToProject }] : []),
+        ...(attached ? [{ key: 'detach-project', label: 'Dejar de guardar en el proyecto', onClick: () => void projectSession?.release() }] : []),
+        { key: 'dp', label: '', divider: true },
+      ]
+    : [];
 
   const fileMenu: MenuProps['items'] = isEmbedMode
     ? [
@@ -124,6 +166,7 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
         { key: 'exit', label: 'Salir sin guardar', onClick: onEmbedExit },
       ]
     : [
+        ...projectItems,
         { key: 'new', label: 'Nuevo diagrama', onClick: () => confirmDiscard(newDocument) },
         { key: 'sample', label: 'Cargar ejemplo (banca en línea)', onClick: () => confirmDiscard(loadSample) },
         { key: 'open', label: 'Abrir JSON…', onClick: () => confirmDiscard(actions.openJson), shortcut: 'Ctrl+O' },
@@ -192,7 +235,8 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
     { key: 'c4', label: 'Modelo C4 (c4model.com)', onClick: () => window.open('https://c4model.com', '_blank', 'noopener') },
   ];
 
-  const status = statusMessage ?? (modified ? 'Cambios sin guardar' : relativeTime(lastSavedAt));
+  const projectStatus = attached && projectState ? `${SAVE_LABEL[projectState.save]}${projectState.save === 'saved' || projectState.save === 'idle' ? ` en «${openProject?.name}»` : ''}` : undefined;
+  const status = statusMessage ?? projectStatus ?? (modified ? 'Cambios sin guardar' : relativeTime(lastSavedAt));
 
   return (
     <header className="flex justify-between items-center border-b border-color px-3 py-1.5 gap-3 theme">
@@ -229,6 +273,11 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
                 solo lectura
               </Tag>
             )}
+            {projects && (
+              <Tag size="small" color={attached ? 'blue' : 'grey'} onClick={projects.onManage} className="cursor-pointer" data-testid="project-chip" aria-label="Abrir los proyectos">
+                {openProject ? `Proyecto: ${openProject.name}${attached ? ` › ${attached.name}` : ''}` : 'Sin proyecto'}
+              </Tag>
+            )}
           </div>
           <div className="flex items-center gap-1 -ml-1">
             <Menu label="Archivo" items={fileMenu} />
@@ -240,7 +289,20 @@ export function ControlPanel({ onEmbedSave, onEmbedExit }: ControlPanelProps) {
         </div>
       </div>
       <div className="flex items-center gap-3 flex-none">
-        <span className="text-sm text-color-2 hidden md:inline">{status}</span>
+        {attached && projectState?.save === 'conflict' && (
+          <span className="flex items-center gap-2 text-sm" role="alert" data-testid="save-conflict">
+            Otra pestaña guardó «{attached.name}» mientras lo editabas.
+            <Button size="small" onClick={() => resolveConflict('overwrite')}>
+              Quedarme con mi versión
+            </Button>
+            <Button size="small" onClick={() => resolveConflict('reload')}>
+              Cargar la otra
+            </Button>
+          </span>
+        )}
+        <span className="text-sm text-color-2 hidden md:inline" role="status" data-testid="save-status" data-save={attached ? projectState?.save : undefined}>
+          {status}
+        </span>
         {isEmbedMode ? (
           <>
             <Tooltip content="Cerrar sin guardar">
