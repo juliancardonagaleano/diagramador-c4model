@@ -12,4 +12,4 @@ export {
   type FieldChange,
   type MovedEntry,
 } from './diff';
-export { diffSummaryLine, formatDiffJson, formatDiffMarkdown, formatDiffText, formatValue, type DiffFormatOptions } from './format';
+export { diffSummaryLine, formatDiffJson, formatFieldChange, formatDiffMarkdown, formatDiffText, formatValue, type DiffFormatOptions } from './format';

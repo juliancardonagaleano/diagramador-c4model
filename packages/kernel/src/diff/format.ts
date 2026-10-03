@@ -40,7 +40,7 @@ export function formatValue(value: unknown): string {
   return String(value);
 }
 
-/** `tags: +beta −legacy` para una lista de valores; `name: "A" → "B"` para el resto. */
+/** `+beta −legacy` para una lista de valores; `"A" → "B"` para el resto (con `quote` se envuelve cada valor, p. ej. en código en línea). */
 function fieldText(field: FieldChange, quote: (text: string) => string): string {
   if (field.added || field.removed) {
     const parts = [...(field.added ?? []).map((v) => `+${quote(String(v))}`), ...(field.removed ?? []).map((v) => `−${quote(String(v))}`)];
@@ -51,6 +51,11 @@ function fieldText(field: FieldChange, quote: (text: string) => string): string 
 
 /** El id solo se muestra si dice algo más que la etiqueta (y no en las posiciones `#2` ni en los campos sueltos del documento). */
 const showsId = (e: DiffEntry): boolean => e.label !== e.id && !e.id.startsWith('#') && e.collection !== ROOT_COLLECTION;
+/** Lo que cambió en un campo, en una línea: `"A" → "B"`, o `+beta −legacy` si es una lista de valores. */
+export function formatFieldChange(field: FieldChange): string {
+  return fieldText(field, (t) => t);
+}
+
 const identity = (e: DiffEntry): string => `${e.label}${showsId(e) ? ` (${e.id})` : ''}${e.kind ? ` · ${e.kind}` : ''}`;
 
 interface Group {
