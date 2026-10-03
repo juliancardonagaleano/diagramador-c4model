@@ -62,6 +62,12 @@ export interface ScanOptions {
   treeDepth?: number;
   /** Máximo de entradas (archivos y carpetas) que se recorren (por defecto 20 000). */
   maxEntries?: number;
+  /**
+   * La carpeta es un clon temporal de un repositorio remoto (`--from-repo <url>`): el resumen lleva el nombre del repositorio
+   * (no el del directorio temporal), los errores no nombran la ruta temporal y no se aplican los `.gitignore` (un clon solo
+   * trae lo versionado, y son texto de un tercero: no hay motivo para interpretar sus patrones).
+   */
+  remote?: { name: string };
 }
 
 export interface DigestFile {
@@ -88,6 +94,8 @@ export interface OmittedEntry {
 export interface RepoDigest {
   /** Nombre de la carpeta analizada (no su ruta absoluta: no se envían rutas del equipo del usuario). */
   name: string;
+  /** `true` si se leyó un clon temporal de un repositorio remoto (`--from-repo <url>`). */
+  remote?: true;
   /** El resumen, listo para enviar. */
   text: string;
   /** Bytes del resumen. */
@@ -120,6 +128,8 @@ class Omissions {
   }
 }
 
+const CONTROL_NAME = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
+const CONTROL_NAME_ALL = new RegExp(CONTROL_NAME.source, 'g');
 const byName = (a: { name: string }, b: { name: string }): number => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 const toPosix = (p: string): string => p.split(sep).join('/');
 
@@ -159,9 +169,9 @@ interface WalkResult {
   truncated: boolean;
 }
 
-function walkRepo(root: string, omit: Omissions, maxEntries: number): WalkResult {
+function walkRepo(root: string, omit: Omissions, maxEntries: number, useGitignore: boolean): WalkResult {
   const matcher = new IgnoreMatcher();
-  const top = findGitTop(root);
+  const top = useGitignore ? findGitTop(root) : undefined;
   const prefix = top ? toPosix(relative(top, root)) : '';
   // Reglas de las carpetas por encima de la analizada (si es una subcarpeta de un repositorio) y `.git/info/exclude`.
   if (top) {
@@ -190,7 +200,7 @@ function walkRepo(root: string, omit: Omissions, maxEntries: number): WalkResult
       return;
     }
     list.sort(byName);
-    const own = list.some((e) => e.name === '.gitignore' && e.isFile()) ? readIgnoreFile(join(absDir, '.gitignore')) : undefined;
+    const own = useGitignore && list.some((e) => e.name === '.gitignore' && e.isFile()) ? readIgnoreFile(join(absDir, '.gitignore')) : undefined;
     if (own) matcher.add(own, gitPath(relDir));
     for (const entry of list) {
       if (entries >= maxEntries) {
@@ -199,7 +209,10 @@ function walkRepo(root: string, omit: Omissions, maxEntries: number): WalkResult
       }
       entries += 1;
       const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
-      if (entry.isSymbolicLink()) {
+      if (CONTROL_NAME.test(entry.name)) {
+        // Un nombre con caracteres de control (secuencias de escape de terminal, saltos de línea…) no se muestra ni se envía tal cual.
+        omit.add(rel.replace(CONTROL_NAME_ALL, '�'), 'ilegible', 'nombre con caracteres de control');
+      } else if (entry.isSymbolicLink()) {
         omit.add(rel, 'enlace');
       } else if (entry.isDirectory()) {
         if (isExcludedDir(entry.name)) omit.add(`${rel}/`, 'excluida');
@@ -366,26 +379,30 @@ function fitBlock(rel: string, cls: Classification, loaded: Loaded, room: number
  * o no contiene nada reconocible.
  */
 export function scanRepo(folder: string, options: ScanOptions = {}): RepoDigest {
+  const remote = options.remote;
   const budget = Math.max(1024, Math.min(options.budgetBytes ?? DEFAULT_BUDGET_BYTES, MAX_BUDGET_BYTES));
   const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
   const treeDepth = options.treeDepth ?? 3;
 
-  if (!existsSync(folder)) throw new CliError(`La carpeta «${folder}» no existe.`, 2);
+  // De un clon temporal se habla por el nombre del repositorio: la ruta del directorio temporal no sale en ningún mensaje.
+  const label = remote ? `El repositorio «${remote.name}»` : `La carpeta «${folder}»`;
+  const where = remote ? `el clon de «${remote.name}»` : `«${folder}»`;
+  if (!existsSync(folder)) throw new CliError(`${label} no existe.`, 2);
   let root: string;
   try {
     root = realpathSync(folder);
-    if (!statSync(root).isDirectory()) throw new CliError(`«${folder}» no es una carpeta: --from-repo espera la carpeta de un repositorio.`, 2);
+    if (!statSync(root).isDirectory()) throw new CliError(`${where} no es una carpeta: --from-repo espera la carpeta de un repositorio.`, 2);
   } catch (error) {
     if (error instanceof CliError) throw error;
-    throw new CliError(`No se pudo leer la carpeta «${folder}»: ${(error as Error).message}`, 2);
+    throw new CliError(`No se pudo leer ${remote ? where : `la carpeta ${where}`}${remote ? '' : `: ${(error as Error).message}`}`, 2);
   }
   if (root === parse(root).root || root === homeDirectory()) {
-    throw new CliError(`«${folder}» es la raíz del disco o tu carpeta personal, no la de un repositorio: indica la carpeta del proyecto (no se envía nada de ahí).`, 2);
+    throw new CliError(`${where} es la raíz del disco o tu carpeta personal, no la de un repositorio: indica la carpeta del proyecto (no se envía nada de ahí).`, 2);
   }
-  const name = basename(root) || 'repositorio';
+  const name = remote ? remote.name : basename(root) || 'repositorio';
 
   const omit = new Omissions();
-  const walked = walkRepo(root, omit, options.maxEntries ?? DEFAULT_MAX_ENTRIES);
+  const walked = walkRepo(root, omit, options.maxEntries ?? DEFAULT_MAX_ENTRIES, !remote);
   const { files } = walked;
   const codeFiles = countCode(files);
 
@@ -404,12 +421,12 @@ export function scanRepo(folder: string, options: ScanOptions = {}): RepoDigest 
 
   if (files.length === 0) {
     const counts = Object.entries(omit.counts).map(([reason, n]) => `${n} ${OMIT_LABEL[reason as OmitReason]}`);
-    throw new CliError(`La carpeta «${folder}» no contiene archivos de texto que leer${counts.length ? ` (omitidos: ${counts.join('; ')})` : ' (está vacía)'}.`, 2);
+    throw new CliError(`${label} no contiene archivos de texto que leer${counts.length ? ` (omitidos: ${counts.join('; ')})` : ' (está vacía)'}.`, 2);
   }
   if (candidates.length === 0 && codeFiles === 0) {
     throw new CliError(
-      `No se reconoce nada en «${folder}»: ni documentación, manifiestos, contenedores, infraestructura o contratos de API, ni código fuente. ` +
-        `¿Es la carpeta de un repositorio?`,
+      `No se reconoce nada en ${remote ? `el repositorio «${remote.name}»` : where}: ni documentación, manifiestos, contenedores, infraestructura o contratos de API, ni código fuente. ` +
+        `${remote ? '¿Es el repositorio que querías?' : '¿Es la carpeta de un repositorio?'}`,
       2,
     );
   }
@@ -529,6 +546,7 @@ export function scanRepo(folder: string, options: ScanOptions = {}): RepoDigest 
 
   return {
     name,
+    ...(remote ? { remote: true as const } : {}),
     text,
     bytes: Buffer.byteLength(text),
     budget,

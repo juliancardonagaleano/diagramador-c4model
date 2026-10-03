@@ -468,3 +468,74 @@ describe('scanRepo: el repositorio de ejemplo', () => {
     expect(d.redactions).toBe(0);
   });
 });
+
+describe('scanRepo: nombres con caracteres de control (un repositorio ajeno no ensucia la terminal)', () => {
+  it('se omiten con su motivo y sin mostrar los controles; ni el resumen ni la lista llevan una secuencia de escape', () => {
+    const d = scanRepo(repo({ 'README.md': '# Hola\n', 'package.json': '{"name":"x"}', [`mala\u001b[2Jruta.md`]: 'texto\n', 'src/dos\nlineas.ts': 'x\n', 'carpeta\u001b[31m/a.ts': 'x\n', 'bidi‮gnp.ts': 'x\n' }));
+    expect(paths(d)).toEqual(['README.md', 'package.json']);
+    expect(d.omittedCounts.ilegible).toBe(4);
+    const shown = JSON.stringify([d.text, d.omitted, formatReport(d)]);
+    expect(shown).not.toMatch(/\u001b|\\u001b/);
+    expect(shown).not.toContain('‮');
+    expect(d.omitted.filter((o) => o.reason === 'ilegible').every((o) => o.detail === 'nombre con caracteres de control')).toBe(true);
+    expect(d.omitted.map((o) => o.path)).toContain('mala�[2Jruta.md');
+    expect(d.text).not.toContain('lineas.ts');
+  });
+});
+
+describe('scanRepo: un clon temporal de un repositorio remoto (opción remote)', () => {
+  it('usa el nombre del repositorio en el resumen y marca el digest como remoto; la ruta temporal no aparece', () => {
+    const dir = repo({ 'README.md': '# Tienda\nUsa Postgres.\n', 'package.json': '{"name":"tienda"}' });
+    const d = scanRepo(dir, { remote: { name: 'tienda' } });
+    expect(d.name).toBe('tienda');
+    expect(d.remote).toBe(true);
+    expect(d.text.startsWith('Repositorio: tienda\n')).toBe(true);
+    expect(d.text).not.toContain(dir);
+    expect(formatSummary(d)).toMatch(/^Repositorio «tienda»: /);
+    // Una carpeta normal no queda marcada.
+    expect(scanRepo(dir).remote).toBeUndefined();
+  });
+
+  it('no interpreta los .gitignore (son texto de un tercero y un clon solo trae lo versionado): lo «ignorado» entra', () => {
+    const files = { 'README.md': '# T\n', 'package.json': '{"name":"x"}', '.gitignore': 'README.md\nsrc/\n', 'src/a.ts': 'x\n' };
+    const local = scanRepo(repo(files));
+    expect(paths(local)).not.toContain('README.md');
+    expect(omittedPaths(local, 'ignorado')).toContain('README.md');
+    const remote = scanRepo(repo(files), { remote: { name: 'x' } });
+    expect(paths(remote)).toContain('README.md');
+    expect(omittedPaths(remote, 'ignorado')).toEqual([]);
+    expect(remote.filesSeen).toBe(4); // también el contenido de la carpeta src/, que .gitignore «ignoraba»
+    expect(local.filesSeen).toBe(2);
+  });
+
+  it('un .gitignore hostil (retroceso exponencial en un patrón) no cuelga la lectura de un clon', () => {
+    const name = `${'a'.repeat(100)}.ts`;
+    const dir = repo({ 'README.md': '# T\n', '.gitignore': `${'*a'.repeat(30)}b\n`, [`src/${name}`]: 'x\n' });
+    const started = Date.now();
+    const d = scanRepo(dir, { remote: { name: 'hostil' } });
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(d.filesSeen).toBe(3); // README, .gitignore y el archivo de nombre largo: ninguno «ignorado»
+    expect(d.omittedCounts.ignorado).toBeUndefined();
+  });
+
+  it('los errores hablan del repositorio y no de la ruta del directorio temporal', () => {
+    const vacio = repo({ '.gitkeep-no-es-texto.png': Buffer.from([1, 2, 3]) });
+    let message = '';
+    try {
+      scanRepo(vacio, { remote: { name: 'vacio' } });
+    } catch (error) {
+      message = (error as CliError).message;
+    }
+    expect(message).toMatch(/^El repositorio «vacio» no contiene archivos de texto que leer/);
+    expect(message).not.toContain(vacio);
+
+    const sinNada = repo({ 'notas.txt': 'comprar leche\n' });
+    expect(() => scanRepo(sinNada, { remote: { name: 'notas' } })).toThrow(/No se reconoce nada en el repositorio «notas»: .*¿Es el repositorio que querías\?/);
+    try {
+      scanRepo(sinNada, { remote: { name: 'notas' } });
+    } catch (error) {
+      expect((error as CliError).message).not.toContain(sinNada);
+    }
+    expect(() => scanRepo(join(sinNada, 'no-existe'), { remote: { name: 'x' } })).toThrow('El repositorio «x» no existe.');
+  });
+});
