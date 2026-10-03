@@ -6,7 +6,7 @@ import { DrawioImportError, fromDrawio } from '@core/import/drawio/fromDrawio';
 import { DslImportError, fromStructurizrDsl } from '@core/import/structurizr/fromStructurizrDsl';
 import { fromMermaid, MermaidImportError } from '@core/import/mermaid/fromMermaid';
 import { toMermaid, type MermaidFormat } from '@core/export/mermaid/toMermaid';
-import type { C4Document } from '@core/model/types';
+import type { C4Document, C4View } from '@core/model/types';
 import { validateDocument, formatIssues } from '@core/model/schema';
 import type { LayoutDirectionOption, LayoutDistribution } from '@core/model/types';
 import { pauseHistory, useDocumentStore } from '../store/documentStore';
@@ -16,6 +16,33 @@ import { downloadText, extractJson, pickTextFile, safeFilename } from '../utils/
 interface ImportResult {
   document: C4Document;
   warnings: string[];
+}
+
+/**
+ * Guarda en el documento ACTUAL del store las vistas que el autolayout de la exportación acaba de colocar (`before` es el
+ * documento del que partió y `laid` el resultado). Tras el `await` de ELK el store puede haber cambiado (una edición del
+ * usuario, otro documento cargado): escribir `laid` entero lo revertiría en silencio, y como la exportación no marca
+ * `modified` el usuario no se enteraría. Por eso solo se aplica cada vista que la exportación cambió, y solo si en el
+ * documento actual sigue tal cual estaba antes; una que el usuario tocó mientras tanto no se pisa (se coloca al abrirla).
+ * Va con el historial en pausa: no es un paso de deshacer.
+ */
+function savePlacedViews(before: C4Document, laid: C4Document): void {
+  const { doc: current } = useDocumentStore.getState();
+  const placed = new Map<string, C4View>();
+  for (const view of laid.views) {
+    const was = before.views.find((v) => v.id === view.id);
+    const now = current.views.find((v) => v.id === view.id);
+    if (!was || !now) continue;
+    const wasJson = JSON.stringify(was);
+    if (JSON.stringify(view) !== wasJson && JSON.stringify(now) === wasJson) placed.set(view.id, view);
+  }
+  if (placed.size === 0) return;
+  const resumeHistory = pauseHistory();
+  try {
+    useDocumentStore.setState({ doc: { ...current, views: current.views.map((v) => placed.get(v.id) ?? v) } });
+  } finally {
+    resumeHistory();
+  }
 }
 
 /** Acciones de alto nivel compartidas por menús, toolbar y atajos. */
@@ -34,16 +61,9 @@ export function useActions() {
         const laid = await autoLayoutDocument(doc, { density: ui.density });
         // Las vistas que aún no tenían posiciones (nunca abiertas) quedan colocadas en el documento. Se
         // aplica en silencio: exportar no es una edición, así que no marca "Cambios sin guardar", no
-        // deselecciona y no añade un paso al historial de deshacer (antes lo hacía siempre, porque
-        // autoLayoutDocument devuelve un objeto nuevo aunque no cambie nada).
-        if (JSON.stringify(laid) !== JSON.stringify(doc)) {
-          const resumeHistory = pauseHistory();
-          try {
-            store.setState({ doc: laid });
-          } finally {
-            resumeHistory();
-          }
-        }
+        // deselecciona y no añade un paso al historial de deshacer. Se guarda sobre el documento ACTUAL, no
+        // sobre el de antes del `await` (el usuario pudo editar mientras ELK trabajaba).
+        savePlacedViews(doc, laid);
         const xml = toDrawio(laid, { notation: chosen });
         downloadText(safeFilename(`${doc.workspace.name}${chosen === 'card' ? '-tarjetas' : ''}`, 'drawio'), xml, 'application/xml');
         Toast.success(`Archivo .drawio exportado (${chosen === 'card' ? 'tarjetas' : 'notación C4'})`);
