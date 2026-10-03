@@ -34,7 +34,7 @@ async function importText(page: Page, text: string): Promise<void> {
   await canvasReady(page);
 }
 
-/** Abre un archivo con «Abrir archivo a importar…» (el formato se deduce de la extensión) y lo importa. Es la vía para los manifests grandes: `fill` teclea el texto y es cuadrático con cientos de KB. */
+/** Abre un archivo con «Abrir archivo a importar…» (el formato se deduce de la extensión) y lo importa. Es la vía natural para un archivo grande (pegarlo también va bien: ver `importar-pegado-grande.spec.ts`). */
 async function importFile(page: Page, path: string): Promise<void> {
   await page.getByRole('tab', { name: 'Importar' }).click();
   await page.locator('input[type="file"]').last().setInputFiles(`${FIXTURES}${path}`);
