@@ -36,6 +36,15 @@ export interface DraftStorage {
   write(moduleId: string, text: string): void;
 }
 
+/** Lo que dejó la última importación (cualquier ruta: pestaña «Importar», «Abrir archivo…»…): el panel lo muestra hasta que cambie el documento. */
+export interface ImportNotice {
+  /** Id del importador que se usó (`terraform`, `mermaid`…). */
+  importer: string;
+  /** Nombre del archivo del que se importó, si lo hubo. */
+  file?: string;
+  warnings: string[];
+}
+
 export interface WorkbenchState {
   moduleId?: string;
   module?: AnyModule;
@@ -53,6 +62,8 @@ export interface WorkbenchState {
   /** Mensaje del anfitrión (acción `status`) o de la propia interfaz. */
   status?: string;
   error?: string;
+  /** Avisos de la última importación; se limpia al editar el documento o al cargar/importar otra cosa. */
+  lastImport?: ImportNotice;
 }
 
 export interface SuiteCapabilities {
@@ -168,8 +179,11 @@ export class WorkbenchController {
     }
   }
 
-  /** Aplica `text` como contenido del módulo `module` y recalcula todo lo derivado. */
-  private apply(module: AnyModule, text: string, patch: { modified: boolean; viewId?: string; readOnly?: boolean }): void {
+  /**
+   * Aplica `text` como contenido del módulo `module` y recalcula todo lo derivado. Cualquier cambio de contenido descarta los
+   * avisos de la importación anterior, salvo que sea justamente el resultado de una importación (`imported`).
+   */
+  private apply(module: AnyModule, text: string, patch: { modified: boolean; viewId?: string; readOnly?: boolean; imported?: ImportNotice }): void {
     const analysis = analyzeText(module, text);
     const choices = analysis.status === 'ok' ? viewChoices(module, analysis.document) : EMPTY_CHOICES;
     const previous = this.state.moduleId === module.id ? this.state.viewId : undefined;
@@ -187,6 +201,7 @@ export class WorkbenchController {
       modified: patch.modified,
       readOnly: patch.readOnly ?? this.state.readOnly,
       error: undefined,
+      lastImport: patch.imported,
       ...(moduleChanged ? { svg: undefined, renderError: undefined } : {}),
     });
     this.scheduleRender(0);
@@ -221,11 +236,14 @@ export class WorkbenchController {
     return first.id;
   }
 
-  /** Sustituye el documento por el resultado de una importación o conversión (cuenta como cambio de la persona). */
-  useDocumentText(text: string): void {
+  /**
+   * Sustituye el documento por el resultado de una importación o conversión (cuenta como cambio de la persona). Con `imported`
+   * deja los avisos de la importación en el estado, para que se vean desde el panel «Importar» sea cual sea la vía.
+   */
+  useDocumentText(text: string, imported?: ImportNotice): void {
     const { module } = this.state;
     if (!module) return;
-    this.apply(module, text, { modified: true });
+    this.apply(module, text, { modified: true, imported });
     this.options.storage?.write(module.id, text);
   }
 
@@ -322,7 +340,7 @@ export class WorkbenchController {
     const { module } = this.state;
     if (!module) throw new Error('No hay ningún módulo activo.');
     const result = await importText(module, text, importerId, { name: context.name, file: context.file, fallbackName: context.file?.replace(/\.[^.]+$/, '') });
-    this.useDocumentText(pretty(result.document));
+    this.useDocumentText(pretty(result.document), { importer: result.importer, file: context.file, warnings: result.warnings });
     return result;
   }
 
