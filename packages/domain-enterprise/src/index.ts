@@ -7,7 +7,7 @@ export { toMermaid } from './export/mermaid';
 export { toSvg, layoutView, layoutCapabilityMap, layoutValueStreams, layoutMatrix, matrixScene, KIND_COLORS } from './export/render';
 export { buildMatrix, capabilityRows, cellKey, MATRIX_OVERLAP_MIN, ROW_STATUS_LABELS, type Matrix, type MatrixCell, type MatrixColumn, type MatrixRow, type MatrixSummary, type RowStatus, type SupportKind } from './matrix';
 export { toDrawio } from './export/drawio';
-export { fromMermaid, EnterpriseImportError, type EnterpriseImportOptions, type EnterpriseImportResult } from './import/fromMermaid';
+export { fromMermaid, looksLikeMatrixBlock, EnterpriseImportError, type EnterpriseImportOptions, type EnterpriseImportResult } from './import/fromMermaid';
 export { fromIntegrationJson } from './import/fromIntegration';
 export { fromArchimate, looksLikeArchimate, type ArchimateImportOptions } from './import/fromArchimate';
 export { enterpriseAiSpec, generatedEnterpriseSchema, type GeneratedEnterprise } from './ai/generation';
