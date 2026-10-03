@@ -374,6 +374,27 @@ test.describe('proyectos en la nube (servidor propio)', () => {
     await expect.poll(() => JSON.parse(onDisk(server, projectId)[0].text).workspace.name).toBe('Escrito sin red');
   });
 
+  test('al cerrar la pestaña con cambios sin guardar el navegador avisa (beforeunload) y lo escrito llega al servidor (pagehide + keepalive)', async ({ page, server }) => {
+    const { projectId, diagramId } = await seed(server);
+    await preconnect(page.context(), server);
+    await open(page, `project=${projectId}&diagram=${diagramId}`);
+    await expect(saveStatus(page)).toHaveText('Guardado en «Tienda» · servidor', { timeout: 20000 });
+    await showEditor(page);
+    const doc = JSON.parse(await editor(page).inputValue());
+    doc.workspace.name = 'Escrito justo antes de cerrar';
+    await editor(page).fill(JSON.stringify(doc, null, 2));
+    await expect(saveStatus(page)).toHaveAttribute('data-save', 'pending'); // aún dentro de la pausa del autoguardado
+
+    const dialogs: string[] = [];
+    page.on('dialog', (d) => {
+      dialogs.push(d.type());
+      void d.accept();
+    });
+    await page.goto('about:blank');
+    expect(dialogs).toEqual(['beforeunload']);
+    await expect.poll(() => JSON.parse(onDisk(server, projectId)[0].text).workspace.name, { timeout: 10000 }).toBe('Escrito justo antes de cerrar');
+  });
+
   test('editor C4: guardar en el servidor, el chip lo indica y se recupera tras recargar', async ({ page, server }) => {
     await preconnect(page.context(), server);
     await openEditor(page);

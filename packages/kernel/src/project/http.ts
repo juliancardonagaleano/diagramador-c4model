@@ -19,7 +19,15 @@ export interface HttpProjectStoreOptions {
   fetch?: typeof fetch;
   /** Tiempo máximo de cada petición. Por defecto, 20 s. */
   timeoutMs?: number;
+  /**
+   * Las peticiones que escriben (hasta 60 KB, el máximo que admite `keepalive`) siguen su curso aunque la página se cierre o se
+   * recargue: sin esto, un guardado lanzado al ocultar la pestaña se cancela con ella. En el navegador conviene activarlo.
+   */
+  keepalive?: boolean;
 }
+
+/** Un navegador solo deja `keepalive` en peticiones de hasta 64 KB (entre todas las que estén en curso): se queda margen. */
+const KEEPALIVE_MAX_BYTES = 60_000;
 
 /** Quién es el token ante el servidor (`GET /api/whoami`); sin autenticación en el servidor, `auth` es `false`. */
 export interface RemoteSession {
@@ -76,12 +84,14 @@ export class HttpProjectStore implements ProjectStore {
   private token: string | undefined;
   private readonly doFetch: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly keepalive: boolean;
 
   constructor(options: HttpProjectStoreOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
     this.token = options.token?.trim() || undefined;
     this.doFetch = options.fetch ?? ((...args) => fetch(...args));
     this.timeoutMs = options.timeoutMs ?? 20_000;
+    this.keepalive = options.keepalive === true;
   }
 
   /** Cambia el token de las peticiones siguientes (para reconectar sin recargar la página ni perder lo pendiente). */
@@ -164,11 +174,14 @@ export class HttpProjectStore implements ProjectStore {
     if (method !== 'GET') headers['Content-Type'] = 'application/json';
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     let response: Response;
+    const payloadText = body === undefined ? undefined : JSON.stringify(body);
     try {
       response = await this.doFetch(`${this.baseUrl}${path}`, {
         method,
         headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: payloadText,
+        // Al cerrar la pestaña, un guardado en curso no debe cancelarse con ella (solo escrituras pequeñas: límite del navegador).
+        ...(this.keepalive && method !== 'GET' && new TextEncoder().encode(payloadText ?? '').length <= KEEPALIVE_MAX_BYTES ? { keepalive: true } : {}),
         signal: AbortSignal.timeout(this.timeoutMs),
         // Nada de cookies ni credenciales del navegador (el token es la única credencial) y nada de respuestas guardadas en caché.
         credentials: 'omit',

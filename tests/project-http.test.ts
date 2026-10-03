@@ -79,6 +79,27 @@ describe('HttpProjectStore contra iark serve', () => {
     expect(down).toMatchObject({ code: 'unavailable', message: expect.stringContaining('No se pudo conectar'), info: { network: true } });
   });
 
+  it('con keepalive, las escrituras pequeñas siguen aunque se cierre la página; lecturas y escrituras grandes no lo piden', async () => {
+    const seen: Array<{ method: string; keepalive: boolean | undefined }> = [];
+    const spy = (async (_url: unknown, init: RequestInit) => {
+      seen.push({ method: init.method ?? 'GET', keepalive: init.keepalive });
+      return new Response('{"id":"d1","module":"c4","name":"A","createdAt":"x","updatedAt":"y"}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }) as unknown as typeof fetch;
+    const store = new HttpProjectStore({ baseUrl: 'http://x.example', fetch: spy, keepalive: true });
+    await store.getProject('p1');
+    await store.saveDiagram('p1', { id: 'd1', text: '{"pequeño":true}' });
+    await store.saveDiagram('p1', { id: 'd1', text: 'x'.repeat(70_000) });
+    expect(seen).toEqual([
+      { method: 'GET', keepalive: undefined },
+      { method: 'PUT', keepalive: true },
+      { method: 'PUT', keepalive: undefined },
+    ]);
+    // sin la opción, nunca
+    seen.length = 0;
+    await new HttpProjectStore({ baseUrl: 'http://x.example', fetch: spy }).saveDiagram('p1', { id: 'd1', text: '{}' });
+    expect(seen).toEqual([{ method: 'PUT', keepalive: undefined }]);
+  });
+
   it('el detalle del error dice si hubo respuesta (estado HTTP) o no (red), y el token se puede cambiar sin crear otro cliente', async () => {
     let seen: string | null = null;
     const needsToken = (async (_url: unknown, init: RequestInit) => {

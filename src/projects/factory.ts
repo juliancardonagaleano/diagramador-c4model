@@ -24,7 +24,8 @@ const REMOTE_DEBOUNCE_MS = 800;
 export function createProjectSession(options: CreateSessionOptions = {}): ProjectSession {
   const config = options.config ?? loadBackend();
   if (config.kind === 'remote') {
-    const store = new HttpProjectStore({ baseUrl: config.url, token: config.token, fetch: options.fetch });
+    // `keepalive`: un guardado lanzado al cerrar o recargar la pestaña (pagehide) no se cancela con ella
+    const store = new HttpProjectStore({ baseUrl: config.url, token: config.token, fetch: options.fetch, keepalive: true });
     return new ProjectSession(store, {
       // el último abierto y el canal entre pestañas son de ese servidor; un servidor no necesita pedir almacenamiento persistente
       pointer: pointerAt(pointerKey({ ...config, url: store.baseUrl })),
