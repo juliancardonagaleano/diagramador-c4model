@@ -17,13 +17,13 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
     unobserve() {}
     disconnect() {}
   }
-  // @ts-expect-error polyfill mínimo, solo para pruebas
+  // Polyfill mínimo, solo para pruebas.
   window.ResizeObserver = NoopResizeObserver;
 }
 
 if (typeof HTMLCanvasElement !== 'undefined') {
-  // @ts-expect-error contexto simplificado, solo para que no lance en pruebas
-  HTMLCanvasElement.prototype.getContext = () => ({
+  // Contexto simplificado, solo para que no lance en pruebas (por eso el molde: no es un CanvasRenderingContext2D completo).
+  HTMLCanvasElement.prototype.getContext = (() => ({
     fillRect: () => {},
     clearRect: () => {},
     drawImage: () => {},
@@ -40,5 +40,5 @@ if (typeof HTMLCanvasElement !== 'undefined') {
     lineTo: () => {},
     fill: () => {},
     stroke: () => {},
-  });
+  })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
 }

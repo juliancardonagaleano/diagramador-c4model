@@ -153,7 +153,8 @@ describe('DDL de PostgreSQL (volcado de la tienda)', () => {
     expect(toMermaid(doc, { viewId: 'lineage' })).toContain('Vista ventas_por_cliente [elt]');
     expect(await toSvg(doc, 'erd')).toContain('<svg');
     expect(await toSvg(doc, 'lineage')).toContain('<svg');
-    expect(() => new XMLParser({ ignoreAttributes: false }).parse(toDrawio(doc))).not.toThrow();
+    const drawio = await toDrawio(doc);
+    expect(() => new XMLParser({ ignoreAttributes: false }).parse(drawio)).not.toThrow();
     // El ERD exportado se vuelve a leer con el importador de Mermaid: las tablas y las relaciones sobreviven.
     const back = fromMermaid(toMermaid(doc, { viewId: 'erd' })).document;
     expect(back.relations).toHaveLength(8);

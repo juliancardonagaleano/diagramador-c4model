@@ -219,7 +219,7 @@ describe.skipIf(!GIT_AVAILABLE)('withClonedRepo: clon real de un repositorio bar
   let tmpRoot: string;
   let env: NodeJS.ProcessEnv;
   const hookCanary = () => join(tmpRoot, 'hook-canary');
-  const FILES = [
+  const FILES: Array<Record<string, string>> = [
     { 'README.md': '# Tienda\nUsa PostgreSQL.\n', 'docker-compose.yml': 'services:\n  api:\n    build: .\n', 'package.json': '{"name":"tienda"}\n' },
     { 'services/api/package.json': '{"name":"api"}\n', 'NOTAS.md': 'segunda\n' },
   ];
@@ -342,7 +342,7 @@ describe.skipIf(!GIT_AVAILABLE)('withClonedRepo: clon real de un repositorio bar
   });
 
   it('repositorio inexistente: error claro (código 2) y nada se queda en el disco', async () => {
-    const error = await clone(`file://${tmpRoot}/no-existe.git`, () => undefined).catch((e) => e as CliError);
+    const error = (await clone(`file://${tmpRoot}/no-existe.git`, () => undefined).catch((e) => e as CliError))!;
     expect(error).toBeInstanceOf(CliError);
     expect(error.exitCode).toBe(2);
     expect(error.message).toMatch(/no existe o no tienes acceso|git no pudo clonar/);
@@ -351,14 +351,14 @@ describe.skipIf(!GIT_AVAILABLE)('withClonedRepo: clon real de un repositorio bar
   });
 
   it('rama inexistente: error claro y nada se queda en el disco', async () => {
-    const error = await clone(bare.url, () => undefined, { ref: 'no-existe' }).catch((e) => e as CliError);
+    const error = (await clone(bare.url, () => undefined, { ref: 'no-existe' }).catch((e) => e as CliError))!;
     expect(error).toBeInstanceOf(CliError);
     expect(error.message).toBe(`La rama o etiqueta «no-existe» no existe en «${bare.url}».`);
     expect(leftoverClones(tmpRoot)).toEqual([]);
   });
 
   it('un protocolo no permitido se rechaza (el parámetro de pruebas es lo único que abre `file`)', async () => {
-    const error = await withClonedRepo({ url: bare.url, display: bare.url }, () => undefined, { tmpRoot, env }).catch((e) => e as CliError);
+    const error = (await withClonedRepo({ url: bare.url, display: bare.url }, () => undefined, { tmpRoot, env }).catch((e) => e as CliError))!;
     expect(error).toBeInstanceOf(CliError);
     expect(error.message).toMatch(/^git no pudo clonar/);
     expect(error.message).toMatch(/transport 'file' not allowed/);
@@ -366,7 +366,7 @@ describe.skipIf(!GIT_AVAILABLE)('withClonedRepo: clon real de un repositorio bar
   });
 
   it('git no instalado: mensaje claro y nada se queda en el disco', async () => {
-    const error = await clone(bare.url, () => undefined, { gitPath: join(tmpRoot, 'no-hay-git') }).catch((e) => e as CliError);
+    const error = (await clone(bare.url, () => undefined, { gitPath: join(tmpRoot, 'no-hay-git') }).catch((e) => e as CliError))!;
     expect(error.message).toMatch(/No se encontró git/);
     expect(leftoverClones(tmpRoot)).toEqual([]);
   });
@@ -376,7 +376,7 @@ describe.skipIf(!GIT_AVAILABLE)('withClonedRepo: clon real de un repositorio bar
     writeFileSync(slow, `#!/bin/sh\nsleep 30 &\necho $$ > "${tmpRoot}/lento.pid"\nsleep 30\n`);
     chmodSync(slow, 0o755);
     const started = Date.now();
-    const error = await clone(bare.url, () => undefined, { gitPath: slow, timeoutMs: 400 }).catch((e) => e as CliError);
+    const error = (await clone(bare.url, () => undefined, { gitPath: slow, timeoutMs: 400 }).catch((e) => e as CliError))!;
     expect(Date.now() - started).toBeLessThan(10_000);
     expect(error).toBeInstanceOf(CliError);
     expect(error.exitCode).toBe(2);
