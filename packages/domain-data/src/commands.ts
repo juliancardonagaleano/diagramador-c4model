@@ -186,7 +186,11 @@ export const dataCommands: CommandSpec[] = [
     input: { description: 'documento de datos en JSON' },
     options: [
       { flags: '--engine <motor>', description: `fuerza el motor de todas las tablas (por defecto, el de cada una; ${DEFAULT_ENGINE} si no lo declara). Ver «iark data engines»` },
-      { flags: '--asset <activo>', description: 'solo esta tabla o las de esta base, almacén, lago o fuente' },
+      {
+        flags: '--asset <activo>',
+        description:
+          'solo esta tabla o las de esta base, almacén, lago o fuente; con un producto de datos, las de los activos de sus puertos de entrada y de salida; con una API de datos, las de los activos que expone; con un glosario, las de los activos con términos enlazados (el producto o la API que aparezca entre ellos se sustituye por lo que enlaza)',
+      },
       { flags: '--contract <contrato>', description: 'genera el esquema del contrato de datos (su servers[].type fija el motor) en lugar del de las columnas de los activos' },
       { flags: '--schema <nombre>', description: 'esquema (o keyspace, o conjunto de datos) que califica el nombre de las tablas' },
       { flags: '--format <formato>', description: 'script (por defecto) o json (solo el validador de MongoDB)', default: 'script' },

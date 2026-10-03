@@ -1,7 +1,7 @@
 import { contractEngine, contractTables } from './contract';
 import { canonicalType, keyTypeAdvice, listEngines, parseType, resolveEngine, typeFor, unkeyableType, type EngineDef } from './engines';
 import { inheritance } from './inherit';
-import type { DataAsset, DataDocument } from './types';
+import { isCatalogKind, type DataAsset, type DataDocument } from './types';
 
 /**
  * Esquema físico de las tablas del modelo en el dialecto de su motor de base de datos: `CREATE TABLE` para los motores SQL y
@@ -32,7 +32,11 @@ export interface DdlTable {
 export interface DdlOptions {
   /** Fuerza el motor de todas las tablas (por defecto, el de cada una). */
   engine?: string;
-  /** Solo esta tabla o, si es una base, almacén, lago o fuente, las tablas que contiene. */
+  /**
+   * Solo esta tabla o, si es una base, almacén, lago o fuente, las tablas que contiene. Con un producto de datos, las de los activos de sus
+   * puertos de entrada y de salida; con una API de datos, las de los activos que expone; con un glosario, las de los activos con términos
+   * suyos enlazados (un producto o una API en esa lista se sustituye, a su vez, por lo que enlaza).
+   */
   assetId?: string;
   /** Genera el DDL desde el esquema de este contrato de datos en lugar de las columnas de los activos. */
   contractId?: string;
@@ -259,6 +263,39 @@ function forcedEngine(name: string | undefined): EngineDef | undefined {
   return engine;
 }
 
+/**
+ * Activos cuyas tablas entran en el esquema de un producto de datos, una API de datos o un glosario: los de los puertos de entrada y de
+ * salida del producto, los que expone la API y los enlazados desde los términos del glosario. Un producto o una API que aparece en esa
+ * lista (una API publicada como salida, un término enlazado a un producto) no tiene tablas propias y se sustituye por lo que él enlaza;
+ * cada uno se recorre una sola vez, así que un ciclo no cuelga. Un id que no es un activo del documento se omite.
+ */
+function catalogTargets(doc: DataDocument, root: DataAsset, byId: Map<string, DataAsset>): DataAsset[] {
+  const seen = new Set<string>();
+  const found: DataAsset[] = [];
+  const direct = (a: DataAsset): string[] => {
+    if (a.kind === 'glossary') return (doc.terms ?? []).filter((t) => t.glossaryId === a.id).flatMap((t) => (t.links ?? []).map((l) => l.assetId));
+    return a.kind === 'data-product' ? [...(a.inputPorts ?? []), ...(a.outputPorts ?? [])] : (a.exposes ?? []);
+  };
+  const visit = (a: DataAsset): void => {
+    if (seen.has(a.id)) return;
+    seen.add(a.id);
+    if (!isCatalogKind(a.kind)) return void found.push(a);
+    for (const id of direct(a)) {
+      const next = byId.get(id);
+      if (next) visit(next);
+    }
+  };
+  visit(root);
+  return found;
+}
+
+/** Qué no llega a tener tablas con columnas, según el tipo de activo que se pidió, para el aviso de un esquema vacío. */
+const EMPTY_SCOPE: Record<'data-product' | 'data-api' | 'glossary', string> = {
+  'data-product': 'ninguno de los activos de sus puertos de entrada y de salida',
+  'data-api': 'ninguno de los activos que expone',
+  glossary: 'ninguno de los activos enlazados desde sus términos',
+};
+
 function collect(doc: DataDocument, options: DdlOptions, warnings: string[]): Item[] {
   const forced = forcedEngine(options.engine);
   const fallback = resolveEngine(DEFAULT_ENGINE)!;
@@ -286,8 +323,15 @@ function collect(doc: DataDocument, options: DdlOptions, warnings: string[]): It
   if (options.assetId) {
     const root = byId.get(options.assetId);
     if (!root) throw new Error(`No existe el activo «${options.assetId}». Activos: ${doc.assets.map((a) => a.id).join(', ')}.`);
-    assets = doc.assets.filter((a) => within(a, root.id) && (a.columns?.length ?? 0) > 0);
-    if (assets.length === 0) warnings.push(`«${root.name}» no contiene tablas con columnas.`);
+    if (isCatalogKind(root.kind)) {
+      // Un producto, una API o un glosario no tienen tablas propias: las de los activos que enlazan.
+      const roots = catalogTargets(doc, root, byId);
+      assets = doc.assets.filter((a) => !isCatalogKind(a.kind) && roots.some((r) => within(a, r.id)) && (a.columns?.length ?? 0) > 0);
+      if (assets.length === 0) warnings.push(`«${root.name}» no tiene tablas con columnas: ${EMPTY_SCOPE[root.kind as keyof typeof EMPTY_SCOPE]} las tiene.`);
+    } else {
+      assets = doc.assets.filter((a) => within(a, root.id) && (a.columns?.length ?? 0) > 0);
+      if (assets.length === 0) warnings.push(`«${root.name}» no contiene tablas con columnas.`);
+    }
   } else {
     // Una tabla, y un stream si su motor es de streaming; las vistas no tienen esquema propio.
     assets = doc.assets.filter((a) => (a.columns?.length ?? 0) > 0 && (a.kind === 'table' || (a.kind === 'stream' && resolveEngine(engineOf(a.id))?.family === 'stream')));

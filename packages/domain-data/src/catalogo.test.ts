@@ -664,6 +664,81 @@ describe('catálogo: convivencia con el ERD UML, los motores y el DDL', () => {
     expect(toDdl(d, { assetId: 'db' }).text).not.toMatch(/Producto con columnas/);
   });
 
+  describe('DDL de un producto, una API o un glosario (--asset)', () => {
+    /** Nombres físicos de las tablas del script, en orden. */
+    const tables = (d: DataDocument, assetId: string): string[] => [...toDdl(d, { assetId }).text.matchAll(/^CREATE TABLE (\S+) \(/gm)].map((m) => m[1]);
+
+    it('una API de datos genera las tablas de lo que expone', () => {
+      expect(tables(doc, 'api-ventas')).toEqual(['fact_ventas']);
+    });
+
+    it('un producto de datos genera las de sus puertos de entrada y de salida; los que no son tablas no añaden nada', () => {
+      // Entrada: silver-ventas; salidas: dwh-fact-ventas, dwh-dim-cliente y api-ventas (que no tiene tablas propias: se sustituye por lo que expone).
+      expect(tables(doc, 'ventas-360')).toEqual(['plata_ventas', 'dim_cliente', 'fact_ventas']);
+      // Salida: un modelo sin columnas.
+      expect(tables(doc, 'analitica-fuga')).toEqual(['dim_cliente', 'fact_ventas']);
+      expect(toDdl(doc, { assetId: 'analitica-fuga' }).warnings).toEqual([expect.stringMatching(/^Sin motor declarado/)]);
+    });
+
+    it('un glosario genera las de los activos con términos enlazados, sean a una columna o a todo el activo', () => {
+      expect(tables(doc, 'glosario-ventas')).toEqual(['clientes', 'pedidos', 'dim_cliente', 'fact_ventas']);
+      // Solo cuentan los términos de ese glosario.
+      const otro = parse({ ...doc, assets: [...doc.assets, { id: 'g2', kind: 'glossary', name: 'Otro' }], terms: [...(doc.terms ?? []), { id: 'x', name: 'X', glossaryId: 'g2', links: [{ assetId: 'erp-lineas' }] }] });
+      expect(tables(otro, 'g2')).toEqual(['lineas_de_pedido']);
+      expect(tables(otro, 'glosario-ventas')).toEqual(['clientes', 'pedidos', 'dim_cliente', 'fact_ventas']);
+    });
+
+    it('el activo de un puerto que es un contenedor aporta todas sus tablas, cada una en el dialecto de su motor', () => {
+      const d = parse({ ...ventas, assets: [...ventas.assets, { id: 'p', kind: 'data-product', name: 'P', owner: 'x', inputPorts: ['erp'], outputPorts: ['dwh-fact-ventas'] }] });
+      expect(tables(d, 'p')).toEqual(['pedidos', 'lineas_de_pedido', 'fact_ventas']);
+      const { text } = toDdl(d, { assetId: 'p' });
+      expect(text).toMatch(/^-- PostgreSQL\n/);
+      expect(text).toContain('-- Snowflake\n');
+    });
+
+    it('los productos, las APIs y los glosarios no generan tabla propia aunque declaren columnas', () => {
+      const d = withColumns();
+      for (const id of ['p', 'a', 'g']) expect(toDdl(d, { assetId: id }).text).not.toMatch(/Producto con columnas|API con columnas|Glosario con columnas/);
+      expect(tables(d, 'p')).toEqual(['T1']);
+      expect(tables(d, 'a')).toEqual(['T1']);
+      expect(tables(d, 'g')).toEqual([]);
+    });
+
+    it('un producto y una API que se enlazan entre sí no cuelgan el recorrido', () => {
+      const d = parse({
+        ...doc,
+        assets: doc.assets.map((a) => (a.id === 'api-ventas' ? { ...a, exposes: ['dwh-fact-ventas', 'ventas-360'] } : a)),
+      });
+      expect(tables(d, 'api-ventas')).toEqual(['plata_ventas', 'dim_cliente', 'fact_ventas']);
+      expect(tables(d, 'ventas-360')).toEqual(['plata_ventas', 'dim_cliente', 'fact_ventas']);
+    });
+
+    it('sin tablas a las que llegar, avisa de qué activo no las tiene', () => {
+      const vacio = parse({ assets: [{ id: 'p', kind: 'data-product', name: 'P' }, { id: 'a', kind: 'data-api', name: 'A' }, { id: 'g', kind: 'glossary', name: 'G' }, { id: 'r', kind: 'report', name: 'R' }] , terms: [{ id: 't', name: 'T', glossaryId: 'g', links: [{ assetId: 'r' }] }] });
+      expect(toDdl(vacio, { assetId: 'p' }).warnings).toEqual(['«P» no tiene tablas con columnas: ninguno de los activos de sus puertos de entrada y de salida las tiene.']);
+      expect(toDdl(vacio, { assetId: 'a' }).warnings).toEqual(['«A» no tiene tablas con columnas: ninguno de los activos que expone las tiene.']);
+      expect(toDdl(vacio, { assetId: 'g' }).warnings).toEqual(['«G» no tiene tablas con columnas: ninguno de los activos enlazados desde sus términos las tiene.']);
+      expect(toDdl(vacio, { assetId: 'p' }).text).toBe('');
+    });
+
+    it('un contenedor y una tabla siguen filtrando como antes y un id que no existe da el error con todos los activos, los del catálogo incluidos', () => {
+      expect(tables(doc, 'erp')).toEqual(['pedidos', 'lineas_de_pedido']);
+      expect(tables(doc, 'erp-pedidos')).toEqual(['pedidos']);
+      expect(() => toDdl(doc, { assetId: 'nada' })).toThrow(/No existe el activo «nada»\. Activos: crm, .*ventas-360, analitica-fuga, api-ventas, glosario-ventas\./);
+    });
+
+    it('iark data ddl --asset lo usa y la ayuda lo documenta', () => {
+      const command = dataCommands.find((c) => c.name === 'ddl')!;
+      const out = command.run({ args: [], options: { asset: 'glosario-ventas' }, input: raw, warn: () => undefined }) as string;
+      expect(out).toContain('CREATE TABLE dim_cliente (');
+      expect(out).not.toContain('CREATE TABLE lineas_de_pedido (');
+      const help = command.options!.find((o) => o.flags.startsWith('--asset'))!.description;
+      expect(help).toContain('con un producto de datos, las de los activos de sus puertos de entrada y de salida');
+      expect(help).toContain('con una API de datos, las de los activos que expone');
+      expect(help).toContain('con un glosario, las de los activos con términos enlazados');
+    });
+  });
+
   it('un contrato de un producto o una API declara su motor como el de cualquier activo', () => {
     const d = parse({
       ...base(),
