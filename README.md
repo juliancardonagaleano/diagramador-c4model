@@ -9,7 +9,7 @@ Editor web de diagramas del **modelo C4** (Contexto, Contenedores y Componentes)
 - **Editor interactivo** con la estética de [drawdb.app](https://www.drawdb.app/): cabecera con menús, toolbar flotante, panel lateral con pestañas y cards, panel de problemas, tema claro/oscuro, deshacer/rehacer, minimapa.
 - **CLI `iark`** para generar diagramas a partir de **instrucciones en lenguaje natural** (Claude, salida estructurada), aplicar autolayout y convertir a `.drawio` sin abrir un navegador. Se puede usar sin clave de API con cualquier otra IA o agente.
 - **Modo embebido** por `<iframe>` con protocolo **postMessage** al estilo de draw.io (`embed.diagrams.net`) y un SDK de anfitrión.
-- **Suite de módulos** (integraciones, datos, empresarial, plataforma, seguridad) con **banco de trabajo web**, **widget embebible** (SDK y Web Component `<iark-module>`), **federación por manifiesto**, **servicio HTTP** (`iark serve`, con Dockerfile) y **trazabilidad entre módulos** (`iark trace`).
+- **Suite de módulos** (integraciones, datos, empresarial, plataforma, seguridad) con **banco de trabajo web**, **widget embebible** (SDK y Web Component `<iark-module>`), **federación por manifiesto**, **servicio HTTP** (`iark serve`, con Dockerfile) **trazabilidad entre módulos** (`iark trace`) y **proyectos** que agrupan diagramas de varios módulos en una carpeta de trabajo (`iark project`).
 
 ## Instalación
 
@@ -547,6 +547,77 @@ iark trace … --format mermaid   # un subgrafo por módulo; --format svg para e
 - **En la web**: `trazabilidad.html` reúne los documentos de los módulos (ejemplos, archivos o JSON pegado, sin subir nada a ningún servidor), dibuja el grafo con un recuadro por módulo, lista los enlaces por par de módulos y las referencias sin resolver, y calcula el alcance de un elemento (quién se apoya en él, de qué se apoya y a cuántos saltos). Usa el mismo código que el CLI. Se llega desde el banco de trabajo y desde el shell de la suite.
 - Los ejemplos (`examples/*.json`) ya traen una cadena real: empresarial → integración, plataforma → integración y seguridad → plataforma.
 
+## Proyectos (espacio de trabajo en carpeta)
+
+Un **proyecto** agrupa diagramas de cualquier módulo de la suite (los de seguridad, plataforma e integración de un mismo sistema, por ejemplo) para guardarlos, comprobarlos y trazarlos juntos. En el CLI y en `iark serve` los proyectos viven en una **carpeta de trabajo** corriente, pensada para ir en git:
+
+```
+iark-workspace/                          la carpeta de trabajo: --workspace <carpeta>, IARK_WORKSPACE o, por omisión, ./iark-workspace
+  tienda-web/                            un proyecto = un directorio; su nombre es el id del proyecto
+    project.json                         opcional: nombre, descripción y nombre de cada diagrama (iark.project.meta/1)
+    seguridad-ejemplo.security.json      un diagrama = el JSON de su módulo, tal cual: <id>.<módulo>.json
+    plataforma-ejemplo.platform.json     (el mismo documento que entiende `iark validate --module platform`)
+    pedidos-integracion.integration.json
+```
+
+- **La carpeta es la fuente de verdad.** Un directorio sin `project.json` ya es un proyecto (se llama como el directorio) y un `x.<módulo>.json` copiado a mano ya es un diagrama (se llama `x` y su fecha de creación es la de modificación del archivo), aunque no figure en el sidecar. Lo que no encaja se ignora sin fallar: otros archivos, directorios ocultos (`.git`), `node_modules`, ids o módulos inválidos, un `*.iark-project.json` y todo lo que no sea un archivo o directorio normal. Si dos archivos tienen el mismo id con distinto módulo (`x.c4.json` y `x.data.json`) se usa el primero por orden alfabético.
+- **Ids.** El id de un proyecto o de un diagrama es un solo segmento de ruta (letras ASCII, dígitos, `_`, `-` y `.`, sin empezar ni acabar en punto, sin `..` y sin nombres reservados de Windows como `con` o `nul`). Al crear, sale del nombre sin tildes ni símbolos (`Gestión de pedidos` → `gestion-de-pedidos`) y se numera si ya está tomado (`gestion-de-pedidos-2`). **Renombrar solo cambia el nombre del sidecar**: el directorio y el archivo no se mueven, así que las rutas que otros hayan escrito en scripts siguen valiendo. No puede haber dos proyectos con el mismo nombre ni dos diagramas con el mismo nombre en un proyecto (sin distinguir mayúsculas).
+- **Seguridad del disco.** Ningún id que llegue de fuera (línea de comandos o HTTP) puede salir de la carpeta de trabajo: se valida antes de tocar el disco y se comprueba que el destino queda dentro. **No se siguen enlaces simbólicos** (los de directorios y archivos se ignoran, aunque apunten dentro de la carpeta), y borrar un proyecto quita los enlaces que contenga, no lo que hay al otro lado.
+- **Escrituras atómicas y concurrencia.** Cada guardado va a un temporal del mismo directorio y se publica con `rename` (nadie lee un archivo a medias); los diagramas nuevos se publican sin pisar uno existente, así que dos procesos (el CLI y `iark serve`) pueden trabajar en la misma carpeta. La fecha `updatedAt` de un diagrama es la de modificación de su archivo, con milisegundos, y crece siempre al guardar. Con `ifUpdatedAt` (API HTTP) un guardado falla con `conflict` si otro cambió el diagrama en medio.
+
+```bash
+iark project create "Tienda web" --description "Pedidos y pagos"
+iark project add "Tienda web" examples/seguridad-ejemplo.json      # el módulo se deduce; también --module security, --name "Amenazas"
+iark project add tienda-web examples/plataforma-ejemplo.json
+iark project add tienda-web examples/pedidos-integracion.json
+iark project list                                                  # proyectos y diagramas (módulo, nombre, fecha); --json para otras herramientas
+iark project show tienda-web
+iark project check tienda-web                                      # cada diagrama (esquema y reglas de su módulo) y las referencias URN entre ellos
+iark project trace tienda-web --from integration:pedidos --direction referrers   # como `iark trace`, con los diagramas del proyecto
+iark project export tienda-web -o tienda.iark-project.json         # el proyecto entero en un solo archivo (iark.project/1)
+iark project import tienda.iark-project.json -w otra-carpeta       # lo crea en otro espacio de trabajo (nunca pisa uno existente)
+iark project copy tienda-web seguridad-ejemplo --to otro-proyecto
+iark project get tienda-web seguridad-ejemplo -o amenazas.json
+iark project delete tienda-web --yes                               # borra el directorio entero; sin --yes no hace nada
+```
+
+Todos los subcomandos aceptan `-w, --workspace <carpeta>`; los proyectos y los diagramas se indican por id o por nombre.
+
+| Subcomando | Qué hace |
+|---|---|
+| `list [--json]` · `show <proyecto> [--json]` | Proyectos y diagramas (módulo, nombre, fecha) |
+| `create <nombre> [--description]` · `rename <proyecto> <nuevo-nombre>` · `delete <proyecto> --yes` | Ciclo de vida del proyecto (`delete` borra su directorio entero; no pide confirmación interactiva) |
+| `add <proyecto> <archivo\|-> [--module] [--name] [--force] [--update]` | Añade un diagrama. Sin `--module` el módulo sale del nombre `x.<módulo>.json` o del único módulo cuyo esquema acepta el documento **sin descartar ninguno de sus campos** (si ninguno o varios, error de uso con la lista). Con `--module` un documento que no cumple el esquema se rechaza con la lista de errores, salvo `--force` (se guarda como borrador). Un nombre repetido da `exists`; con `--update` reemplaza el diagrama del mismo módulo conservando su id y su nombre |
+| `get <proyecto> <diagrama> [-o]` · `rename-diagram` · `remove <proyecto> <diagrama> --yes` · `copy <proyecto> <diagrama> [--to] [--name]` | Operaciones sobre un diagrama |
+| `export <proyecto> [-o]` · `import <archivo\|-> [--name]` | Archivo único del proyecto (`-o` puede ser una carpeta: se llama `<proyecto>.iark-project.json`) |
+| `check <proyecto> [--strict] [--json]` | Una línea por diagrama y las referencias rotas, ambiguas y sin resolver. Código 3 si hay diagramas inválidos, errores de las reglas de un módulo o referencias rotas o ambiguas; `--strict` también con avisos de los módulos o referencias sin resolver (a un módulo sin diagrama en el proyecto) |
+| `trace <proyecto> [--from] [--direction] [--depth] [--format markdown\|mermaid\|svg\|json] [-o]` | La trazabilidad de `iark trace` con los diagramas del proyecto. Una URN (`urn:iark:<módulo>:<id>`) se resuelve en todo el proyecto, y si dos diagramas del mismo módulo definen el mismo id, se marca como ambigua. Un diagrama que no se puede leer se deja fuera con un aviso |
+
+Los errores de uso (proyecto o diagrama que no existe, nombre repetido, documento inválido, falta `--yes`) salen con código 2 y un mensaje de una línea; las comprobaciones fallidas, con 3; un disco o una carpeta inaccesibles, con 1.
+
+### API HTTP de proyectos
+
+`iark serve --workspace <carpeta>` (o `IARK_WORKSPACE`) añade la API de proyectos sobre la misma carpeta; sin ella esas rutas responden 404 «Este servicio no tiene espacio de trabajo (use --workspace <carpeta>)». El manifiesto de la instancia anuncia entonces `"projects": "../api/projects"`. Todo es JSON salvo el archivo único del proyecto; los ids son los de la carpeta (`tienda-web`, `seguridad-ejemplo`).
+
+| Ruta | Descripción |
+|---|---|
+| `GET /api/projects` · `POST /api/projects` | Lista (con diagramas, sin documentos) · crea `{ name, description? }` (201) |
+| `GET\|PATCH\|DELETE /api/projects/<p>` | Resumen · renombra `{ name }` · borra |
+| `POST /api/projects/<p>/diagrams` | Crea `{ module, name?, text }` (201) |
+| `GET\|PUT\|PATCH\|DELETE /api/projects/<p>/diagrams/<d>` | `{ ...meta, text }` · guarda `{ text, ifUpdatedAt? }` (el diagrama debe existir) · renombra `{ name }` · borra |
+| `GET /api/projects/<p>/bundle` | El archivo único (`Content-Disposition` con `<proyecto>.iark-project.json`) |
+| `POST /api/projects/import[?name=]` | Cuerpo: ese archivo → crea un proyecto nuevo (201) |
+| `GET /api/projects/<p>/check` | La comprobación del proyecto (`checkProject`) |
+
+Códigos: `not-found` 404, `exists` 409, `conflict` 409, `invalid` 400, `unavailable` 500; el cuerpo es `{ "error": "…", "code": "…" }`. Un cuerpo que pasa de `maxBodyBytes` (5 MB) da 413.
+
+**Seguridad.** `iark serve` escucha en localhost y una página ajena abierta en el navegador podría intentar leer o escribir en el disco del usuario a través de él. En las rutas de proyectos (y solo en ellas):
+
+- POST, PUT, PATCH y DELETE exigen `Content-Type: application/json` (415 si no): un formulario o un `fetch` `no-cors` no pueden enviarlo. Se admiten parámetros (`; charset=utf-8`); DELETE también lo exige, con el cuerpo vacío.
+- Una petición con cabecera `Origin` se rechaza con 403 salvo que su host (y puerto) coincidan con la cabecera `Host` o esté en `--cors`. Un `*` en `--cors` no basta para esta API: hay que nombrar el origen (`--cors https://mi-app.example`). Solo a esos orígenes se les anuncian `PUT`, `PATCH` y `DELETE` en `Access-Control-Allow-Methods`.
+- Si la conexión llega por loopback, la cabecera `Host` debe ser `localhost`, `127.0.0.1` o `[::1]` (con o sin puerto); si no, 403 (protección contra el *DNS rebinding*). Si el servidor escucha en otra dirección (`--host 0.0.0.0`, un contenedor) esa comprobación no es posible: ponga delante un proxy con autenticación o no exponga un espacio de trabajo así.
+- Los ids se validan antes de tocar el disco (400 si no son un id válido) y los errores de disco no revelan rutas.
+
 ## CLI `iark`
 
 ```
@@ -559,6 +630,7 @@ iark schema   [--generation]
 iark prompt   "<instrucción>" [--from base.json]
 iark example
 iark modules  [--json]
+iark project  list|create|rename|delete|show|add|get|rename-diagram|remove|copy|export|import|check|trace   # proyectos en una carpeta de trabajo (ver «Proyectos»)
 iark <módulo> <comando>   # comandos propios de cada módulo (p. ej. `iark integration catalog`)
 ```
 
@@ -762,7 +834,7 @@ curl -X POST 'localhost:8787/api/security/export?format=svg&view=dfd' -d @exampl
 | `POST /api/<módulo>/run/<comando>` | Cuerpo `{ input?, args?, options? }` → informe o conversión |
 | `POST /api/trace` | Cuerpo `{ documents: [{ module, document }], from?, direction?, depth? }` → grafo de trazabilidad |
 
-Sin estado, sin dependencias (`node:http`). Sin `--cors` solo responde al mismo origen; `--cors https://mi-app.example` (o `*`) abre la API a un navegador de otro origen. El cuerpo máximo es de 5 MB. La generación con IA sigue viviendo solo en el CLI.
+Con `--workspace <carpeta>` añade además la API de proyectos (`/api/projects…`, con sus propias reglas de seguridad: ver «API HTTP de proyectos»); sin ella, el servicio no guarda estado. Sin dependencias (`node:http`). Sin `--cors` solo responde al mismo origen; `--cors https://mi-app.example` (o `*`) abre la API a un navegador de otro origen. El cuerpo máximo es de 5 MB. La generación con IA sigue viviendo solo en el CLI.
 
 #### Imagen Docker
 
@@ -792,7 +864,7 @@ packages/domain-data/  @iark/domain-data: módulo `data` (activos, dominios, pip
 packages/domain-enterprise/  @iark/domain-enterprise: módulo `enterprise` (capacidades, procesos, aplicaciones y tecnología con ciclo de vida; mapa de capacidades, paisaje, impacto y obsolescencia; import Mermaid, export Mermaid/SVG/draw.io, IA)
 packages/domain-platform/  @iark/domain-platform: módulo `platform` (entornos, redes, recursos, servicios, despliegues, dependencias y pipelines; topología, despliegue por entorno, entrega continua e impacto; import Mermaid, export Mermaid/SVG/draw.io, IA)
 packages/domain-security/  @iark/domain-security: módulo `security` (zonas de confianza, activos, flujos de datos, amenazas STRIDE y controles; diagrama de flujo de datos, modelo de amenazas, riesgos y superficie de ataque; import Mermaid, export Mermaid/SVG/draw.io, IA)
-src/cli/               comandos de iark (commander): módulos, `trace`, `serve`; carga los módulos del registro
+src/cli/               comandos de iark (commander): módulos, `trace`, `project` (con el almacén en carpeta `workspace.ts`), `serve` (y su API de proyectos); carga los módulos del registro
 src/embed/             protocolo postMessage (C4 y de módulos), SDK de anfitrión y Web Component <iark-module>
 src/modules-app/       banco de trabajo genérico de módulos (controlador sin React, editor, protocolo del puente)
 src/shell/             shell de la suite (descubrimiento por manifiesto)
