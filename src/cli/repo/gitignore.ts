@@ -198,12 +198,13 @@ export class IgnoreMatcher {
 
   /**
    * Añade las reglas de un `.gitignore` (o de `.git/info/exclude`). `base` es la carpeta del archivo respecto a la raíz
-   * del repositorio, con `/` y sin barra final (`''` para la raíz).
+   * del repositorio, con `/` y sin barra final (`''` para la raíz). Devuelve cuántas reglas añadió.
    */
-  add(content: string, base: string): void {
+  add(content: string, base: string): number {
     const baseParts = base ? base.split('/') : [];
+    const before = this.rules.length;
     for (const raw of content.split(/\r?\n/)) {
-      if (this.rules.length >= MAX_RULES) return;
+      if (this.rules.length >= MAX_RULES) break;
       if (raw.length > MAX_PATTERN_CHARS) continue;
       let line = trimTrailingSpace(raw);
       if (!line || line.startsWith('#')) continue;
@@ -228,6 +229,7 @@ export class IgnoreMatcher {
       if (!anchored) segments.unshift({ kind: 'globstar' });
       this.rules.push({ base: baseParts, segments, negate, dirOnly });
     }
+    return this.rules.length - before;
   }
 
   /** ¿Está ignorada esta ruta (relativa a la raíz del repositorio, con `/`)? */

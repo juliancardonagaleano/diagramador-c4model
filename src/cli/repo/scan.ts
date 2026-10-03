@@ -2,6 +2,7 @@ import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readd
 import { homedir } from 'node:os';
 import { basename, dirname, join, parse, relative, sep } from 'node:path';
 import { CliError } from '../io';
+import { PathFilter } from './filter';
 import { IgnoreMatcher } from './gitignore';
 import { redactSecrets } from './redact';
 import { CATEGORY_LABEL, CATEGORY_SHARE, classify, extensionOf, isEnvExample, isExcludedDir, isSecretDir, isTestPath, nonTextKind, secretReason, sniffYaml, type Classification, type RepoCategory } from './rules';
@@ -36,11 +37,13 @@ const MAX_LINE_CHARS = 8000;
 const MAX_YAML_SNIFF = 300;
 const MAX_GITIGNORE_BYTES = 256 * 1024;
 
-export type OmitReason = 'secreto' | 'ignorado' | 'excluida' | 'binario' | 'imagen' | 'lockfile' | 'grande' | 'generado' | 'presupuesto' | 'tope' | 'enlace' | 'ilegible';
+export type OmitReason = 'secreto' | 'ignorado' | 'excluido' | 'no-incluido' | 'excluida' | 'binario' | 'imagen' | 'lockfile' | 'grande' | 'generado' | 'presupuesto' | 'tope' | 'enlace' | 'ilegible';
 
 export const OMIT_LABEL: Record<OmitReason, string> = {
   secreto: 'secreto (nunca se lee)',
   ignorado: 'ignorado por .gitignore',
+  excluido: 'excluido por --repo-exclude',
+  'no-incluido': 'fuera de --repo-include (el contenido se limitó a otros archivos)',
   excluida: 'carpeta excluida (dependencias, compilación, cachés)',
   binario: 'binario o minificado',
   imagen: 'imagen',
@@ -69,6 +72,13 @@ export interface ScanOptions {
    * intérprete (`gitignore.ts`) no usa regex con retroceso, de modo que no es una cuestión de seguridad sino de prudencia.
    */
   remote?: { name: string };
+  /**
+   * Patrones de `--repo-include` (formato `.gitignore`): limitan el CONTENIDO a los archivos clave que cuadren (el árbol y la
+   * lista de componentes siguen completos). Solo reducen: no abren nada que las reglas de secretos o la lista blanca prohíban.
+   */
+  include?: readonly string[];
+  /** Patrones de `--repo-exclude`: lo que cuadre sale del resumen entero (árbol, componentes y contenido) y se lista como omitido. */
+  exclude?: readonly string[];
 }
 
 export interface DigestFile {
@@ -170,7 +180,7 @@ interface WalkResult {
   truncated: boolean;
 }
 
-function walkRepo(root: string, omit: Omissions, maxEntries: number, useGitignore: boolean): WalkResult {
+function walkRepo(root: string, omit: Omissions, maxEntries: number, useGitignore: boolean, exclude: PathFilter): WalkResult {
   const matcher = new IgnoreMatcher();
   const top = useGitignore ? findGitTop(root) : undefined;
   const prefix = top ? toPosix(relative(top, root)) : '';
@@ -218,6 +228,7 @@ function walkRepo(root: string, omit: Omissions, maxEntries: number, useGitignor
       } else if (entry.isDirectory()) {
         if (isExcludedDir(entry.name)) omit.add(`${rel}/`, 'excluida');
         else if (isSecretDir(entry.name)) omit.add(`${rel}/`, 'secreto', `carpeta de credenciales (${entry.name}/)`);
+        else if (exclude.matchesEntry(rel, true)) omit.add(`${rel}/`, 'excluido');
         else if (matcher.ignores(gitPath(rel), true)) omit.add(`${rel}/`, 'ignorado');
         else if (depth >= MAX_DEPTH) omit.add(`${rel}/`, 'tope', 'demasiado profunda');
         else {
@@ -228,6 +239,7 @@ function walkRepo(root: string, omit: Omissions, maxEntries: number, useGitignor
         const secret = secretReason(rel);
         if (secret) omit.add(rel, 'secreto', secret);
         else if (entry.name === '.git') omit.add(rel, 'excluida');
+        else if (exclude.matchesEntry(rel, false)) omit.add(rel, 'excluido');
         else if (matcher.ignores(gitPath(rel), false)) omit.add(rel, 'ignorado');
         else {
           const kind = nonTextKind(entry.name);
@@ -402,27 +414,45 @@ export function scanRepo(folder: string, options: ScanOptions = {}): RepoDigest 
   }
   const name = remote ? remote.name : basename(root) || 'repositorio';
 
+  // Filtros del usuario (se validan antes de leer nada): `--repo-exclude` quita entradas del recorrido y `--repo-include` limita los archivos clave.
+  const excludeFilter = new PathFilter(options.exclude, '--repo-exclude');
+  const includeFilter = new PathFilter(options.include, '--repo-include');
+
   const omit = new Omissions();
-  const walked = walkRepo(root, omit, options.maxEntries ?? DEFAULT_MAX_ENTRIES, !remote);
+  const walked = walkRepo(root, omit, options.maxEntries ?? DEFAULT_MAX_ENTRIES, !remote, excludeFilter);
   const { files } = walked;
   const codeFiles = countCode(files);
 
   // Clasificación: por nombre y, para los YAML sin pista, por su cabecera.
   const candidates: Candidate[] = [];
   let sniffed = 0;
+  let keyOutsideInclude = 0;
   for (const file of files) {
+    const wanted = !includeFilter.active || includeFilter.matches(file.rel);
     let cls = classify(file.rel);
-    if (!cls && ['yaml', 'yml'].includes(extensionOf(file.rel)) && file.size <= 200 * 1024 && sniffed < MAX_YAML_SNIFF) {
+    // Un YAML fuera de --repo-include no se abre ni para clasificarlo (solo se lista si ya se sabía que era un archivo clave).
+    if (!cls && wanted && ['yaml', 'yml'].includes(extensionOf(file.rel)) && file.size <= 200 * 1024 && sniffed < MAX_YAML_SNIFF) {
       sniffed += 1;
       const head = readHead(join(root, ...file.rel.split('/')), 4096);
       if (head && !head.subarray(0, 4096).includes(0)) cls = sniffYaml(head.toString('utf8'));
     }
-    if (cls) candidates.push({ file, cls });
+    if (!cls) continue;
+    if (!wanted) {
+      keyOutsideInclude += 1;
+      omit.add(file.rel, 'no-incluido');
+    } else candidates.push({ file, cls });
   }
 
   if (files.length === 0) {
     const counts = Object.entries(omit.counts).map(([reason, n]) => `${n} ${OMIT_LABEL[reason as OmitReason]}`);
     throw new CliError(`${label} no contiene archivos de texto que leer${counts.length ? ` (omitidos: ${counts.join('; ')})` : ' (está vacía)'}.`, 2);
+  }
+  if (includeFilter.active && candidates.length === 0 && keyOutsideInclude > 0) {
+    throw new CliError(
+      `Ningún archivo clave de ${remote ? `«${remote.name}»` : where} cuadra con --repo-include (${keyOutsideInclude} archivo(s) clave quedaron fuera). ` +
+        `Los patrones se escriben como en un .gitignore y son relativos a la raíz del repositorio (p. ej. services/pedidos/ o *.yaml); --repo-include solo reduce lo que la lista de archivos clave ya lee, no añade archivos.`,
+      2,
+    );
   }
   if (candidates.length === 0 && codeFiles === 0) {
     throw new CliError(
@@ -446,7 +476,16 @@ export function scanRepo(folder: string, options: ScanOptions = {}): RepoDigest 
     `Repositorio: ${name}\n` +
     `Archivos de texto vistos: ${files.length} en ${walked.dirs + 1} carpetas${walked.truncated ? ' (recorrido parcial: se alcanzó el tope de entradas)' : ''}; ` +
     `fuera del resumen por ser secretos, binarios, dependencias o estar ignorados: ${totalOmitted}.\n` +
-    (languages ? `Lenguajes y formatos (por número de archivos): ${languages}.\n` : '');
+    (languages ? `Lenguajes y formatos (por número de archivos): ${languages}.\n` : '') +
+    // Si el usuario filtró, el modelo debe saber que lo que no ve puede existir (no es que el repositorio no lo tenga).
+    (excludeFilter.active || includeFilter.active
+      ? `Filtros del usuario: ${[
+          excludeFilter.active ? `${omit.counts.excluido ?? 0} entrada(s) excluida(s) con --repo-exclude (no salen ni en el árbol)` : undefined,
+          includeFilter.active ? `el contenido de los archivos clave se limitó con --repo-include (${omit.counts['no-incluido'] ?? 0} archivo(s) clave quedaron fuera; el árbol de carpetas sigue completo)` : undefined,
+        ]
+          .filter(Boolean)
+          .join('; ')}. Lo que falte en el resumen no implica que no exista en el repositorio.\n`
+      : '');
   const treeSection = `\n## Árbol de carpetas (profundidad ${treeDepth}; entre paréntesis, archivos y extensiones principales)\n${tree}\n`;
   const componentSection = componentText
     ? `\n## Archivos de código cuyo nombre sugiere un componente (solo rutas, sin contenido${components.total > componentsShown ? `; ${componentsShown} de ${components.total}` : ''})\n${componentText}\n`

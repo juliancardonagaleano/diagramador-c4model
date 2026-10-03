@@ -7,10 +7,17 @@ const kb = (bytes: number): string => (bytes / 1024).toFixed(1).replace('.', ','
 export function formatSummary(digest: RepoDigest): string {
   const omitted = Object.values(digest.omittedCounts).reduce((a, b) => a + (b ?? 0), 0);
   const secrets = digest.omittedCounts.secreto ?? 0;
+  const excluded = digest.omittedCounts.excluido ?? 0;
+  const outside = digest.omittedCounts['no-incluido'] ?? 0;
+  const notes = [
+    secrets ? `${secrets} por parecer secretos: no se leen` : undefined,
+    excluded ? `${excluded} excluida(s) por --repo-exclude` : undefined,
+    outside ? `${outside} archivo(s) clave fuera de --repo-include` : undefined,
+  ].filter(Boolean);
   return (
     `Repositorio «${digest.name}»: el resumen lleva el árbol de carpetas y ${digest.included.length} archivo(s) clave (${kb(digest.bytes)} KB de ${kb(digest.budget)} KB); ` +
     `${digest.redactions} valor(es) redactado(s); ${digest.filesSeen} archivos de texto vistos, ${omitted} entrada(s) omitida(s)` +
-    `${secrets ? ` (${secrets} por parecer secretos: no se leen)` : ''}.`
+    `${notes.length ? ` (${notes.join('; ')})` : ''}.`
   );
 }
 
