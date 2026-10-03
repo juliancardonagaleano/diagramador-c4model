@@ -79,4 +79,22 @@ describe('manifiesto de federación', () => {
     expect(manifestSchema.safeParse(manifest).success).toBe(true);
     expect(manifestSchema.safeParse({ ...manifest, schema: 'otro' }).success).toBe(false);
   });
+
+  it('`projects` y `projectsAuth` son opcionales: se conservan al interpretar el manifiesto y solo admiten los valores conocidos', () => {
+    const base = buildManifest(new ModuleRegistry().register(fakeModule('c4')), { name: 'IArk - DIAgrams', version: '0.1.0' });
+    // sin ellos (un sitio estático, o una instancia sin espacio de trabajo) el manifiesto sigue siendo válido
+    const plain = manifestSchema.safeParse(base);
+    expect(plain.success).toBe(true);
+    expect(plain.data).not.toHaveProperty('projects');
+    expect(plain.data).not.toHaveProperty('projectsAuth');
+    // con ellos, el esquema no los descarta (un cliente que lee el manifiesto con `manifestSchema` los necesita)
+    for (const projectsAuth of ['bearer', 'none'] as const) {
+      const parsed = manifestSchema.safeParse({ ...base, projects: '../api/projects', projectsAuth });
+      expect(parsed.success).toBe(true);
+      expect(parsed.data).toMatchObject({ projects: '../api/projects', projectsAuth });
+    }
+    expect(manifestSchema.safeParse({ ...base, projects: '../api/projects' }).data?.projectsAuth).toBeUndefined();
+    expect(manifestSchema.safeParse({ ...base, projectsAuth: 'oauth' }).success).toBe(false);
+    expect(manifestSchema.safeParse({ ...base, projects: 7 }).success).toBe(false);
+  });
 });
