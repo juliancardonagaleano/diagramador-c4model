@@ -245,6 +245,28 @@ describe('sesión con un almacén remoto', () => {
       session.dispose();
     });
 
+    it('si el servidor rechaza el token, deja de sondear (insistir solo suma intentos fallidos) hasta que se dé uno nuevo', async () => {
+      const { server, session } = await setup({ token: 'bueno' });
+      const stop = session.watch();
+      await vi.advanceTimersByTimeAsync(0);
+      server.token = 'otro'; // el servidor cambió sus tokens
+      await vi.advanceTimersByTimeAsync(DEFAULT_POLL_MS + 10);
+      expect(session.getState()).toMatchObject({ available: true, syncErrorCode: 'unauthorized' });
+      server.log.length = 0;
+      await vi.advanceTimersByTimeAsync(DEFAULT_POLL_MS * 3);
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(server.log).toEqual([]);
+
+      await session.useToken('otro');
+      expect(session.getState()).toMatchObject({ syncError: undefined, syncErrorCode: undefined });
+      server.log.length = 0;
+      await vi.advanceTimersByTimeAsync(DEFAULT_POLL_MS + 10);
+      expect(lists(server.log)).toBe(1);
+      stop();
+      session.dispose();
+    });
+
     it('un corte de red en una lectura en segundo plano no desactiva la pantalla: avisa y se recupera solo', async () => {
       const { server, session } = await setup();
       const stop = session.watch();

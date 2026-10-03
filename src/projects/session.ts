@@ -239,9 +239,14 @@ export class ProjectSession {
     };
   }
 
-  /** ¿Alguien necesita la lista fresca? El gestor abierto, o un diagrama abierto (la barra del proyecto, los enlaces entre diagramas). */
+  /**
+   * ¿Hay que mantener la lista fresca? Si alguien la mira (el gestor abierto, o un diagrama abierto: la barra del proyecto y los
+   * enlaces entre diagramas dependen de ella) y el servidor no está rechazando el token: insistir cada 30 s con un token malo
+   * solo suma intentos fallidos (el servidor puede limitarlos). Con un token nuevo (`useToken`) se vuelve a leer.
+   */
   private get interested(): boolean {
-    return this.watchers > 0 || this.attached;
+    const rejected = this.state.errorCode === 'unauthorized' || this.state.syncErrorCode === 'unauthorized';
+    return (this.watchers > 0 || this.attached) && !rejected;
   }
 
   /**
