@@ -21,7 +21,8 @@ export default function App() {
   const embed = useEmbedBridge();
   const actions = useActions();
   const projects = useProjectBinding();
-  const [showProjects, setShowProjects] = useState(false);
+  /** El gestor de proyectos: cerrado, abierto, o abierto con «Dónde se guardan» desplegado (para volver a conectar). */
+  const [showProjects, setShowProjects] = useState<false | 'list' | 'storage'>(false);
 
   // Tema (mecanismo nativo de Semi UI) + parámetros de URL.
   useEffect(() => {
@@ -81,7 +82,7 @@ export default function App() {
   return (
     <ReactFlowProvider>
       <div className="h-full flex flex-col overflow-hidden theme">
-        {ui.showHeader && <ControlPanel onEmbedSave={(exit) => void embed.save(exit)} onEmbedExit={embed.exit} projects={projects.session ? { binding: projects, onManage: () => setShowProjects(true) } : undefined} />}
+        {ui.showHeader && <ControlPanel onEmbedSave={(exit) => void embed.save(exit)} onEmbedExit={embed.exit} projects={projects.session ? { binding: projects, onManage: (panel) => setShowProjects(panel ?? 'list') } : undefined} />}
         <div className="flex h-full min-h-0 overflow-hidden">
           {ui.showSidebar && <SidePanel />}
           <div className="relative flex-1 min-w-0 h-full overflow-hidden">
@@ -106,6 +107,7 @@ export default function App() {
             }}
             onClose={() => setShowProjects(false)}
             notify={(message) => Toast.info(message)}
+            initialPanel={showProjects === 'storage' ? 'storage' : undefined}
           />
         )}
       </div>

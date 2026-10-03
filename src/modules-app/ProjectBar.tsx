@@ -5,13 +5,27 @@ import type { WorkbenchController, WorkbenchState } from './controller';
  * Barra del proyecto abierto: cuál es, qué diagrama se está editando, cómo va el guardado y cómo abrir el gestor.
  * Con un diagrama abierto, sus cambios se guardan solos; sin él, el documento es un borrador y se ofrece guardarlo.
  */
-export function ProjectBar({ controller, state, onManage, notify }: { controller: WorkbenchController; state: WorkbenchState; onManage(): void; notify(message: string): void }) {
+export function ProjectBar({
+  controller,
+  state,
+  onManage,
+  notify,
+}: {
+  controller: WorkbenchController;
+  state: WorkbenchState;
+  /** Abre el gestor; con `storage`, directamente en «Dónde se guardan» (para volver a conectar con el servidor). */
+  onManage(panel?: 'storage'): void;
+  notify(message: string): void;
+}) {
   const session = controller.projects!;
   const projects = useSyncExternalStore(session.subscribe, session.getState);
   const project = projects.projects.find((p) => p.id === projects.projectId);
   const moduleLabel = (id: string): string => controller.sources.find((s) => s.id === id)?.label ?? id;
   const attached = project?.diagrams.find((d) => d.id === projects.diagramId);
   const draft = !!project && !attached && !!controller.currentDocument();
+  const remote = session.remote;
+  const where = remote ? ' · servidor' : '';
+  const rejected = projects.errorCode === 'unauthorized' || projects.syncErrorCode === 'unauthorized' || projects.saveErrorCode === 'unauthorized';
   const run = (work: () => Promise<void>): void => void work().catch((error: Error) => notify(error.message));
 
   const byModule = new Map<string, NonNullable<typeof project>['diagrams']>();
@@ -52,7 +66,7 @@ export function ProjectBar({ controller, state, onManage, notify }: { controller
           </select>
         </label>
       )}
-      <button type="button" onClick={onManage} disabled={!projects.available && projects.projects.length === 0 && !projects.error}>
+      <button type="button" onClick={() => onManage()} disabled={!projects.available && projects.projects.length === 0 && !projects.error}>
         Proyectos…
       </button>
       {draft && project && (
@@ -62,27 +76,38 @@ export function ProjectBar({ controller, state, onManage, notify }: { controller
       )}
       <span className="wb-save" role="status" data-testid="save-status" data-save={attached ? projects.save : draft ? 'draft' : 'none'}>
         {!projects.available
-          ? 'Almacenamiento no disponible'
+          ? remote
+            ? projects.errorCode === 'unauthorized'
+              ? 'El servidor no aceptó el token'
+              : 'Servidor no disponible'
+            : 'Almacenamiento no disponible'
           : attached
             ? projects.save === 'pending' || projects.save === 'saving'
               ? 'Guardando…'
               : projects.save === 'error'
-                ? `No se pudo guardar: ${projects.saveError ?? 'error desconocido'}`
+                ? projects.saveErrorCode === 'unauthorized'
+                  ? `El servidor no aceptó el token: ${projects.saveError ?? 'no se guardaron los últimos cambios'}`
+                  : `No se pudo guardar: ${projects.saveError ?? 'error desconocido'}`
                 : projects.save === 'conflict'
                   ? 'Hay un conflicto de guardado'
-                  : `Guardado en «${project?.name}»`
+                  : `Guardado en «${project?.name}»${where}${projects.syncError ? ' (sin conexión con el servidor)' : ''}`
             : draft
               ? 'Borrador: aún no está en el proyecto'
               : ''}
       </span>
-      {attached && projects.save === 'error' && (
+      {rejected && remote && (
+        <button type="button" className="primary" onClick={() => onManage('storage')} data-testid="reconnect">
+          Volver a conectar
+        </button>
+      )}
+      {attached && projects.save === 'error' && projects.saveErrorCode !== 'unauthorized' && (
         <button type="button" onClick={() => run(() => session.retry())}>
           Reintentar
         </button>
       )}
       {attached && projects.save === 'conflict' && (
         <span className="wb-conflict" role="alert" data-testid="save-conflict">
-          Otra pestaña guardó «{attached.name}» mientras lo editabas.
+          {remote ? 'Otra persona u otro equipo guardó' : 'Otra pestaña guardó'} «{attached.name}» mientras lo editabas.
           <button type="button" onClick={() => run(() => controller.resolveConflict('overwrite'))}>
             Quedarme con mi versión
           </button>

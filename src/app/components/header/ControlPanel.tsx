@@ -68,7 +68,7 @@ export interface ControlPanelProps {
   onEmbedSave?: (exit: boolean) => void;
   onEmbedExit?: () => void;
   /** Proyectos guardados (solo fuera del modo embebido). */
-  projects?: { binding: ProjectBinding; onManage: () => void };
+  projects?: { binding: ProjectBinding; onManage: (panel?: 'storage') => void };
 }
 
 const SAVE_LABEL = { idle: 'Guardado', pending: 'Guardando…', saving: 'Guardando…', saved: 'Guardado', error: 'No se pudo guardar', conflict: 'Conflicto de guardado' } as const;
@@ -145,7 +145,7 @@ export function ControlPanel({ onEmbedSave, onEmbedExit, projects }: ControlPane
 
   const projectItems: MenuProps['items'] = projects
     ? [
-        { key: 'projects', label: 'Proyectos…', onClick: projects.onManage, closeMenu: true },
+        { key: 'projects', label: 'Proyectos…', onClick: () => projects.onManage(), closeMenu: true },
         ...(openProject && !attached ? [{ key: 'save-project', label: `Guardar en el proyecto «${openProject.name}»`, onClick: saveToProject }] : []),
         ...(attached ? [{ key: 'detach-project', label: 'Dejar de guardar en el proyecto', onClick: () => void projectSession?.release() }] : []),
         { key: 'dp', label: '', divider: true },
@@ -235,7 +235,20 @@ export function ControlPanel({ onEmbedSave, onEmbedExit, projects }: ControlPane
     { key: 'c4', label: 'Modelo C4 (c4model.com)', onClick: () => window.open('https://c4model.com', '_blank', 'noopener') },
   ];
 
-  const projectStatus = attached && projectState ? `${SAVE_LABEL[projectState.save]}${projectState.save === 'saved' || projectState.save === 'idle' ? ` en «${openProject?.name}»` : ''}` : undefined;
+  // Con un servidor el estado lo dice («· servidor») y un token rechazado se avisa aparte, con el botón para volver a conectar.
+  const remote = projectSession?.remote === true;
+  const rejected =
+    remote && !!projectState && (projectState.errorCode === 'unauthorized' || projectState.syncErrorCode === 'unauthorized' || projectState.saveErrorCode === 'unauthorized');
+  const projectStatus =
+    remote && projectState && !projectState.available
+      ? projectState.errorCode === 'unauthorized'
+        ? 'El servidor no aceptó el token'
+        : 'Servidor no disponible'
+      : attached && projectState
+        ? projectState.save === 'error' && projectState.saveErrorCode === 'unauthorized'
+          ? 'El servidor no aceptó el token'
+          : `${SAVE_LABEL[projectState.save]}${projectState.save === 'saved' || projectState.save === 'idle' ? ` en «${openProject?.name}»${remote ? ' · servidor' : ''}` : ''}`
+        : undefined;
   const status = statusMessage ?? projectStatus ?? (modified ? 'Cambios sin guardar' : relativeTime(lastSavedAt));
 
   return (
@@ -274,8 +287,9 @@ export function ControlPanel({ onEmbedSave, onEmbedExit, projects }: ControlPane
               </Tag>
             )}
             {projects && (
-              <Tag size="small" color={attached ? 'blue' : 'grey'} onClick={projects.onManage} className="cursor-pointer" data-testid="project-chip" aria-label="Abrir los proyectos">
+              <Tag size="small" color={attached ? 'blue' : 'grey'} onClick={() => projects.onManage()} className="cursor-pointer" data-testid="project-chip" aria-label="Abrir los proyectos">
                 {openProject ? `Proyecto: ${openProject.name}${attached ? ` › ${attached.name}` : ''}` : 'Sin proyecto'}
+                {remote ? ' · servidor' : ''}
               </Tag>
             )}
           </div>
@@ -289,9 +303,19 @@ export function ControlPanel({ onEmbedSave, onEmbedExit, projects }: ControlPane
         </div>
       </div>
       <div className="flex items-center gap-3 flex-none">
+        {rejected && (
+          <Button size="small" type="warning" onClick={() => projects?.onManage('storage')} data-testid="reconnect">
+            Volver a conectar
+          </Button>
+        )}
+        {remote && attached && projectState?.save === 'error' && projectState.saveErrorCode !== 'unauthorized' && (
+          <Button size="small" onClick={() => void projectSession?.retry()} data-testid="retry-save">
+            Reintentar
+          </Button>
+        )}
         {attached && projectState?.save === 'conflict' && (
           <span className="flex items-center gap-2 text-sm" role="alert" data-testid="save-conflict">
-            Otra pestaña guardó «{attached.name}» mientras lo editabas.
+            {remote ? 'Otra persona u otro equipo guardó' : 'Otra pestaña guardó'} «{attached.name}» mientras lo editabas.
             <Button size="small" onClick={() => resolveConflict('overwrite')}>
               Quedarme con mi versión
             </Button>
