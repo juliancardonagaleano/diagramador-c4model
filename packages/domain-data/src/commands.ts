@@ -182,7 +182,7 @@ export const dataCommands: CommandSpec[] = [
   {
     name: 'ddl',
     description:
-      'Esquema físico de las tablas en el dialecto de su motor de base de datos (engine): CREATE TABLE de PostgreSQL, MySQL, SQL Server, Oracle, SQLite, BigQuery, Snowflake, Redshift y Databricks y de CQL (Cassandra), validador $jsonSchema de MongoDB, CreateTable de DynamoDB y esquema Avro de Kafka',
+      'Esquema físico de las tablas en el dialecto de su motor de base de datos (engine): CREATE TABLE de PostgreSQL, MySQL, SQL Server, Oracle, SQLite, BigQuery, Snowflake, Redshift y Databricks y de CQL (Cassandra), validador $jsonSchema de MongoDB, CreateTable de DynamoDB y esquema Avro de Kafka. Una clave primaria o única de un tipo que el motor no admite como clave (text o json en MySQL, clob en Oracle, varchar(max) en SQL Server, json o xml en PostgreSQL) se deja tal cual, con un comentario -- AVISO: sobre la tabla y el arreglo propuesto, y se suma a los avisos',
     input: { description: 'documento de datos en JSON' },
     options: [
       { flags: '--engine <motor>', description: `fuerza el motor de todas las tablas (por defecto, el de cada una; ${DEFAULT_ENGINE} si no lo declara). Ver «iark data engines»` },
