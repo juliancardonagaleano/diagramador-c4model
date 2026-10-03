@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { generatedToPlatform, toGenerated } from './ai/generation';
 import { platformEditor } from './editor';
@@ -168,6 +169,67 @@ describe('región', () => {
     for (const provider of ['Google Cloud', 'GCP', 'Microsoft Azure', 'OVH', 'Oracle Cloud', 'DigitalOcean', 'IBM Cloud']) expect(regional(production({ resources: [db] }, { region: undefined, provider })), provider).toHaveLength(2);
     const certificates = production({ resources: [cert(), { id: 'mon', name: 'M', kind: 'monitoring', environmentId: 'prod' }, { ...db, status: 'decommissioned' }] }, { region: undefined });
     expect(regional(certificates)).toEqual([expect.stringContaining('Clúster «k8s»')]);
+  });
+});
+
+describe('región según el proveedor del recurso', () => {
+  const regional = (doc: PlatformDocument): string[] => messages(doc).filter((m) => m.includes('exige región'));
+  const db = { id: 'db', name: 'DB', kind: 'database', environmentId: 'prod' };
+  /** El entorno sin región, para que decida cada recurso; el clúster de `production` va sin proveedor propio y aparte. */
+  const sinRegion = { region: undefined };
+  const solo = (messagesOf: string[]): string[] => messagesOf.filter((m) => !m.startsWith('Clúster «k8s»'));
+
+  it('un recurso con proveedor de nube distinto al del entorno usa el suyo: lo exige aunque el entorno no sea de nube', () => {
+    const doc = production({ resources: [{ ...db, provider: 'aws', service: 'rds' }] }, { ...sinRegion, provider: 'Centro de datos propio' });
+    expect(regional(doc)).toEqual(['Base de datos «DB» está en «Producción» (proveedor aws), que exige región, y ni el recurso ni el entorno la indican.']);
+    // El clúster sin proveedor propio cae al del entorno (que no es de nube): no se le exige.
+    expect(regional(production({ resources: [db] }, { ...sinRegion, provider: 'Centro de datos propio' }))).toEqual([]);
+    // Un entorno sin proveedor tampoco impide que el recurso declare el suyo.
+    expect(solo(regional(production({ resources: [{ ...db, provider: 'azure' }] }, { ...sinRegion, provider: undefined })))).toEqual(['Base de datos «DB» está en «Producción» (proveedor azure), que exige región, y ni el recurso ni el entorno la indican.']);
+  });
+
+  it('con el proveedor de otra nube que el del entorno, el mensaje nombra el del recurso, y con región el recurso no avisa', () => {
+    const doc = production({ resources: [{ ...db, provider: 'GCP' }, { id: 'cache', name: 'Caché', kind: 'cache', environmentId: 'prod', provider: 'azure', region: 'westeurope' }] }, sinRegion);
+    expect(regional(doc)).toEqual([
+      'Clúster «k8s» está en «Producción» (proveedor AWS), que exige región, y ni el recurso ni el entorno la indican.',
+      'Base de datos «DB» está en «Producción» (proveedor GCP), que exige región, y ni el recurso ni el entorno la indican.',
+    ]);
+    expect(analyzePlatform(doc, TODAY).find((i) => i.elementId === 'db' && i.message.includes('exige región'))).toMatchObject({ severity: 'warning' });
+  });
+
+  it('un recurso cuyo proveedor no es de nube no se avisa aunque el entorno sí lo sea; con el proveedor en blanco cae al del entorno', () => {
+    expect(solo(regional(production({ resources: [{ ...db, provider: 'Centro de datos propio' }] }, sinRegion)))).toEqual([]);
+    expect(solo(regional(production({ resources: [{ ...db, provider: 'vmware', service: 'vsphere' }] }, sinRegion)))).toEqual([]);
+    expect(solo(regional(production({ resources: [{ ...db, provider: '   ' }] }, sinRegion)))).toEqual(['Base de datos «DB» está en «Producción» (proveedor AWS), que exige región, y ni el recurso ni el entorno la indican.']);
+  });
+
+  it('un recurso sin proveedor se comporta como antes: el del entorno decide', () => {
+    expect(regional(production({ resources: [db] }, sinRegion))).toHaveLength(2);
+    expect(regional(production({ resources: [db] }, { ...sinRegion, provider: 'Centro de datos propio' }))).toEqual([]);
+    expect(regional(production({ resources: [db] }, { ...sinRegion, provider: undefined }))).toEqual([]);
+    expect(regional(production({ resources: [db] }))).toEqual([]);
+  });
+
+  it('con región (la del recurso, la del entorno o una región modelada) y con recursos que no viven en una región, no avisa', () => {
+    expect(regional(production({ resources: [{ ...db, provider: 'azure', region: 'westeurope' }] }, { ...sinRegion, provider: 'Centro de datos propio' }))).toEqual([]);
+    expect(regional(production({ resources: [{ ...db, provider: 'azure', region: '  ' }] }, { provider: 'Centro de datos propio', region: 'on-prem-1' }))).toEqual([]);
+    expect(regional(production({ resources: [{ ...db, provider: 'gcp' }, { id: 'eu', name: 'eu-west-1a', kind: 'region', environmentId: 'prod' }] }, sinRegion))).toEqual([]);
+    expect(regional(production({ resources: [{ id: 'dns', name: 'DNS', kind: 'dns', environmentId: 'prod', provider: 'aws' }, { ...db, provider: 'aws', status: 'decommissioned' }] }, { ...sinRegion, provider: 'Centro de datos propio' }))).toEqual([]);
+  });
+
+  it('la gravedad sigue la del entorno del recurso, también cuando el proveedor es el del recurso', () => {
+    const cache = { id: 'cache-dev', name: 'Caché', kind: 'cache', environmentId: 'dev', provider: 'aws' };
+    const doc = production({ resources: [cache, { ...db, provider: 'aws' }] }, { ...sinRegion, provider: 'Centro de datos propio' });
+    const severity = (id: string): string | undefined => analyzePlatform(doc, TODAY).find((i) => i.elementId === id && i.message.includes('exige región'))?.severity;
+    expect(severity('cache-dev')).toBe('info');
+    expect(severity('db')).toBe('warning');
+  });
+
+  it('los ejemplos de plataforma siguen sin ningún aviso (y sin pedir región)', () => {
+    for (const file of ['examples/plataforma-ejemplo.json', 'examples/plataforma-nubes.json']) {
+      const doc = parse(JSON.parse(readFileSync(file, 'utf8')));
+      expect(analyzePlatform(doc, TODAY), file).toEqual([]);
+    }
   });
 });
 
