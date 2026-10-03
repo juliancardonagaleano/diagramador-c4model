@@ -226,9 +226,12 @@ describe('iark serve --tokens (comando)', () => {
     const vic = createToken(file, 'Vic', 'viewer');
     const running = await serve(['--host', '0.0.0.0', '--workspace', workspace, '--tokens', file]);
     try {
-      await vi.waitFor(() => expect(running.stderr()).toContain('proyectos: /api/projects'));
-      expect(running.stderr()).toContain(`autenticación: tokens de ${file} (2)`);
-      expect(running.stderr()).toContain('no habla TLS'); // fuera de loopback, el aviso del proxy con HTTPS
+      // el aviso sale en varias escrituras: se espera a las líneas que se comprueban, no solo a la primera
+      await vi.waitFor(() => {
+        expect(running.stderr()).toContain('proyectos: /api/projects');
+        expect(running.stderr()).toContain(`autenticación: tokens de ${file} (2)`);
+        expect(running.stderr()).toContain('no habla TLS'); // fuera de loopback, el aviso del proxy con HTTPS
+      });
       expect(running.stderr()).not.toMatch(/aviso: escucha en/); // el aviso de antes ya no existe: ahora se exige --tokens
 
       const api = (path: string, init: RequestInit = {}) => fetch(`${running.url}${path}`, init);
