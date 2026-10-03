@@ -833,6 +833,38 @@ describe('iark: módulo empresarial', () => {
     });
   });
 
+  it('la matriz capacidad × aplicación exportada como block-beta se importa de vuelta, por extensión y por contenido, y los avisos dicen lo que no viaja', () => {
+    const exported = run(['convert', ent, '--module', 'enterprise', '--to', 'mermaid', '--view', 'matrix']);
+    expect(exported.status).toBe(0);
+    expect(exported.stdout.split('\n')[0]).toBe('block-beta');
+    const file = join(dir, 'matriz.mmd');
+    writeFileSync(file, exported.stdout);
+    const names = (doc: { capabilities: Array<{ name: string }>; applications: Array<{ name: string }> }) => [doc.capabilities.map((c) => c.name), doc.applications.map((a) => a.name)];
+    const original = JSON.parse(readFileSync(ent, 'utf8'));
+
+    const json = join(dir, 'matriz.json');
+    const porExtension = run(['import', file, '--module', 'enterprise', '--out', json]);
+    expect(porExtension.status).toBe(0);
+    expect(porExtension.stderr).toMatch(/Importado "matriz" en el módulo enterprise: 27 elementos, 3 aviso\(s\)\./);
+    expect(porExtension.stderr).toContain('aviso: 2 celdas ○ (soporte por un proceso que realiza la capacidad) no se importan como relaciones');
+    expect(porExtension.stderr).toMatch(/aviso: \d+ celdas · \(soporte heredado de una capacidad hija\) no se importan/);
+    expect(porExtension.stderr).toContain('aviso: Solo se importan los nombres, la jerarquía de capacidades y el soporte directo (●)');
+    const doc = JSON.parse(readFileSync(json, 'utf8'));
+    expect(names(doc)).toEqual(names(original));
+    expect(doc.relations.filter((r: { kind: string }) => r.kind === 'supports')).toHaveLength(original.relations.filter((r: { kind: string; targetId: string }) => r.kind === 'supports' && original.capabilities.some((c: { id: string }) => c.id === r.targetId)).length);
+    expect(run(['validate', json, '--module', 'enterprise']).stdout).toMatch(/Documento válido \(módulo enterprise\)\. 0 error\(es\)/);
+
+    // Sin extensión (stdin) lo reconoce por el contenido, y con --format mermaid también.
+    expect(names(JSON.parse(run(['import', '--stdin', '--module', 'enterprise'], exported.stdout).stdout))).toEqual(names(original));
+    expect(names(JSON.parse(run(['import', file, '--module', 'enterprise', '--format', 'mermaid']).stdout))).toEqual(names(original));
+
+    // Un diagrama de bloques que no es una matriz termina en un mensaje de una línea con código 2.
+    const roto = run(['import', '--stdin', '--module', 'enterprise'], 'block-beta\n  columns 3\n  space:1 a["A"] total["Total"]\n  r["R"] c["●"]');
+    expect(roto.status).toBe(2);
+    expect(roto.stderr).toMatch(/Las 5 entradas del diagrama no forman filas de 3 columnas/);
+    expect(roto.stderr).not.toMatch(/Error inesperado|\n\s+at /);
+  });
+
   it('un Mermaid que no se puede importar termina en un mensaje de una línea con código 2, sin stack', () => {
     const r = run(['import', '--stdin', '--module', 'enterprise'], 'sequenceDiagram\n  A->>B: hola');
     expect(r.status).toBe(2);
