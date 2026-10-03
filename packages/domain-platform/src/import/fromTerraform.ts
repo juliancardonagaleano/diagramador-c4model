@@ -1,5 +1,5 @@
 /**
- * Importador de Terraform para el módulo de plataforma. Acepta HCL (`.tf`; varios archivos se importan concatenándolos), su
+ * Importador de Terraform para el módulo de plataforma. Acepta HCL (`.tf`; varios archivos se leen juntos con `fromTerraformFiles`), su
  * versión JSON (`.tf.json`), el estado (`.tfstate`, versión 4) y la salida de `terraform show -json` (de un estado o de un
  * plan). El estado y el plan son más fiables que el HCL: traen los recursos reales, sus ids y sus dependencias.
  *
@@ -76,7 +76,7 @@ import {
 import { countedList, environmentKindOf, shortList, sourceName, uniqueId, type InfraImportOptions } from './common';
 import { PlatformImportError, slug, type PlatformImportResult } from './fromMermaid';
 import { isExpr } from './hcl';
-import { blocksOf, physicalRefs, readTerraform, Scope, type TfModel, type TfNode, type TfObject } from './terraformModel';
+import { blocksOf, physicalRefs, readTerraform, readTerraformFiles, Scope, type TfModel, type TfNode, type TfObject } from './terraformModel';
 import { CARRIER_TYPES, SPECS, isSupportType, providerFamily, query, synthesizeModule, type Q } from './terraformSpecs';
 
 type Elem =
@@ -778,4 +778,14 @@ class TerraformBuilder {
 /** Importa Terraform (HCL, `.tf.json`, estado o `terraform show -json`) como documento de plataforma. */
 export function fromTerraform(source: string, options: InfraImportOptions = {}): PlatformImportResult {
   return new TerraformBuilder(readTerraform(source), options).build();
+}
+
+/**
+ * Importa varios `.tf` (los de una carpeta) como un solo stack: el mismo documento que `fromTerraform` de sus textos
+ * concatenados, con una marca de archivo (`red.tf, línea 12: …`) en los avisos y los errores de sintaxis. No resuelve los
+ * módulos locales (`source = "./modules/x"`): se avisan como cualquier módulo sin mapear. `options.file` es la ruta de la
+ * carpeta (o de los archivos) para nombrar el entorno y el documento, como la de un archivo suelto.
+ */
+export function fromTerraformFiles(files: Array<{ name: string; text: string }>, options: InfraImportOptions = {}): PlatformImportResult {
+  return new TerraformBuilder(readTerraformFiles(files), options).build();
 }

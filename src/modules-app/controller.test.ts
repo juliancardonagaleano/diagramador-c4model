@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readdirSync, readFileSync } from 'node:fs';
+import { joinSourceFiles } from '@iark/kernel';
 import { InvalidDocumentError, WorkbenchController } from './controller';
 import { SOURCES, example, newController, platformModule } from './testing';
 
@@ -270,6 +272,55 @@ describe('WorkbenchController', () => {
       controller.setStatus('hola');
       await controller.render();
       expect(controller.getState().lastImport?.warnings).toEqual(avisos);
+    });
+  });
+
+  describe('importFiles (varios archivos a la vez)', () => {
+    const FOLDER = 'tests/fixtures/importar/terraform/aws-tienda-multiarchivo';
+    const files = readdirSync(FOLDER)
+      .filter((n) => n.endsWith('.tf'))
+      .map((name) => ({ name, text: readFileSync(`${FOLDER}/${name}`, 'utf8') }));
+
+    it('los .tf de un stack se importan como uno: el mismo documento que importar sus textos concatenados', async () => {
+      const together = newController();
+      await together.selectModule('platform');
+      const result = await together.importFiles(files);
+      expect(result.importer).toBe('terraform');
+      expect(together.getState().modified).toBe(true);
+      expect(together.getState().analysis.status).toBe('ok');
+      // Sus avisos quedan en el estado, como los de cualquier otra importación.
+      expect(together.getState().lastImport).toEqual({ importer: 'terraform', file: `${files.length} archivos`, warnings: result.warnings });
+      expect(result.warnings.length).toBeGreaterThan(0);
+
+      const concatenated = newController();
+      await concatenated.selectModule('platform');
+      await concatenated.importFrom(joinSourceFiles(files).text, 'terraform');
+      expect(together.getState().text).toBe(concatenated.getState().text);
+      // El orden en que se eligieron no cambia nada.
+      const reversed = newController();
+      await reversed.selectModule('platform');
+      await reversed.importFiles([...files].reverse());
+      expect(reversed.getState().text).toBe(together.getState().text);
+    });
+
+    it('un error de sintaxis dice de qué archivo y no toca el documento', async () => {
+      const controller = newController();
+      await controller.selectModule('platform');
+      const before = controller.getState().text;
+      const broken = files.map((f) => (f.name === 'datos.tf' ? { ...f, text: `${f.text}\nresource "aws_sqs_queue" "x" {\n  name = "sin cerrar\n}\n` } : f));
+      await expect(controller.importFiles(broken)).rejects.toThrow(/El HCL de Terraform no es válido \(datos\.tf, línea \d+\): cadena sin cerrar\./);
+      expect(controller.getState().text).toBe(before);
+    });
+
+    it('archivos de distinto formato, o de un formato que no se reparte, se rechazan con el motivo', async () => {
+      const controller = newController();
+      await controller.selectModule('platform');
+      const before = controller.getState().text;
+      await expect(controller.importFiles([...files, { name: 'otro.yaml', text: 'a: 1' }])).rejects.toThrow(/no son todos del mismo formato: solo se leen juntos los \.tf/);
+      await expect(controller.importFiles(files, 'kubernetes')).rejects.toThrow(/«kubernetes» no se puede leer repartido en varios archivos/);
+      expect(controller.getState().text).toBe(before);
+      await controller.selectModule('security');
+      await expect(controller.importFiles(files)).rejects.toThrow(/no importa varios archivos a la vez/);
     });
   });
 

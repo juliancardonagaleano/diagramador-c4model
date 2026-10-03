@@ -1,14 +1,17 @@
 import { useMemo, useRef, useState } from 'react';
 import type { WorkbenchController, WorkbenchState } from './controller';
-import { commandInfos, countBySeverity, exportFormats, looksLikeMermaid, type CommandInfo, type CommandOutput, type ExportedFile } from '@iark/kernel';
+import { commandInfos, countBySeverity, exportFormats, joinSourceFiles, looksLikeMermaid, multiFileImporter, whyNotMultiFile, type CommandInfo, type CommandOutput, type ExportedFile, type SourceFile } from '@iark/kernel';
 import { MermaidPreview } from '../mermaid-preview/MermaidPreview';
 import { useBulkInsert } from './bulkInsert';
 import { copyText, downloadText, fileStem, readFile, svgDataUrl } from './files';
 
 const SEVERITY_LABEL = { error: 'Error', warning: 'Aviso', info: 'Nota' } as const;
 
-/** Botón «Abrir archivo…» con el `<input type=file>` oculto pero accesible (el nombre accesible es la etiqueta). */
-export function FilePicker({ label, accept, disabled, onFile }: { label: string; accept?: string; disabled?: boolean; onFile(file: File): void }) {
+/**
+ * Botón «Abrir archivo…» con el `<input type=file>` oculto pero accesible (el nombre accesible es la etiqueta). Con `onFiles`
+ * se pueden elegir varios archivos a la vez (siempre los entrega todos, aunque sea uno); si no, entrega el primero con `onFile`.
+ */
+export function FilePicker({ label, accept, disabled, onFile, onFiles }: { label: string; accept?: string; disabled?: boolean; onFile?(file: File): void; onFiles?(files: File[]): void }) {
   return (
     <label className={`wb-btn${disabled ? ' disabled' : ''}`}>
       {label}
@@ -16,10 +19,13 @@ export function FilePicker({ label, accept, disabled, onFile }: { label: string;
         className="wb-visually-hidden"
         type="file"
         accept={accept}
+        multiple={!!onFiles}
         disabled={disabled}
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onFile(file);
+          const files = [...(e.target.files ?? [])];
+          if (onFiles) {
+            if (files.length > 0) onFiles(files);
+          } else if (files[0]) onFile?.(files[0]);
           e.target.value = '';
         }}
       />
@@ -359,6 +365,8 @@ export function ImportPanel({ controller, state, notify }: PanelProps) {
   const [importer, setImporter] = useState('');
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState<string | undefined>();
+  // Varios archivos elegidos a la vez (los .tf de un stack): se importan juntos mientras el texto no se edite a mano.
+  const [files, setFiles] = useState<SourceFile[] | undefined>();
   const [error, setError] = useState<string | undefined>();
   // Los avisos viven en el controlador (no aquí): así se ven también tras «Abrir archivo…» del encabezado y al volver a esta pestaña.
   const lastImport = state.lastImport;
@@ -371,11 +379,32 @@ export function ImportPanel({ controller, state, notify }: PanelProps) {
 
   if (importers.length === 0) return <div className="wb-panel wb-empty">Este módulo no importa otros formatos.</div>;
 
+  /** Un archivo se carga como siempre; varios (si son todos del mismo formato y de uno que se reparte en varios) se juntan en el cuadro y se importan como uno. */
+  const openFiles = async (picked: File[]) => {
+    if (picked.length === 1) {
+      setFileName(picked[0].name);
+      setFiles(undefined);
+      setText(await readFile(picked[0]));
+      return;
+    }
+    const names = picked.map((f) => f.name);
+    if (!state.module || !multiFileImporter(state.module, names, importer || undefined)) {
+      setError(state.module ? whyNotMultiFile(state.module, names, importer || undefined) : 'No hay ningún módulo activo.');
+      return;
+    }
+    setError(undefined);
+    const read = await Promise.all(picked.map(async (f) => ({ name: f.name, text: await readFile(f) })));
+    const joined = joinSourceFiles(read);
+    setFileName(undefined);
+    setFiles(joined.extra.files);
+    setText(joined.text);
+  };
+
   const run = async () => {
     setError(undefined);
     try {
       const auto = !importer && fileName ? state.module?.importers.find((i) => i.extensions.some((ext) => fileName.toLowerCase().endsWith(ext)))?.id : undefined;
-      const result = await controller.importFrom(text, importer || auto, { file: fileName });
+      const result = files ? await controller.importFiles(files, importer || undefined) : await controller.importFrom(text, importer || auto, { file: fileName });
       notify(`Importado desde ${result.importer}${result.warnings.length ? ` con ${result.warnings.length} avisos` : ''}`);
     } catch (e) {
       setError((e as Error).message);
@@ -399,7 +428,17 @@ export function ImportPanel({ controller, state, notify }: PanelProps) {
         </label>
         <label className="wb-field">
           Texto a importar
-          <textarea ref={textArea} value={text} spellCheck={false} onChange={(e) => setText(e.target.value)} placeholder="Pega aquí el texto (p. ej. un flowchart de Mermaid)" aria-label="Texto a importar" />
+          <textarea
+            ref={textArea}
+            value={text}
+            spellCheck={false}
+            onChange={(e) => {
+              setText(e.target.value);
+              setFiles(undefined); // editado a mano: ya no es la unión de los archivos elegidos
+            }}
+            placeholder="Pega aquí el texto (p. ej. un flowchart de Mermaid)"
+            aria-label="Texto a importar"
+          />
         </label>
         {isMermaid && (
           <details className="wb-import-preview" open data-testid="import-mermaid">
@@ -408,17 +447,16 @@ export function ImportPanel({ controller, state, notify }: PanelProps) {
           </details>
         )}
         <div className="wb-row">
-          <FilePicker
-            label="Abrir archivo a importar…"
-            onFile={async (file) => {
-              setFileName(file.name);
-              setText(await readFile(file));
-            }}
-          />
+          <FilePicker label="Abrir archivo a importar…" onFiles={(picked) => void openFiles(picked)} />
           <button type="button" className="primary" disabled={!text.trim()} onClick={run}>
             Importar
           </button>
         </div>
+        {files && (
+          <div className="wb-note" style={{ margin: 0 }} data-testid="import-files">
+            <strong>{files.length} archivos se importan juntos</strong> (en orden alfabético): {files.map((f) => f.name).join(', ')}.
+          </div>
+        )}
         {error && (
           <div className="wb-note" role="alert" style={{ margin: 0 }}>
             {error}

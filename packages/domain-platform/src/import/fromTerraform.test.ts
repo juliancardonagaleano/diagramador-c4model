@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { toDrawio } from '../export/drawio';
 import { toMermaid } from '../export/mermaid';
@@ -9,7 +9,8 @@ import { formatPlatformIssues, validatePlatformDocument } from '../schema';
 import type { PlatformDocument, Resource } from '../types';
 import { listViews } from '../views';
 import { PlatformImportError } from './fromMermaid';
-import { fromTerraform } from './fromTerraform';
+import { joinSourceFiles } from '@iark/kernel';
+import { fromTerraform, fromTerraformFiles } from './fromTerraform';
 import { looksLikeTerraform } from './terraformModel';
 
 const DIR = 'tests/fixtures/importar/terraform';
@@ -419,5 +420,92 @@ describe('Terraform: entradas rotas', () => {
     expect(r.document.resources).toHaveLength(400);
     expect(r.warnings.length).toBeLessThanOrEqual(51);
     expect(validatePlatformDocument(r.document).ok).toBe(true);
+  });
+});
+
+describe('fromTerraformFiles: varios .tf como un solo stack', () => {
+  const MULTI = 'aws-tienda-multiarchivo';
+  const folder = (): Array<{ name: string; text: string }> =>
+    readdirSync(`${DIR}/${MULTI}`)
+      .filter((n) => n.endsWith('.tf'))
+      .map((name) => ({ name, text: read(`${MULTI}/${name}`) }));
+
+  it('el fixture tiene varios archivos, entre ellos uno solo de comentarios', () => {
+    const names = folder().map((f) => f.name);
+    expect(names).toEqual(expect.arrayContaining(['computo.tf', 'datos.tf', 'entrada.tf', 'outputs.tf', 'providers.tf', 'red.tf', 'seguridad.tf', 'variables.tf']));
+    expect(read(`${MULTI}/outputs.tf`).replace(/#.*$/gm, '').trim()).toBe('');
+  });
+
+  it('da el mismo documento que importar sus textos concatenados a mano, con los mismos avisos', async () => {
+    const joined = joinSourceFiles(folder());
+    const together = fromTerraformFiles(folder(), { file: `${DIR}/${MULTI}` });
+    const concatenated = fromTerraform(joined.text, { file: `${DIR}/${MULTI}` });
+    expect(together.document).toEqual(concatenated.document);
+    expect(together.warnings).toEqual(concatenated.warnings);
+    expect(together.document.workspace.name).toBe(MULTI);
+    await expectHealthy(together.document);
+  });
+
+  it('las referencias entre archivos se resuelven: es el mismo stack que el de un solo main.tf', () => {
+    const multi = fromTerraformFiles(folder(), { file: `${DIR}/${MULTI}` }).document;
+    const single = fromTerraform(read('aws-tienda/main.tf'), { file: `${DIR}/${MULTI}` }).document;
+    const ids = (doc: PlatformDocument) => ({
+      environments: doc.environments.map((e) => e.id).sort(),
+      networks: doc.networks.map((n) => `${n.id}<${n.parentId ?? ''}:${n.exposure}`).sort(),
+      resources: doc.resources.map((r) => `${r.id}:${r.kind}:${r.networkId ?? ''}`).sort(),
+      dependencies: doc.dependencies.map((d) => `${d.sourceId}>${d.targetId}:${d.kind}:${d.protocol ?? ''}`).sort(),
+    });
+    expect(ids(multi)).toEqual(ids(single));
+    // Una dependencia que cruza archivos: la regla de seguridad (seguridad.tf) conecta el balanceador (entrada.tf) con los nodos (computo.tf).
+    expect(multi.dependencies.some((d) => d.sourceId === 'public' && d.targetId === 'eks-cluster-main')).toBe(true);
+  });
+
+  it('el orden en que se pasan los archivos no cambia el resultado', () => {
+    const files = folder();
+    const forward = fromTerraformFiles(joinSourceFiles(files).extra.files, { file: `${DIR}/${MULTI}` });
+    const reversed = fromTerraformFiles(joinSourceFiles([...files].reverse()).extra.files, { file: `${DIR}/${MULTI}` });
+    expect(reversed).toEqual(forward);
+  });
+
+  it('un archivo vacío o de comentarios no es un error, y si están todos vacíos se dice', () => {
+    const doc = fromTerraformFiles([{ name: 'a.tf', text: '' }, { name: 'b.tf', text: '# nada\n' }, { name: 'c.tf', text: 'resource "aws_sqs_queue" "q" {\n  name = "q"\n}\n' }]);
+    expect(doc.document.resources.map((r) => r.id)).toEqual(['q']);
+    expect(() => fromTerraformFiles([{ name: 'a.tf', text: '' }, { name: 'b.tf', text: '  \n' }])).toThrow('Los archivos de Terraform están vacíos.');
+  });
+
+  it('un error de sintaxis dice de qué archivo y de qué línea', () => {
+    const files = [
+      { name: 'bien.tf', text: 'resource "aws_sqs_queue" "q" {\n  name = "q"\n}\n' },
+      { name: 'roto.tf', text: 'resource "aws_vpc" "main" {\n  cidr_block = "10.0.0.0/16\n}\n' },
+    ];
+    expect(() => fromTerraformFiles(files)).toThrow('El HCL de Terraform no es válido (roto.tf, línea 2): cadena sin cerrar.');
+    // Un solo archivo no lleva marca (es el mensaje de siempre).
+    expect(() => fromTerraformFiles([files[1]])).toThrow('El HCL de Terraform no es válido (línea 2): cadena sin cerrar.');
+    expect(() => fromTerraform(files[1].text)).toThrow('El HCL de Terraform no es válido (línea 2): cadena sin cerrar.');
+  });
+
+  it('los avisos de líneas que no entiende llevan el archivo; los de un solo archivo no', () => {
+    const bueno = 'resource "aws_s3_bucket" "a" {\n  bucket = "x"\n  ???\n}\n';
+    const otro = 'resource "aws_sqs_queue" "q" {\n  name = "q"\n}\nresource {\n}\n';
+    const several = fromTerraformFiles([{ name: 'almacen.tf', text: bueno }, { name: 'colas.tf', text: otro }]);
+    expect(several.warnings.join('\n')).toMatch(/almacen\.tf, línea 3: no se entiende/);
+    expect(several.warnings.join('\n')).toMatch(/colas\.tf, línea 4: el bloque resource necesita tipo y nombre; se omite\./);
+    const one = fromTerraformFiles([{ name: 'almacen.tf', text: bueno }]);
+    expect(one.warnings.join('\n')).toMatch(/^línea 3: no se entiende/m);
+  });
+
+  it('el JSON de Terraform no se mezcla con HCL: se indica el archivo', () => {
+    const hcl = { name: 'main.tf', text: 'resource "aws_sqs_queue" "q" {\n  name = "q"\n}\n' };
+    expect(() => fromTerraformFiles([hcl, { name: 'terraform.tfstate', text: '{"version":4,"resources":[]}' }])).toThrow(/«terraform\.tfstate» no es HCL/);
+  });
+
+  it('un solo archivo en la lista es una importación normal', () => {
+    const text = read('azure-aks/main.tf');
+    expect(fromTerraformFiles([{ name: 'main.tf', text }], { file: `${DIR}/azure-aks/main.tf` })).toEqual(fromTerraform(text, { file: `${DIR}/azure-aks/main.tf` }));
+  });
+
+  it('los módulos locales no se resuelven: se avisan como cualquier módulo sin mapear', () => {
+    const { warnings } = fromTerraformFiles(folder(), { file: `${DIR}/${MULTI}` });
+    expect(warnings.join('\n')).toContain('1 módulo sin mapear (su contenido no está en el archivo): module.observabilidad');
   });
 });

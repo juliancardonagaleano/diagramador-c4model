@@ -15,7 +15,7 @@ import { generationJsonSchema } from '@core/ai/generationSchema';
 import { standalonePrompt } from '@core/ai/prompt';
 import { DEFAULT_AI_MODEL, generateDocument, GenerationError, type Effort } from '@core/ai/generate';
 import { analyzeDocument } from '@core/model/issues';
-import { buildManifest, ModuleError, ProjectError, type ModuleRegistry, UnknownModuleError } from '@iark/kernel';
+import { buildManifest, joinSourceFiles, ModuleError, ProjectError, type ModuleRegistry, UnknownModuleError } from '@iark/kernel';
 import { createDefaultRegistry, DEFAULT_MODULE } from './registry';
 import { createSuiteServer } from './serve';
 import { isLoopbackHost } from './serveAuth';
@@ -27,6 +27,7 @@ import { TokenError, TokenStore } from './tokens';
 import { FolderProjectStore } from './workspace';
 import { genericExport, genericGenerate, genericPrompt, genericSchema, genericValidate, readModuleDocument } from './generic';
 import { CliError, dslIncludeOptions, extractJson, fallbackDocumentName, info, readDocument, readInput, writeOutput } from './io';
+import { readMultiInput, type MultiInput } from './multiFile';
 import { assertRepoFlags, collectRepoExclude, collectRepoInclude, DRY_RUN_HELP, FROM_REPO_HELP, FROM_REPO_PROMPT_HELP, parseRepoBudget, parseRepoRef, prepareRepo, REPO_BUDGET_HELP, REPO_EXCLUDE_HELP, REPO_INCLUDE_HELP, REPO_PRIVACY_HELP, REPO_PROMPT_HELP, REPO_REF_HELP, reportRepoFiles, reportRepoSummary } from './repo';
 
 const CLI_VERSION = '0.1.0';
@@ -71,18 +72,30 @@ function parseDensity(value: string): LayoutDensity {
 
 /**
  * Importa una fuente con un importador del módulo: el indicado con `--format` o, si es `auto`, el que se deduce de la
- * extensión o del contenido.
+ * extensión o del contenido. Con `multi` (una carpeta o varios archivos que se leen juntos) usa el importador que ya se
+ * eligió al leerlos y le pasa los archivos como los pide `Importer.multiFile`.
  */
 async function importSource(
   registry: ModuleRegistry,
   moduleId: string,
-  input: { file?: string; raw: string; format?: string; name?: string; fromFile: boolean },
+  input: { file?: string; raw: string; format?: string; name?: string; fromFile: boolean; multi?: MultiInput },
 ): Promise<{ format: string; document: any; warnings: string[] }> {
   const module = registry.require(moduleId);
   const ids = module.importers.map((i) => i.id).sort();
   const requested = (input.format ?? 'auto').toLowerCase();
   if (requested !== 'auto' && !ids.includes(requested)) {
     throw new CliError(`Formato inválido «${input.format}». Use: auto, ${ids.join(', ')}.`, 2);
+  }
+  if (input.multi) {
+    const importer = module.importers.find((i) => i.id === input.multi!.importerId)!;
+    const joined = joinSourceFiles(input.multi.files);
+    const outcome = await importer.import(joined.text, {
+      name: input.name,
+      fallbackName: fallbackDocumentName(input.multi.base, module.importers.flatMap((i) => i.extensions)),
+      file: input.multi.base,
+      extra: joined.extra,
+    });
+    return { format: importer.id, document: outcome.document, warnings: outcome.warnings };
   }
   const importer =
     requested === 'auto'
@@ -340,18 +353,25 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
 
   program
     .command('import')
-    .description('Importa un diagrama o un modelo de otro formato y lo convierte en un documento JSON del módulo. En C4: draw.io (.drawio), DSL de Structurizr (.dsl) o Mermaid (.mmd); los demás módulos aceptan además sus propios formatos (ver `iark modules`)')
-    .argument('[archivo]', 'archivo de entrada: .drawio, .dsl, .mmd o el de un formato del módulo (o "-" para stdin)')
+    .description('Importa un diagrama o un modelo de otro formato y lo convierte en un documento JSON del módulo. En C4: draw.io (.drawio), DSL de Structurizr (.dsl) o Mermaid (.mmd); los demás módulos aceptan además sus propios formatos (ver `iark modules`). El Terraform (--module platform) también se lee de una carpeta (todos sus .tf, sin entrar en subcarpetas) o de varios .tf a la vez')
+    .argument('[archivos...]', 'archivo de entrada: .drawio, .dsl, .mmd o el de un formato del módulo (o "-" para stdin). Para Terraform, también una carpeta o varios archivos .tf: se leen juntos, en orden alfabético, y los avisos y errores dicen de qué archivo vienen (los módulos locales no se resuelven)')
     .option('--stdin', 'leer el archivo de la entrada estándar')
-    .option('--format <formato>', 'formato de entrada: auto o el id de un importador del módulo (en C4: drawio, dsl, mermaid; los demás, en `iark modules`). auto lo deduce de la extensión o del contenido', 'auto')
+    .option('--format <formato>', 'formato de entrada: auto o el id de un importador del módulo (en C4: drawio, dsl, mermaid; los demás, en `iark modules`). auto lo deduce de la extensión o del contenido (en una carpeta o con varios archivos, del formato que se reparte en varios: terraform)', 'auto')
     .option('--module <id>', 'módulo de la suite que importa el documento (ver `iark modules`)', DEFAULT_MODULE)
     .option('-o, --out <archivo.json>', 'archivo de salida (por defecto stdout)')
-    .option('--name <nombre>', 'nombre del diagrama (por defecto, el del workspace del DSL o el nombre del archivo)')
+    .option('--name <nombre>', 'nombre del diagrama (por defecto, el del workspace del DSL, el nombre del archivo o el de la carpeta)')
     .option('--layout', 'aplica autolayout (ELK) a las vistas sin coordenadas (un DSL o Mermaid no las tienen)', false)
-    .action(async (file: string | undefined, opts) => {
-      const raw = readInput(file, opts.stdin);
+    .action(async (inputs: string[], opts) => {
+      // Una carpeta o varios archivos de un formato que se reparte en varios (los .tf de Terraform) se leen juntos.
+      const multi = opts.stdin ? undefined : readMultiInput(registry.require(opts.module), inputs, opts.format);
+      const file = inputs[0];
+      if (multi) {
+        info(`Leídos ${multi.files.length} archivo(s) para importar juntos: ${joinSourceFiles(multi.files).extra.files.map((f) => f.name).join(', ')}.`);
+        if (multi.skipped.length > 0) info(`aviso: ${multi.skipped.length} archivo(s) de la carpeta no se leen (solo se juntan los ${multi.extensions.join(', ')}; el resto de ${multi.importerId} se importa de uno en uno): ${multi.skipped.join(', ')}.`);
+      }
+      const raw = multi ? '' : readInput(file, opts.stdin);
       const fromFile = !opts.stdin && file !== undefined && file !== '-';
-      const imported = await importSource(registry, opts.module, { file, raw, format: opts.format, name: opts.name, fromFile });
+      const imported = await importSource(registry, opts.module, { file, raw, format: opts.format, name: opts.name, fromFile, multi });
       let { document } = imported;
       for (const warning of imported.warnings) info(`aviso: ${warning}`);
 

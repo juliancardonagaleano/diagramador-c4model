@@ -2,6 +2,7 @@ import {
   analyzeText,
   analyzeValue,
   exportDocument,
+  importFiles as importSourceFiles,
   importText,
   isKnownView,
   moduleCapabilities,
@@ -18,6 +19,7 @@ import {
   type ImportResult,
   type DiagramMeta,
   type ModuleCapabilities,
+  type SourceFile,
   type ViewChoices,
 } from '@iark/kernel';
 import type { ProjectSession } from '../projects/session';
@@ -504,6 +506,19 @@ export class WorkbenchController {
     if (!module) throw new Error('No hay ningún módulo activo.');
     const result = await importText(module, text, importerId, { name: context.name, file: context.file, fallbackName: context.file?.replace(/\.[^.]+$/, '') });
     this.useDocumentText(pretty(result.document), { importer: result.importer, file: context.file, warnings: result.warnings });
+    return result;
+  }
+
+  /**
+   * Importa varios archivos como uno solo (los `.tf` de un stack de Terraform): el documento es el mismo que el de importar sus
+   * textos concatenados y los avisos y errores dicen de qué archivo vienen. Todos deben ser del mismo formato y de uno que se
+   * pueda repartir en varios archivos (`Importer.multiFile`); si no, falla con el motivo y no toca el documento.
+   */
+  async importFiles(files: SourceFile[], importerId?: string): Promise<ImportResult> {
+    const { module } = this.state;
+    if (!module) throw new Error('No hay ningún módulo activo.');
+    const result = await importSourceFiles(module, files, importerId);
+    this.useDocumentText(pretty(result.document), { importer: result.importer, file: files.length === 1 ? files[0].name : `${files.length} archivos`, warnings: result.warnings });
     return result;
   }
 
