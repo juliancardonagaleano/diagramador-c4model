@@ -14,7 +14,7 @@
   --pj-error-bg: var(--wb-error-bg, #fdecea);
   --pj-warning-bg: var(--wb-warning-bg, #fff4e0);
   --pj-ok: var(--wb-ok, var(--semi-color-success, #1a7f43));
-  --pj-ok-bg: var(--wb-ok-bg, #e8f5ec);
+  --pj-ok-bg: var(--wb-ok-bg, color-mix(in srgb, var(--pj-ok) 14%, var(--pj-bg)));
   position: fixed;
   inset: 0;
   z-index: 2000;
@@ -205,9 +205,17 @@
 .pj-connect-actions {
   padding-top: 2px;
 }
-.pj-storage-body > .pj-ok,
-.pj-storage-body > .pj-error,
-.pj-storage-body > .pj-warn {
+.pj-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pj-results:empty {
+  display: none;
+}
+.pj-results > .pj-ok,
+.pj-results > .pj-error,
+.pj-results > .pj-warn {
   white-space: normal;
 }
 .pj-error small {

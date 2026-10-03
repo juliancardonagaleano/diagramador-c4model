@@ -52,6 +52,7 @@ export function StoragePanel({ session, open, onToggle, copyFor, onCopy, onChang
   const [who, setWho] = useState<RemoteSession | undefined>();
   const urlInput = useRef<HTMLInputElement>(null);
   const tokenInput = useRef<HTMLInputElement>(null);
+  const results = useRef<HTMLDivElement>(null);
 
   const typedUrl = useMemo(() => {
     try {
@@ -87,6 +88,11 @@ export function StoragePanel({ session, open, onToggle, copyFor, onCopy, onChang
     // solo al abrirlo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // En una pantalla pequeña el panel se desplaza por dentro: el resultado de probar la conexión no debe quedar fuera de la vista.
+  useEffect(() => {
+    if (test || problem || message || loss) results.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [test, problem, message, loss]);
 
   const changed = (): void => {
     setVersion((v) => v + 1);
@@ -303,39 +309,41 @@ export function StoragePanel({ session, open, onToggle, copyFor, onCopy, onChang
             </div>
           </form>
 
-          {test?.ok && (
-            <p className="pj-ok" role="status" data-testid="storage-test">
-              Conexión correcta con {test.url}.{' '}
-              {test.auth ? `Eres «${test.name ?? 'sin nombre'}»${test.role ? ` (rol ${test.role})` : ''}.` : 'El servidor no pide autenticación.'} Tiene {test.projects === 1 ? '1 proyecto' : `${test.projects} proyectos`}.
-            </p>
-          )}
-          {test && !test.ok && (
-            <p className="pj-error" role="alert" data-testid="storage-test" data-problem={test.problem}>
-              {test.message}
-              {test.detail && test.detail !== test.message && <small> Respuesta: {test.detail}</small>}
-            </p>
-          )}
-          {message && (
-            <p className="pj-ok" role="status" data-testid="storage-message">
-              {message}
-            </p>
-          )}
-          {problem && (
-            <p className="pj-error" role="alert" data-testid="storage-problem">
-              {problem}
-            </p>
-          )}
-          {loss && (
-            <p className="pj-warn" role="alert" data-testid="storage-loss">
-              Hay cambios sin guardar que no pudieron enviarse al almacén actual; si sigues, se perderán.{' '}
-              <button type="button" className="pj-danger" onClick={() => void (loss === 'connect' ? connect(true) : back(true))} disabled={busy}>
-                Seguir y descartarlos
-              </button>
-              <button type="button" onClick={() => setLoss(undefined)}>
-                Cancelar
-              </button>
-            </p>
-          )}
+          <div className="pj-results" ref={results}>
+            {test?.ok && (
+              <p className="pj-ok" role="status" data-testid="storage-test">
+                Conexión correcta con {test.url}.{' '}
+                {test.auth ? `Eres «${test.name ?? 'sin nombre'}»${test.role ? ` (rol ${test.role})` : ''}.` : 'El servidor no pide autenticación.'} Tiene {test.projects === 1 ? '1 proyecto' : `${test.projects} proyectos`}.
+              </p>
+            )}
+            {test && !test.ok && (
+              <p className="pj-error" role="alert" data-testid="storage-test" data-problem={test.problem}>
+                {test.message}
+                {test.detail && test.detail !== test.message && <small> Respuesta: {test.detail}</small>}
+              </p>
+            )}
+            {message && (
+              <p className="pj-ok" role="status" data-testid="storage-message">
+                {message}
+              </p>
+            )}
+            {problem && (
+              <p className="pj-error" role="alert" data-testid="storage-problem">
+                {problem}
+              </p>
+            )}
+            {loss && (
+              <p className="pj-warn" role="alert" data-testid="storage-loss">
+                Hay cambios sin guardar que no pudieron enviarse al almacén actual; si sigues, se perderán.{' '}
+                <button type="button" className="pj-danger" onClick={() => void (loss === 'connect' ? connect(true) : back(true))} disabled={busy}>
+                  Seguir y descartarlos
+                </button>
+                <button type="button" onClick={() => setLoss(undefined)}>
+                  Cancelar
+                </button>
+              </p>
+            )}
+          </div>
         </div>
       )}
     </section>

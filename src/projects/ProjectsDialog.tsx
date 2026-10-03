@@ -72,6 +72,8 @@ export function ProjectsDialog({ session, modules, onOpen, current, template, on
   const live = current?.();
 
   useEffect(() => {
+    // Si el panel ya llevó el foco a su campo (el servidor rechazó el token: abre directamente en el token), se respeta.
+    if (dialogRef.current?.contains(document.activeElement)) return;
     dialogRef.current?.querySelector<HTMLElement>('input, button')?.focus();
   }, []);
   // Con un servidor, mientras el gestor está abierto la lista se mantiene al día (no hay aviso entre equipos); lee al abrir.

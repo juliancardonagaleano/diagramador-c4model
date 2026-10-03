@@ -172,6 +172,7 @@ describe('gestor de proyectos con el almacén en la nube', () => {
       expect(screen.getByText(/No se pudo usar el servidor localhost:8787/)).toBeInTheDocument();
       const form = screen.getByRole('form', { name: 'Conectar a un servidor' });
       expect(within(form).getByLabelText('Token de acceso')).toBeInTheDocument();
+      expect(within(form).getByLabelText('Token de acceso')).toHaveFocus(); // directo al campo que hay que rellenar
     });
 
     it('con el servidor caído al abrir, lo dice y remite a «Dónde se guardan»', async () => {
