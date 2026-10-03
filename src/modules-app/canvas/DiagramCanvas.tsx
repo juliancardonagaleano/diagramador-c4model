@@ -48,6 +48,9 @@ export interface DiagramCanvasProps {
   onOpenAttachment?(id: string): void;
 }
 
+/** Sin cajas calculadas: `buildFlow` coloca cada elemento en su cuadrícula de reserva. */
+const EMPTY_LAYOUT: GraphLayout = { nodes: [], groups: [], edges: [], width: 0, height: 0 };
+
 const nodeTypes = { notation: NotationNode };
 const edgeTypes = { notation: NotationEdge };
 
@@ -108,9 +111,15 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
   // Al cambiar de módulo o de vista se encuadra el dibujo una vez que ELK lo haya colocado; después la cámara no se toca.
   const [laidFor, setLaidFor] = useState('');
   const [fittedFor, setFittedFor] = useState('');
+  // Estructura cuyo autolayout falló (ELK rechazó o la colocación propia del módulo lanzó): se avisa y el lienzo se asienta igual.
+  const [failedFor, setFailedFor] = useState('');
   const layoutKey = `${key}\u0000${signature}`;
   const layoutKeyRef = useRef(layoutKey);
   layoutKeyRef.current = layoutKey;
+  const keyRef = useRef(key);
+  keyRef.current = key;
+  // Vista (módulo + vista) a la que pertenece el `layout` guardado: solo se conserva tras un fallo si sigue siendo la misma vista.
+  const layoutOwner = useRef('');
   const settled = laidFor === layoutKey && fittedFor === key;
   useEffect(() => {
     setMoved(readPositions(key));
@@ -129,22 +138,40 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     if (!g) return;
     const seq = ++layoutSeq.current;
     const wanted = layoutKeyRef.current;
+    const forKey = keyRef.current;
     const apply = (result: GraphLayout): void => {
       if (seq !== layoutSeq.current) return;
+      layoutOwner.current = forKey;
       setLayout(result);
+      setFailedFor('');
       setLaidFor(wanted);
     };
-    const own = spec.layout && documentRef.current !== undefined ? await spec.layout(documentRef.current, viewId) : undefined;
-    if (own) return apply(own);
-    const kinds = new Map(spec.nodeKinds.map((k) => [k.kind, k]));
-    const parents = new Set(g.nodes.filter((n) => n.parentId).map((n) => n.parentId as string));
-    const result = await layoutGraph(
-      g.nodes.filter((n) => !parents.has(n.id)).map((n) => ({ id: n.id, width: n.width ?? kinds.get(n.kind)?.width ?? 180, height: n.height ?? kinds.get(n.kind)?.height ?? 72, groupId: n.parentId })),
-      g.edges.map((e) => ({ id: e.id, source: e.source, target: e.target, label: layoutLabelText(e) })),
-      g.nodes.filter((n) => parents.has(n.id)).map((n) => ({ id: n.id, groupId: n.parentId })),
-      { direction: 'RIGHT' },
-    );
-    apply(result);
+    // Si la colocación falla no se deja el lienzo colgado en «pending»: se conserva el dibujo que ya hubiera de esta misma
+    // vista (o, sin él, el de reserva de `buildFlow`: cuadrícula, con las posiciones arrastradas a mano por encima), se da la
+    // estructura por colocada y se avisa. Un fallo de un autolayout que ya no es el último (otra vista, otra estructura) se ignora.
+    const fail = (): void => {
+      if (seq !== layoutSeq.current) return;
+      const keep = layoutOwner.current === forKey;
+      setLayout((previous) => (keep && previous ? previous : EMPTY_LAYOUT));
+      layoutOwner.current = forKey;
+      setFailedFor(wanted);
+      setLaidFor(wanted);
+    };
+    try {
+      const own = spec.layout && documentRef.current !== undefined ? await spec.layout(documentRef.current, viewId) : undefined;
+      if (own) return apply(own);
+      const kinds = new Map(spec.nodeKinds.map((k) => [k.kind, k]));
+      const parents = new Set(g.nodes.filter((n) => n.parentId).map((n) => n.parentId as string));
+      const result = await layoutGraph(
+        g.nodes.filter((n) => !parents.has(n.id)).map((n) => ({ id: n.id, width: n.width ?? kinds.get(n.kind)?.width ?? 180, height: n.height ?? kinds.get(n.kind)?.height ?? 72, groupId: n.parentId })),
+        g.edges.map((e) => ({ id: e.id, source: e.source, target: e.target, label: layoutLabelText(e) })),
+        g.nodes.filter((n) => parents.has(n.id)).map((n) => ({ id: n.id, groupId: n.parentId })),
+        { direction: 'RIGHT' },
+      );
+      apply(result);
+    } catch {
+      fail();
+    }
   }, [spec, viewId]);
   useEffect(() => {
     void relayout();
@@ -279,6 +306,7 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     setMoved(new Map());
     writePositions(key, new Map());
     setLaidFor('');
+    setFailedFor('');
     setFittedFor('');
     // Al llegar el nuevo autolayout, el efecto de encuadre recoloca la cámara (la vista vuelve a estar sin encuadrar).
     void relayout();
@@ -440,6 +468,12 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
           ⌨
         </button>
       </div>
+
+      {failedFor === layoutKey && (
+        <div className="cv-notice" role="status" data-testid="canvas-layout-error">
+          No se pudo calcular la colocación automática de este diagrama: los elementos se muestran en una colocación provisional. Puedes moverlos a mano o pulsar Autolayout para reintentarlo.
+        </div>
+      )}
 
       {prompted && prompting && <ActionPrompt key={prompted.id} action={prompted} document={document} initial={prompting.initial} onSubmit={(value) => runAction(prompted, value)} onCancel={() => setPrompting(undefined)} />}
 
