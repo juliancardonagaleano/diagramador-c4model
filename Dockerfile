@@ -6,6 +6,11 @@
 #   curl http://localhost:8787/api/modules
 #
 # Para llamar a la API desde el navegador desde otro origen: añade --cors https://mi-app.example al comando.
+# Para guardar proyectos y compartirlos entre personas (servidor autoalojable): monta la carpeta de trabajo y la de los
+# tokens, y pasa IARK_WORKSPACE e IARK_TOKENS. La imagen escucha en 0.0.0.0, así que con IARK_WORKSPACE y sin IARK_TOKENS
+# `iark serve` se niega a arrancar. Los tokens se crean con `docker run --rm -v <carpeta>:/tokens --entrypoint node
+# iark-diagrams dist/cli/index.js auth create <nombre> --role admin --tokens /tokens/tokens.json` (ver el README,
+# «Servidor para varias personas»).
 # El puerto de dentro sale de la variable PORT (8787 por defecto) y lo usan igual el servidor y el HEALTHCHECK:
 # para cambiarlo, `-e PORT=9000` (y publícalo con `-p 9000:9000`), no `--port`.
 FROM node:22-alpine AS build

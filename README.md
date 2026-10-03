@@ -9,7 +9,7 @@ Editor web de diagramas del **modelo C4** (Contexto, Contenedores y Componentes)
 - **Editor interactivo** con la estética de [drawdb.app](https://www.drawdb.app/): cabecera con menús, toolbar flotante, panel lateral con pestañas y cards, panel de problemas, tema claro/oscuro, deshacer/rehacer, minimapa.
 - **CLI `iark`** para generar diagramas a partir de **instrucciones en lenguaje natural** (Claude, salida estructurada), aplicar autolayout y convertir a `.drawio` sin abrir un navegador. Se puede usar sin clave de API con cualquier otra IA o agente.
 - **Modo embebido** por `<iframe>` con protocolo **postMessage** al estilo de draw.io (`embed.diagrams.net`) y un SDK de anfitrión.
-- **Suite de módulos** (integraciones, datos, empresarial, plataforma, seguridad) con **banco de trabajo web**, **widget embebible** (SDK y Web Component `<iark-module>`), **federación por manifiesto**, **servicio HTTP** (`iark serve`, con Dockerfile), **trazabilidad entre módulos** (`iark trace`) y **proyectos** que agrupan diagramas de varios módulos en una carpeta de trabajo (`iark project`).
+- **Suite de módulos** (integraciones, datos, empresarial, plataforma, seguridad) con **banco de trabajo web**, **widget embebible** (SDK y Web Component `<iark-module>`), **federación por manifiesto**, **servicio HTTP** (`iark serve`, con Dockerfile), **trazabilidad entre módulos** (`iark trace`) **proyectos** que agrupan diagramas de varios módulos en una carpeta de trabajo (`iark project`) y un **servidor autoalojable para varias personas** (`iark serve --tokens`, con una cuenta por persona y roles).
 
 ## Instalación
 
@@ -597,7 +597,7 @@ Los errores de uso (proyecto o diagrama que no existe, nombre repetido, document
 
 ### API HTTP de proyectos
 
-`iark serve --workspace <carpeta>` (o `IARK_WORKSPACE`) añade la API de proyectos sobre la misma carpeta; sin ella esas rutas responden 404 «Este servicio no tiene espacio de trabajo (use --workspace <carpeta>)». El manifiesto de la instancia anuncia entonces `"projects": "../api/projects"`. Todo es JSON salvo el archivo único del proyecto; los ids son los de la carpeta (`tienda-web`, `seguridad-ejemplo`).
+`iark serve --workspace <carpeta>` (o `IARK_WORKSPACE`) añade la API de proyectos sobre la misma carpeta; sin ella esas rutas responden 404 «Este servicio no tiene espacio de trabajo (use --workspace <carpeta>)». El manifiesto de la instancia anuncia entonces `"projects": "../api/projects"` y `"projectsAuth": "none"` (`"bearer"` con tokens: ver «Servidor para varias personas»). Todo es JSON salvo el archivo único del proyecto; los ids son los de la carpeta (`tienda-web`, `seguridad-ejemplo`).
 
 | Ruta | Descripción |
 |---|---|
@@ -611,12 +611,163 @@ Los errores de uso (proyecto o diagrama que no existe, nombre repetido, document
 
 Códigos: `not-found` 404, `exists` 409, `conflict` 409, `invalid` 400, `unavailable` 500; el cuerpo es `{ "error": "…", "code": "…" }`. Un cuerpo que pasa de `maxBodyBytes` (5 MB) da 413.
 
-**Seguridad.** `iark serve` escucha en localhost y una página ajena abierta en el navegador podría intentar leer o escribir en el disco del usuario a través de él. En las rutas de proyectos (y solo en ellas):
+**Seguridad (sin `--tokens`: solo para una persona, en su máquina).** `iark serve` escucha en localhost y una página ajena abierta en el navegador podría intentar leer o escribir en el disco del usuario a través de él. En las rutas de proyectos (y solo en ellas):
 
 - POST, PUT, PATCH y DELETE exigen `Content-Type: application/json` (415 si no): un formulario o un `fetch` `no-cors` no pueden enviarlo. Se admiten parámetros (`; charset=utf-8`); DELETE también lo exige, con el cuerpo vacío.
 - Una petición con cabecera `Origin` se rechaza con 403 salvo que su host (y puerto) coincidan con la cabecera `Host` o esté en `--cors`. Un `*` en `--cors` no basta para esta API: hay que nombrar el origen (`--cors https://mi-app.example`). Solo a esos orígenes se les anuncian `PUT`, `PATCH` y `DELETE` en `Access-Control-Allow-Methods`.
-- Si la conexión llega por loopback, la cabecera `Host` debe ser `localhost`, `127.0.0.1` o `[::1]` (con o sin puerto); si no, 403 (protección contra el *DNS rebinding*). Si el servidor escucha en otra dirección (`--host 0.0.0.0`, un contenedor) esa comprobación no es posible: ponga delante un proxy con autenticación o no exponga un espacio de trabajo así.
+- Si la conexión llega por loopback, la cabecera `Host` debe ser `localhost`, `127.0.0.1` o `[::1]` (con o sin puerto); si no, 403 (protección contra el *DNS rebinding*). Esa comprobación solo es posible en loopback: con un espacio de trabajo, `iark serve --host 0.0.0.0` (o cualquier `--host` que no sea de loopback) **no arranca sin `--tokens`** (código 2). Para exponerlo a otras personas, use tokens: ver «Servidor para varias personas (nube autoalojada)».
 - Los ids se validan antes de tocar el disco (400 si no son un id válido) y los errores de disco no revelan rutas.
+
+Con `--tokens` esta lista cambia (no hay `Host` ni `Origin` que comprobar, pero sí token y rol): ver la sección siguiente.
+
+## Servidor para varias personas (nube autoalojada)
+
+Con `--tokens`, `iark serve --workspace` deja de ser solo de una persona en su máquina: puede escuchar en una red (o en internet, detrás de HTTPS) con **una cuenta por persona** y **roles**. El sitio publicado en GitHub Pages es estático y no tiene servidor: la «nube» es la que usted aloja, y el cliente web se conecta a ella con la URL del servidor y el token de cada persona. No hay registro abierto de usuarios ni OAuth: las «cuentas» son tokens que emite quien administra el servidor.
+
+### Crear tokens
+
+```bash
+iark auth create "Ana García" --role admin  --tokens iark-tokens.json    # imprime el token UNA vez (stdout); un recordatorio, por stderr
+iark auth create "Luis"       --role editor --tokens iark-tokens.json
+iark auth create "Visitas"    --role viewer --tokens iark-tokens.json
+iark auth list   --tokens iark-tokens.json                               # nombre, rol y fecha; --json para otras herramientas
+iark auth revoke "Visitas" --tokens iark-tokens.json
+export IARK_TOKENS=iark-tokens.json                                      # equivale a --tokens en `iark auth` y en `iark serve`
+```
+
+- Un token es `iark_` y 32 bytes aleatorios en base64url (`iark_Zk3…`, 48 caracteres). **El archivo guarda solo su hash (sha256)**, nunca el token: quien lo lea no puede usarlo, y si se pierde el token no se puede recuperar (se revoca y se crea otro). El archivo es `{ "version": 1, "tokens": [{ "name", "role", "hash", "createdAt" }] }`, se crea con modo 0600 y se escribe de forma atómica (temporal + `rename`).
+- El nombre es único (sin distinguir mayúsculas) y es el que devuelve `whoami`. Los tokens no caducan: se revocan por su nombre.
+- **El servidor relee el archivo cuando cambia** (su fecha, tamaño o inodo): crear o revocar un token surte efecto en la siguiente petición, sin reiniciar. Si el archivo no se puede leer o está dañado, el servidor **deniega todo** (503, nunca abre el acceso) y lo anota en stderr, sin contenido; vuelve el acceso en cuanto el archivo es válido otra vez. Al arrancar, en cambio, el archivo debe existir y ser válido (si no, el servidor no arranca: código 2).
+- `iark auth` hace una persona cada vez: dos administradores a la vez pueden pisarse el cambio.
+
+### Arrancar
+
+```bash
+iark serve --host 0.0.0.0 --port 8787 \
+  --workspace ./iark-workspace --tokens ./iark-tokens.json \
+  --cors https://juliancardonagaleano.github.io
+```
+
+- **Fuera de loopback, `--tokens` es obligatorio.** Con `--workspace` (o `IARK_WORKSPACE`) y un `--host` que no sea `127.0.0.1`, `localhost` o `::1`, sin `--tokens` el servicio **se niega a arrancar** (código 2) y explica las dos salidas: exigir tokens, o escuchar solo en `--host 127.0.0.1`. Sin espacio de trabajo no hay nada que proteger y todo sigue como antes (`--tokens` se ignora con un aviso).
+- `--tokens` también vale en loopback (entonces también se exige token). Sin `--tokens`, todo funciona exactamente como en «API HTTP de proyectos».
+- `--cors <orígenes>` lista los sitios web que pueden llamar a la API desde el navegador: aquí, el cliente web publicado (`https://juliancardonagaleano.github.io`, solo el origen, sin ruta). Con tokens también vale `*` (ver «CORS» más abajo).
+- Detrás de un proxy, añada `--trust-proxy` (ver «Límites»).
+- Con tokens fuera de loopback el arranque recuerda que el servicio **no habla TLS**.
+
+### Roles
+
+| Operación | `viewer` | `editor` | `admin` |
+|---|:---:|:---:|:---:|
+| Leer: `GET` de proyectos, diagramas, archivo único (`bundle`), comprobación (`check`) y `/api/whoami` | sí | sí | sí |
+| Crear, guardar, renombrar y borrar **diagramas** | no | sí | sí |
+| Crear y renombrar **proyectos** · importar un proyecto (`POST /api/projects/import`) | no | sí | sí |
+| Borrar **proyectos** (`DELETE /api/projects/<p>`) | no | no | sí |
+
+Cada rol incluye lo de los de abajo. Lo que no es una lectura (también un método o una ruta que no existen) exige al menos `editor`: un `viewer` recibe 403 en cualquier escritura, sin sondear con peticiones torcidas. El rol se comprueba **antes** de leer el cuerpo o tocar el disco. Los roles valen para todo el espacio de trabajo (no hay permisos por proyecto).
+
+### Contrato HTTP con autenticación
+
+Las rutas `/api/projects…` y `GET /api/whoami` exigen la cabecera `Authorization: Bearer <token>` (el esquema no distingue mayúsculas). El resto de la API (validar, exportar, módulos, manifiesto…) sigue sin pedir token: no toca el disco.
+
+| Estado | Cuándo | Cuerpo y cabeceras |
+|---|---|---|
+| `401` | Sin cabecera, con otro esquema, o con un token que no existe o se revocó | `{ "error": "…", "code": "unauthorized" }` + `WWW-Authenticate: Bearer realm="iark"`. El mensaje es el mismo exista o no el token |
+| `403` | El rol del token no alcanza para la operación | `{ "error": "…", "code": "forbidden" }` |
+| `429` | Demasiados intentos fallidos desde la misma dirección | `{ "error": "…", "code": "rate-limited" }` + `Retry-After: <segundos>` |
+| `503` | El archivo de tokens no se puede leer o está dañado (se deniega todo) | `{ "error": "…", "code": "unavailable" }`. Distinto del 401 a propósito: un cliente no debe confundir un servidor mal configurado con un token revocado (y olvidar el token) |
+
+- `GET /api/whoami` → `{ "auth": true, "name": "Ana García", "role": "admin" }` con un token válido (401 si no). Sin `--tokens` es público y responde `{ "auth": false }`. Es la forma de comprobar un token antes de guardarlo y de saber qué rol tiene.
+- El manifiesto (`/.well-known/iark.json`, siempre público) anuncia `"projects": "../api/projects"` y `"projectsAuth": "bearer"` (o `"none"` sin tokens): el cliente lo lee para saber si debe pedir un token.
+- **Frenado de intentos fallidos**: desde una misma dirección se toleran 5 intentos fallidos (una petición que trae `Authorization` y no vale); después, 1 s de espera, y se duplica con cada fallo más (2 s, 4 s…) hasta un tope de 5 min. Mientras dura el freno, todas las peticiones de esa dirección a estas rutas dan 429, también las que traigan un token bueno (si no, el freno serviría para seguir adivinando). Las peticiones sin cabecera no cuentan, un acierto no borra los fallos y una dirección que no falla durante 15 min se olvida. Es en memoria (se pierde al reiniciar) y acotado.
+- **Con tokens ya no se comprueban `Host` ni `Origin`** en estas rutas: la credencial es una cabecera que el navegador no añade por su cuenta, así que una página ajena no puede usar la API sin un token que alguien le haya dado (no hay CSRF) y no hay «DNS rebinding» que atajar; además el servidor se expone con otros nombres y desde otros sitios. **Se mantiene** `Content-Type: application/json` en POST, PUT, PATCH y DELETE (415 si no).
+- Un token nunca se escribe en ningún registro ni se devuelve en ninguna respuesta.
+
+### CORS
+
+Con tokens, las rutas `/api/projects…` y `/api/whoami` anuncian `Access-Control-Allow-Headers: Content-Type, Authorization`, todos los métodos (`GET, POST, PUT, PATCH, DELETE, OPTIONS`) y `Access-Control-Expose-Headers: Retry-After, Content-Disposition, Location` para los orígenes de `--cors` **y también para `*`**. Sin tokens, para esta API hay que nombrar el origen: abrirla a `*` dejaría que cualquier página escribiera en el disco. Con tokens no hace falta esa cautela, porque la credencial es una cabecera que el navegador no envía por sí solo (no se usan cookies ni `Access-Control-Allow-Credentials`): una página ajena sin token recibe 401. El preflight `OPTIONS` no lleva credenciales y siempre responde 204, también con `Authorization` en `Access-Control-Request-Headers`; las respuestas de error (401, 403, 429…) llevan las mismas cabeceras de CORS, para que el cliente pueda leerlas. El resto de la API conserva el CORS de siempre.
+
+### Con Docker
+
+El contenedor corre como el usuario `node` (uid 1000): la carpeta de trabajo y la de tokens deben poder leerse por ese usuario (y la de trabajo, escribirse).
+
+```bash
+docker build -t iark-diagrams .
+mkdir -p datos/espacio datos/tokens && sudo chown -R 1000:1000 datos
+# crear el primer token con la propia imagen (su ENTRYPOINT es `serve`, así que se cambia por `node`)
+docker run --rm -v "$PWD/datos/tokens:/tokens" --entrypoint node iark-diagrams \
+  dist/cli/index.js auth create "Ana García" --role admin --tokens /tokens/tokens.json
+# el servicio, con la carpeta de trabajo y la de tokens como volúmenes; publicado solo en el anfitrión, donde va el proxy con HTTPS (abajo)
+docker run -d --name iark -p 127.0.0.1:8787:8787 \
+  -v "$PWD/datos/espacio:/workspace" -v "$PWD/datos/tokens:/tokens:ro" \
+  -e IARK_WORKSPACE=/workspace -e IARK_TOKENS=/tokens/tokens.json \
+  iark-diagrams --cors https://juliancardonagaleano.github.io --trust-proxy
+```
+
+- **Monte la carpeta de los tokens, no el archivo.** Docker monta un archivo suelto por su inodo, y `iark auth` reemplaza el archivo de forma atómica (con otro inodo): el contenedor seguiría viendo el de antes y las revocaciones no surtirían efecto. Con la carpeta montada sí. El servidor solo lee el archivo, así que `:ro` vale.
+- La imagen escucha en `0.0.0.0`: con `IARK_WORKSPACE` y sin `IARK_TOKENS` se niega a arrancar. Un archivo de tokens creado en el anfitrión con otro usuario (modo 0600) no lo podrá leer el contenedor: créelo con la imagen, como arriba, o cámbiele el dueño (`chown 1000`).
+- Para revocar o listar: `docker run --rm -v "$PWD/datos/tokens:/tokens" --entrypoint node iark-diagrams dist/cli/index.js auth revoke "Ana García" --tokens /tokens/tokens.json`; el servidor en marcha lo nota solo.
+- El `HEALTHCHECK` de la imagen consulta `/api/modules`, que sigue siendo público.
+
+Con HTTPS delante (Caddy), en un `docker-compose.yml`:
+
+```yaml
+services:
+  iark:
+    image: iark-diagrams
+    restart: unless-stopped
+    command: ["--cors", "https://juliancardonagaleano.github.io", "--trust-proxy"]
+    environment:
+      IARK_WORKSPACE: /workspace
+      IARK_TOKENS: /tokens/tokens.json
+    volumes:
+      - ./datos/espacio:/workspace
+      - ./datos/tokens:/tokens:ro
+    # sin `ports`: solo el proxy llega a él
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+volumes:
+  caddy-data:
+```
+
+### HTTPS: el servidor no habla TLS
+
+`iark serve` solo habla HTTP: sin HTTPS los tokens viajan en claro. Ponga delante un proxy inverso con un certificado, y pásele `--trust-proxy` a `iark serve`. Lo mínimo con Caddy (obtiene y renueva el certificado solo; `nube.ejemplo.org` debe apuntar a su máquina):
+
+```
+nube.ejemplo.org {
+	reverse_proxy iark:8787
+}
+```
+
+o con nginx (certificado ya emitido, por ejemplo con certbot):
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name nube.ejemplo.org;
+    ssl_certificate     /etc/letsencrypt/live/nube.ejemplo.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/nube.ejemplo.org/privkey.pem;
+    client_max_body_size 6m;                          # el servidor admite cuerpos de hasta 5 MB
+    location / {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;   # el cliente real; no se fía de lo que el cliente haya puesto
+    }
+}
+```
+
+### Límites
+
+- **Sin TLS** (arriba) y **sin registro abierto ni OAuth**: no hay contraseñas, ni registro de personas, ni inicio de sesión con terceros. Quien administra crea un token por persona y se lo entrega por un canal seguro. Los tokens no caducan y los roles son globales al espacio de trabajo (no hay permisos por proyecto).
+- **Un token guardado en el navegador queda expuesto a cualquier XSS del sitio que lo use** (y a las extensiones del navegador y a quien use ese equipo). Use el rol mínimo (`viewer` para quien solo lee), revoque el token ante la duda y no abra el cliente web desde un sitio que no controle.
+- **`--trust-proxy` solo detrás de un proxy.** Sin él, todos los clientes de un proxy comparten la dirección del proxy y, por tanto, el freno de intentos fallidos: cualquiera podría frenar a todos durante unos minutos con tokens inválidos. Con él, la dirección sale de la última entrada de `X-Forwarded-For`: sin un proxy delante, cualquiera cambiaría de dirección a voluntad y el freno no serviría. El freno es por dirección exacta (no agrupa un IPv6 por su prefijo) y no sustituye a un cortafuegos.
+- Un token con rol `editor` o `admin` puede escribir y borrar en la carpeta de trabajo: el control de versiones de la carpeta (git, copias de seguridad) es su red de seguridad. Cada diagrama se guarda de forma atómica y `ifUpdatedAt` detecta un guardado en medio, pero no hay edición simultánea en tiempo real ni historial de quién cambió qué.
+- El servidor no registra accesos. El resto de la API (validar, exportar…) no pide token y consume CPU de su servidor con cuerpos de hasta 5 MB.
 
 ## Guardar en la nube (servidor propio) desde el navegador
 
@@ -670,6 +821,7 @@ iark prompt   "<instrucción>" [--from base.json]
 iark example
 iark modules  [--json]
 iark project  list|create|rename|delete|show|add|get|rename-diagram|remove|copy|export|import|check|trace   # proyectos en una carpeta de trabajo (ver «Proyectos»)
+iark auth     create|list|revoke   # tokens de acceso de `iark serve --tokens` (ver «Servidor para varias personas»)
 iark <módulo> <comando>   # comandos propios de cada módulo (p. ej. `iark integration catalog`)
 ```
 
@@ -873,7 +1025,7 @@ curl -X POST 'localhost:8787/api/security/export?format=svg&view=dfd' -d @exampl
 | `POST /api/<módulo>/run/<comando>` | Cuerpo `{ input?, args?, options? }` → informe o conversión |
 | `POST /api/trace` | Cuerpo `{ documents: [{ module, document }], from?, direction?, depth? }` → grafo de trazabilidad |
 
-Con `--workspace <carpeta>` añade además la API de proyectos (`/api/projects…`, con sus propias reglas de seguridad: ver «API HTTP de proyectos»); sin ella, el servicio no guarda estado. Sin dependencias (`node:http`). Sin `--cors` solo responde al mismo origen; `--cors https://mi-app.example` (o `*`) abre la API a un navegador de otro origen. El cuerpo máximo es de 5 MB. La generación con IA sigue viviendo solo en el CLI.
+Con `--workspace <carpeta>` añade además la API de proyectos (`/api/projects…`, con sus propias reglas de seguridad: ver «API HTTP de proyectos»); con `--tokens <archivo>` exige un token con rol en esa API y puede escuchar fuera de loopback (ver «Servidor para varias personas (nube autoalojada)»); sin ella, el servicio no guarda estado. Sin dependencias (`node:http`). Sin `--cors` solo responde al mismo origen; `--cors https://mi-app.example` (o `*`) abre la API a un navegador de otro origen. El cuerpo máximo es de 5 MB. La generación con IA sigue viviendo solo en el CLI.
 
 #### Imagen Docker
 
@@ -888,6 +1040,7 @@ docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges -p 8
 ```
 
 - Los argumentos tras el nombre de la imagen se añaden al `ENTRYPOINT` (`--cors`, `--static`…); si repites una opción, gana la última. Para cambiar el puerto de publicación basta `-p`. El puerto de dentro sale de la variable `PORT` (8787 por defecto), que usan igual el servidor y el `HEALTHCHECK` (consulta `/api/modules`): cámbialo con `-e PORT=9100`, no con `--port` (el servidor escucharía en otro puerto que el `HEALTHCHECK` no mira y el contenedor acabaría `unhealthy`; si aun así lo haces, sobrescribe el chequeo con `--health-cmd` o `--no-healthcheck`).
+- Para guardar proyectos y compartirlos entre personas (volúmenes, tokens, HTTPS), ver «Servidor para varias personas (nube autoalojada)»: la imagen escucha en `0.0.0.0`, así que con `IARK_WORKSPACE` y sin `IARK_TOKENS` se niega a arrancar.
 - El contenedor pasa a `healthy` en unos segundos (`docker inspect --format '{{.State.Health.Status}}' <contenedor>`) y `docker stop` lo detiene en menos de un segundo con código 0: `iark serve` cierra el servidor al recibir `SIGTERM`, sin necesidad de `--init`.
 - Probado con Docker 29 (`docker build`, `docker run --network host` y `docker run -p` con red de puente e iptables, incluida la variante endurecida y `-e PORT` con otro `-p`): `/`, `/modulos.html?module=data`, `/suite.html`, `/trazabilidad.html`, `/.well-known/iark.json`, `/api/modules`, validar y exportar (SVG, Mermaid y draw.io) un ejemplo de cada módulo, importar Mermaid, `run/<comando>` y `POST /api/trace`.
 
@@ -903,7 +1056,7 @@ packages/domain-data/  @iark/domain-data: módulo `data` (activos, dominios, pip
 packages/domain-enterprise/  @iark/domain-enterprise: módulo `enterprise` (capacidades, procesos, aplicaciones y tecnología con ciclo de vida; mapa de capacidades, paisaje, impacto y obsolescencia; import Mermaid, export Mermaid/SVG/draw.io, IA)
 packages/domain-platform/  @iark/domain-platform: módulo `platform` (entornos, redes, recursos, servicios, despliegues, dependencias y pipelines; topología, despliegue por entorno, entrega continua e impacto; import Mermaid, export Mermaid/SVG/draw.io, IA)
 packages/domain-security/  @iark/domain-security: módulo `security` (zonas de confianza, activos, flujos de datos, amenazas STRIDE y controles; diagrama de flujo de datos, modelo de amenazas, riesgos y superficie de ataque; import Mermaid, export Mermaid/SVG/draw.io, IA)
-src/cli/               comandos de iark (commander): módulos, `trace`, `project` (con el almacén en carpeta `workspace.ts`), `serve` (y su API de proyectos); carga los módulos del registro
+src/cli/               comandos de iark (commander): módulos, `trace`, `project` (con el almacén en carpeta `workspace.ts`), `auth` (tokens: `tokens.ts`), `serve` (y su API de proyectos, con la autenticación de `serveAuth.ts`); carga los módulos del registro
 src/embed/             protocolo postMessage (C4 y de módulos), SDK de anfitrión y Web Component <iark-module>
 src/projects/          proyectos guardados en la app web: almacén en IndexedDB y almacén remoto (servidor), su configuración, la sesión con autoguardado y el gestor
 src/modules-app/       banco de trabajo genérico de módulos (controlador sin React, editor, protocolo del puente)

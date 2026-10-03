@@ -26,11 +26,19 @@ export const moduleManifestSchema = z.object({
     .optional(),
 });
 
+/** Cómo se autentica quien llama a la API de proyectos de la instancia: `bearer` (cabecera `Authorization: Bearer <token>`) o `none` (sin autenticación). */
+export const PROJECTS_AUTH = ['bearer', 'none'] as const;
+export type ProjectsAuth = (typeof PROJECTS_AUTH)[number];
+
 export const manifestSchema = z.object({
   schema: z.literal(MANIFEST_SCHEMA_ID),
   name: z.string(),
   version: z.string(),
   modules: z.array(moduleManifestSchema),
+  /** URL (absoluta o relativa al manifiesto) de la API de proyectos; solo la declara una instancia con espacio de trabajo (`iark serve --workspace`). */
+  projects: z.string().optional(),
+  /** Cómo se autentica esa API; acompaña a `projects`. */
+  projectsAuth: z.enum(PROJECTS_AUTH).optional(),
 });
 
 export type ModuleManifest = z.infer<typeof moduleManifestSchema>;
