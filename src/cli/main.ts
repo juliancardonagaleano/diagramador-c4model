@@ -22,7 +22,7 @@ import { registerTrace } from './trace';
 import { registerDiff } from './diff';
 import { genericExport, genericGenerate, genericPrompt, genericSchema, genericValidate, readModuleDocument } from './generic';
 import { CliError, dslIncludeOptions, extractJson, fallbackDocumentName, info, readDocument, readInput, writeOutput } from './io';
-import { assertRepoFlags, DRY_RUN_HELP, FROM_REPO_HELP, FROM_REPO_PROMPT_HELP, parseRepoBudget, parseRepoRef, prepareRepo, REPO_BUDGET_HELP, REPO_PRIVACY_HELP, REPO_PROMPT_HELP, REPO_REF_HELP, reportRepoFiles, reportRepoSummary } from './repo';
+import { assertRepoFlags, collectRepoExclude, collectRepoInclude, DRY_RUN_HELP, FROM_REPO_HELP, FROM_REPO_PROMPT_HELP, parseRepoBudget, parseRepoRef, prepareRepo, REPO_BUDGET_HELP, REPO_EXCLUDE_HELP, REPO_INCLUDE_HELP, REPO_PRIVACY_HELP, REPO_PROMPT_HELP, REPO_REF_HELP, reportRepoFiles, reportRepoSummary } from './repo';
 
 const CLI_VERSION = '0.1.0';
 
@@ -199,6 +199,8 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
     .option('--module <id>', 'módulo de la suite (ver `iark modules`); con otro que no sea c4, --out exporta según la extensión (.svg, .mmd, .drawio…)', DEFAULT_MODULE)
     .option('--from-repo <carpeta|url>', FROM_REPO_HELP)
     .option('--repo-ref <rama|etiqueta>', REPO_REF_HELP, parseRepoRef)
+    .option('--repo-include <glob>', REPO_INCLUDE_HELP, collectRepoInclude)
+    .option('--repo-exclude <glob>', REPO_EXCLUDE_HELP, collectRepoExclude)
     .option('--repo-budget <kb>', REPO_BUDGET_HELP, parseRepoBudget)
     .option('--dry-run', DRY_RUN_HELP, false)
     .addHelpText('after', REPO_PRIVACY_HELP)
@@ -420,6 +422,8 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
     .option('--module <id>', 'módulo de la suite (ver `iark modules`)', DEFAULT_MODULE)
     .option('--from-repo <carpeta|url>', FROM_REPO_PROMPT_HELP)
     .option('--repo-ref <rama|etiqueta>', REPO_REF_HELP, parseRepoRef)
+    .option('--repo-include <glob>', REPO_INCLUDE_HELP, collectRepoInclude)
+    .option('--repo-exclude <glob>', REPO_EXCLUDE_HELP, collectRepoExclude)
     .option('--repo-budget <kb>', REPO_BUDGET_HELP, parseRepoBudget)
     .addHelpText('after', REPO_PROMPT_HELP)
     .action(async (instruction: string, opts) => {

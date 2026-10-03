@@ -74,10 +74,12 @@ function engineIssues(doc: DataDocument, contracts: Map<string, { name: string; 
         message: `La columna «${c.name}» de ${label(a)} declara el tipo «${c.type}», que no existe en ${engine.label}${alternatives.length ? `. ¿Quisiste decir ${alternatives.map((t) => `«${t}»`).join(', ')}?` : '.'}`,
       });
     }
-    // Una clave primaria de un tipo que el motor no admite como clave (`text` en MySQL): el CREATE TABLE que se genera falla.
-    for (const c of a.kind === 'table' ? (a.columns ?? []).filter((x) => x.keys?.includes('pk')) : []) {
-      const type = unkeyableType(engine, c.type);
-      if (type) issues.push({ severity: 'warning', elementId: a.id, message: `La columna «${c.name}» de ${label(a)} es clave primaria de tipo «${type}», que ${engine.label} no admite como clave: su CREATE TABLE falla. ${keyTypeAdvice(engine)}` });
+    // Una clave primaria (o única) de un tipo que el motor no admite como clave (`text` en MySQL, `clob` en Oracle): el CREATE TABLE que se genera falla.
+    for (const c of a.kind === 'table' ? a.columns ?? [] : []) {
+      // Una columna `pk` y `uk` a la vez es solo clave primaria: el DDL no repite el UNIQUE.
+      const kind = c.keys?.includes('pk') ? 'pk' : c.keys?.includes('uk') ? 'uk' : undefined;
+      const type = kind ? unkeyableType(engine, c.type, kind) : undefined;
+      if (type) issues.push({ severity: 'warning', elementId: a.id, message: `La columna «${c.name}» de ${label(a)} es clave ${kind === 'pk' ? 'primaria' : 'única'} de tipo «${type}», que ${engine.label} no admite como clave: su CREATE TABLE falla. ${keyTypeAdvice(engine)}` });
     }
     const contract = a.contractId ? contracts.get(a.contractId) : undefined;
     const declared = contract?.content ? contractEngine(contract.content) : undefined;
