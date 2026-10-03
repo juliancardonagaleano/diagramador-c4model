@@ -56,7 +56,7 @@ describe('«Abrir archivo a importar…» con varios archivos', () => {
 
     await waitFor(() => expect(area()).toHaveValue('PART a\nPART b\nPART c'));
     expect(screen.getByTestId('import-files')).toHaveTextContent('3 archivos se importan juntos (en orden alfabético): a.part, B.part, c.part.');
-    await userEvent.click(screen.getByRole('button', { name: 'Importar', exact: true }));
+    await userEvent.click(screen.getByRole('button', { name: 'Importar' }));
 
     await waitFor(() => expect(received).toHaveLength(1));
     expect(received[0].text).toBe('PART a\nPART b\nPART c');
@@ -90,7 +90,7 @@ describe('«Abrir archivo a importar…» con varios archivos', () => {
     await screen.findByTestId('import-files');
     fireEvent.change(area(), { target: { value: 'PART editado' } });
     expect(screen.queryByTestId('import-files')).toBeNull();
-    await userEvent.click(screen.getByRole('button', { name: 'Importar', exact: true }));
+    await userEvent.click(screen.getByRole('button', { name: 'Importar' }));
     await waitFor(() => expect(received).toHaveLength(1));
     // Importado como texto (sin el detalle por archivo).
     expect(received[0].text).toBe('PART editado');
