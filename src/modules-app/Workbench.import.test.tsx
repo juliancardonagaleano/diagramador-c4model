@@ -77,7 +77,7 @@ describe('avisos del panel «Importar»', () => {
     const controller = await open();
     await userEvent.click(screen.getByRole('tab', { name: 'Importar' }));
     await userEvent.type(screen.getByLabelText('Texto a importar'), 'FAKE');
-    await userEvent.click(screen.getByRole('button', { name: 'Importar', exact: true }));
+    await userEvent.click(screen.getByRole('button', { name: 'Importar' }));
     expect(await screen.findByTestId('import-warnings')).toHaveTextContent('2 avisos de la importación:');
     expect(screen.getByRole('tab', { name: 'Importar (2)' })).toBeInTheDocument();
 
