@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
 import { validateDocument } from '@core/model/schema';
-import { useDocumentStore } from './documentStore';
+import { pauseHistory, useDocumentStore } from './documentStore';
 
 function reset() {
   useDocumentStore.getState().loadSample();
@@ -204,5 +204,47 @@ describe('documentStore', () => {
       useDocumentStore.getState().removeRelationship('r11');
       expect(useDocumentStore.getState().doc.views.find((v) => v.id === 'contenedores')!.edges).toEqual([]);
     });
+  });
+});
+
+describe('pauseHistory', () => {
+  beforeEach(reset);
+  const past = () => useDocumentStore.temporal.getState().pastStates.length;
+  const rename = (name: string) => useDocumentStore.getState().updateElement('cliente', { name });
+
+  it('mientras haya una pausa el historial no registra pasos, y al levantarla vuelve a hacerlo', () => {
+    const release = pauseHistory();
+    rename('Uno');
+    expect(past()).toBe(0);
+    release();
+    rename('Dos');
+    expect(past()).toBe(1);
+  });
+
+  it('las pausas se anidan: la que termina antes no reanuda el historial mientras siga otra, sea cual sea el orden', () => {
+    for (const order of [[0, 1], [1, 0]]) {
+      reset();
+      const releases = [pauseHistory(), pauseHistory()];
+      releases[order[0]]();
+      rename(`Mientras sigue la otra ${order.join('')}`);
+      expect(past()).toBe(0);
+      expect(useDocumentStore.temporal.getState().isTracking).toBe(false);
+      releases[order[1]]();
+      expect(useDocumentStore.temporal.getState().isTracking).toBe(true);
+      rename(`Ya sin pausas ${order.join('')}`);
+      expect(past()).toBe(1);
+    }
+  });
+
+  it('levantar dos veces la misma pausa no cuenta como levantar otra', () => {
+    const first = pauseHistory();
+    const second = pauseHistory();
+    first();
+    first();
+    rename('Sigue la segunda');
+    expect(past()).toBe(0);
+    second();
+    rename('Sin pausas');
+    expect(past()).toBe(1);
   });
 });

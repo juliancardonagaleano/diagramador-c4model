@@ -9,7 +9,7 @@ import { toMermaid, type MermaidFormat } from '@core/export/mermaid/toMermaid';
 import type { C4Document } from '@core/model/types';
 import { validateDocument, formatIssues } from '@core/model/schema';
 import type { LayoutDirectionOption, LayoutDistribution } from '@core/model/types';
-import { useDocumentStore } from '../store/documentStore';
+import { pauseHistory, useDocumentStore } from '../store/documentStore';
 import { downloadText, extractJson, pickTextFile, safeFilename } from '../utils/files';
 
 /** Lo que devuelve cualquiera de los importadores del núcleo. */
@@ -37,10 +37,12 @@ export function useActions() {
         // deselecciona y no añade un paso al historial de deshacer (antes lo hacía siempre, porque
         // autoLayoutDocument devuelve un objeto nuevo aunque no cambie nada).
         if (JSON.stringify(laid) !== JSON.stringify(doc)) {
-          const temporal = store.temporal.getState();
-          temporal.pause();
-          store.setState({ doc: laid });
-          temporal.resume();
+          const resumeHistory = pauseHistory();
+          try {
+            store.setState({ doc: laid });
+          } finally {
+            resumeHistory();
+          }
         }
         const xml = toDrawio(laid, { notation: chosen });
         downloadText(safeFilename(`${doc.workspace.name}${chosen === 'card' ? '-tarjetas' : ''}`, 'drawio'), xml, 'application/xml');
