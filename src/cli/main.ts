@@ -21,6 +21,8 @@ import { createSuiteServer } from './serve';
 import { registerTrace } from './trace';
 import { registerDiff } from './diff';
 import { registerProject } from './project';
+import { registerAuth } from './auth';
+import { TokenError } from './tokens';
 import { FolderProjectStore } from './workspace';
 import { genericExport, genericGenerate, genericPrompt, genericSchema, genericValidate, readModuleDocument } from './generic';
 import { CliError, dslIncludeOptions, extractJson, fallbackDocumentName, info, readDocument, readInput, writeOutput } from './io';
@@ -494,6 +496,7 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
   registerTrace(program, registry);
   registerDiff(program, registry, importSource);
   registerProject(program, registry);
+  registerAuth(program);
   registerModuleCommands(program, registry);
 
   return program;
@@ -550,6 +553,12 @@ export async function run(argv = process.argv): Promise<void> {
       // Uso incorrecto (no existe, ya existe, inválido): 2. Alguien cambió el diagrama en medio: 3. El disco no responde: 1.
       process.stderr.write(`${error.message}\n`);
       process.exitCode = error.code === 'unavailable' ? 1 : error.code === 'conflict' ? 3 : 2;
+      return;
+    }
+    if (error instanceof TokenError) {
+      // Uso incorrecto (nombre repetido, rol inválido, no existe, archivo dañado): 2. El disco no responde: 1.
+      process.stderr.write(`${error.message}\n`);
+      process.exitCode = error.code === 'unavailable' ? 1 : 2;
       return;
     }
     if (error instanceof DocumentValidationError) {
