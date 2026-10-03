@@ -518,6 +518,16 @@ describe('scanRepo: un clon temporal de un repositorio remoto (opción remote)',
     expect(d.omittedCounts.ignorado).toBeUndefined();
   });
 
+  it('y en una carpeta local, el mismo .gitignore hostil se interpreta sin colgar y sigue respetándose', () => {
+    const name = `${'a'.repeat(200)}.ts`;
+    const dir = repo({ 'README.md': '# T\n', 'package.json': '{"name":"x"}', '.gitignore': `${'*a'.repeat(300)}b\n${'**/'.repeat(100)}x\nsrc/ignorada/\n`, [`src/${name}`]: 'x\n', 'src/ignorada/a.ts': 'x\n' });
+    const started = Date.now();
+    const d = scanRepo(dir);
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(d.omittedCounts.ignorado).toBe(1); // solo src/ignorada/
+    expect(omittedPaths(d, 'ignorado')).toEqual(['src/ignorada/']);
+  });
+
   it('los errores hablan del repositorio y no de la ruta del directorio temporal', () => {
     const vacio = repo({ '.gitkeep-no-es-texto.png': Buffer.from([1, 2, 3]) });
     let message = '';

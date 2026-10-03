@@ -64,8 +64,9 @@ export interface ScanOptions {
   maxEntries?: number;
   /**
    * La carpeta es un clon temporal de un repositorio remoto (`--from-repo <url>`): el resumen lleva el nombre del repositorio
-   * (no el del directorio temporal), los errores no nombran la ruta temporal y no se aplican los `.gitignore` (un clon solo
-   * trae lo versionado, y son texto de un tercero: no hay motivo para interpretar sus patrones).
+   * (no el del directorio temporal), los errores no nombran la ruta temporal y no se aplican los `.gitignore`: un clon solo trae
+   * lo versionado (no hay nada que ignorar) y son texto de un tercero, así que no se gasta ni un ciclo en interpretarlos. El
+   * intérprete (`gitignore.ts`) no usa regex con retroceso, de modo que no es una cuestión de seguridad sino de prudencia.
    */
   remote?: { name: string };
 }
