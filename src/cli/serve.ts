@@ -20,9 +20,12 @@ import {
   viewChoices,
   type AnyModule,
   type ModuleRegistry,
+  type ProjectStore,
   type TraceDirection,
   type TraceInput,
 } from '@iark/kernel';
+import { HttpError } from './httpError';
+import { createProjectsApi } from './serveProjects';
 import { suiteManifest } from './suiteManifest';
 
 /**
@@ -41,6 +44,16 @@ import { suiteManifest } from './suiteManifest';
  *   POST /api/<módulo>/run/<comando>            cuerpo: { input?, args?, options? } → { output, warnings, kind }
  *   POST /api/<módulo>/diff                     cuerpo: { before, after } (dos documentos del módulo) → DocumentDiff: qué se añadió, quitó y modificó
  *   POST /api/trace                             cuerpo: { documents: [{ module, document }], from?, direction?, depth? } → { graph, from?, reached?, report, mermaid, svg }
+ *
+ * Con un espacio de trabajo (`--workspace <carpeta>`), además, los proyectos guardados en esa carpeta (ver `serveProjects.ts`;
+ * sin él, estas rutas responden 404). Los que modifican exigen `Content-Type: application/json` y rechazan los orígenes ajenos:
+ *   GET|POST /api/projects                              lista los proyectos · crea uno { name, description? }
+ *   GET|PATCH|DELETE /api/projects/<p>                  resumen · renombra { name } · borra
+ *   POST /api/projects/<p>/diagrams                     crea un diagrama { module, name?, text }
+ *   GET|PUT|PATCH|DELETE /api/projects/<p>/diagrams/<d> documento · guarda { text, ifUpdatedAt? } · renombra { name } · borra
+ *   GET  /api/projects/<p>/bundle                       el proyecto en un solo archivo (iark.project/1)
+ *   POST /api/projects/import[?name=]                   cuerpo: ese archivo → crea un proyecto nuevo
+ *   GET  /api/projects/<p>/check                        comprobación del proyecto: cada diagrama y las referencias entre ellos
  */
 export interface ServeOptions {
   registry: ModuleRegistry;
@@ -51,20 +64,12 @@ export interface ServeOptions {
   cors?: string[];
   /** Tamaño máximo del cuerpo de una petición (bytes). Por defecto 5 MB. */
   maxBodyBytes?: number;
+  /** Espacio de trabajo con los proyectos (`FolderProjectStore`). Sin él, `/api/projects` responde 404. */
+  projects?: ProjectStore;
 }
 
 const API = '/api';
 const MANIFEST_PATH = '/.well-known/iark.json';
-
-class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-    readonly extra: Record<string, unknown> = {},
-  ) {
-    super(message);
-  }
-}
 
 const CONTENT_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -79,6 +84,15 @@ const CONTENT_TYPES: Record<string, string> = {
   '.map': 'application/json; charset=utf-8',
   '.woff2': 'font/woff2',
 };
+
+/** Un segmento de ruta decodificado; una codificación rota (`%zz`) es un error de la petición, no del servicio. */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    throw new HttpError(400, 'La ruta está mal codificada.');
+  }
+}
 
 /** Un `TypeError`/`RangeError`/`ReferenceError` es un fallo del programa; el resto, un problema de la petición. */
 const isBug = (error: unknown): boolean => error instanceof TypeError || error instanceof RangeError || error instanceof ReferenceError;
@@ -103,7 +117,8 @@ export function createSuiteServer(options: ServeOptions): Server {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
     } else return;
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    // PUT, PATCH y DELETE (la API de proyectos) solo para los orígenes que se autorizaron por su nombre: un `*` no abre el disco.
+    res.setHeader('Access-Control-Allow-Methods', options.projects && cors.includes(origin) ? 'GET, POST, PUT, PATCH, DELETE, OPTIONS' : 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Access-Control-Max-Age', '600');
   }
@@ -125,6 +140,8 @@ export function createSuiteServer(options: ServeOptions): Server {
       req.on('error', reject);
     });
   }
+
+  const projectsApi = createProjectsApi({ store: options.projects, registry: options.registry, cors, readBody, send, sendJson });
 
   const requireMethod = (req: IncomingMessage, allowed: 'GET' | 'POST'): void => {
     if (req.method !== allowed) throw new HttpError(405, `Este endpoint solo admite ${allowed}.`, { allow: allowed });
@@ -199,7 +216,8 @@ export function createSuiteServer(options: ServeOptions): Server {
   }
 
   async function api(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    const parts = url.pathname.slice(API.length).split('/').filter(Boolean).map(decodeURIComponent);
+    const parts = url.pathname.slice(API.length).split('/').filter(Boolean).map(decodeSegment);
+    if (parts[0] === 'projects') return projectsApi(req, res, url, parts.slice(1));
     if (parts.length === 1 && parts[0] === 'modules') {
       requireMethod(req, 'GET');
       return sendJson(res, 200, options.registry.list().map(moduleCapabilities));
@@ -292,7 +310,7 @@ export function createSuiteServer(options: ServeOptions): Server {
   async function serveStatic(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     if (!staticRoot) throw new HttpError(404, 'Este servicio no sirve el sitio estático (use --static <carpeta>).');
     if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'Solo GET.', { allow: 'GET, HEAD' });
-    let pathname = decodeURIComponent(url.pathname);
+    let pathname = decodeSegment(url.pathname);
     if (pathname.endsWith('/')) pathname += 'index.html';
     const file = normalize(join(staticRoot, pathname));
     if (file !== staticRoot && !file.startsWith(staticRoot + sep)) throw new HttpError(403, 'Ruta no permitida.');
@@ -311,7 +329,7 @@ export function createSuiteServer(options: ServeOptions): Server {
       if (url.pathname === MANIFEST_PATH) {
         requireMethod(req, 'GET');
         // Con sitio estático la instancia ofrece los editores embebibles; sin él, solo la API.
-        return sendJson(res, 200, suiteManifest(options.registry, { version: options.version, api: '../api', site: !!staticRoot }));
+        return sendJson(res, 200, suiteManifest(options.registry, { version: options.version, api: '../api', site: !!staticRoot, projects: !!options.projects }));
       }
       if (url.pathname === API || url.pathname.startsWith(`${API}/`)) return api(req, res, url);
       return serveStatic(req, res, url);

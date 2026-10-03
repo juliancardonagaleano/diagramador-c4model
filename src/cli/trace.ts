@@ -1,11 +1,12 @@
 import { InvalidArgumentError, type Command } from 'commander';
-import { buildTraceGraph, formatUrn, parseUrn, traceMermaid, traceReach, traceReachReport, traceReport, traceSvg, type ModuleRegistry, type TraceDirection, type TraceInput } from '@iark/kernel';
+import { buildTraceGraph, formatUrn, parseUrn, traceMermaid, traceReach, traceReachReport, traceReport, traceSvg, type ModuleRegistry, type TraceDirection, type TraceGraph, type TraceInput } from '@iark/kernel';
 import { readModuleDocument, requireModule } from './generic';
 import { CliError, writeOutput } from './io';
 
 const DIRECTIONS: TraceDirection[] = ['refs', 'referrers', 'both'];
 const FORMATS = ['markdown', 'mermaid', 'svg', 'json'] as const;
-type Format = (typeof FORMATS)[number];
+export type TraceFormat = (typeof FORMATS)[number];
+type Format = TraceFormat;
 
 function parseDirection(value: string): TraceDirection {
   if (!DIRECTIONS.includes(value as TraceDirection)) throw new InvalidArgumentError(`Sentido inválido «${value}». Use: ${DIRECTIONS.join(', ')}.`);
@@ -33,22 +34,55 @@ function toUrn(value: string): string {
   }
 }
 
+/** Las opciones de salida que comparten `iark trace` y `iark project trace`: de dónde partir, hasta dónde llegar y en qué formato. */
+export function addTraceViewOptions(command: Command): Command {
+  return command
+    .option('--from <urn>', 'elemento de partida: urn:iark:<módulo>:<id> o <módulo>:<id>')
+    .option('--direction <sentido>', `con --from: ${DIRECTIONS.join(' | ')} (refs = de qué se apoya; referrers = quién se apoya en él)`, parseDirection, 'both')
+    .option('--depth <n>', 'con --from: saltos máximos', parseDepth)
+    .option('--format <formato>', `salida: ${FORMATS.join(' | ')}`, parseFormat, 'markdown');
+}
+
+export interface TraceViewOptions {
+  from?: string;
+  direction: TraceDirection;
+  depth?: number;
+  format: TraceFormat;
+}
+
+/**
+ * El texto de la salida de una traza ya construida: informe Markdown, Mermaid, SVG o JSON, con el alcance de `--from` si se
+ * pidió. `extra` añade campos al JSON (el proyecto, quién define cada URN…). Un `--from` que no existe es un error de uso (2).
+ */
+export async function renderTrace(graph: TraceGraph, opts: TraceViewOptions, extra: Record<string, unknown> = {}): Promise<string> {
+  let reached;
+  if (opts.from) {
+    try {
+      reached = traceReach(graph, toUrn(opts.from), { direction: opts.direction, depth: opts.depth });
+    } catch (error) {
+      if (error instanceof CliError) throw error;
+      throw new CliError((error as Error).message, 2);
+    }
+  }
+  if (opts.format === 'json') return `${JSON.stringify({ ...extra, graph, ...(reached ? { from: reached[0].node.urn, reached } : {}) }, null, 2)}\n`;
+  if (opts.format === 'svg') return traceSvg(graph, { reached });
+  if (opts.format === 'mermaid') return `${traceMermaid(graph, reached ? new Set(reached.map((r) => r.node.urn)) : undefined)}\n`;
+  return `${reached ? traceReachReport(reached, opts.direction) : traceReport(graph)}\n`;
+}
+
 /**
  * `iark trace módulo=archivo…`: reúne los documentos de varios módulos y sigue las referencias URN (`ref`) entre ellos.
  * Es la vista transversal de la suite: no pertenece a ningún módulo, por eso cuelga del CLI y no de `cliCommands`.
  */
 export function registerTrace(program: Command, registry: ModuleRegistry): void {
-  program
+  const command = program
     .command('trace')
     .description('Trazabilidad entre módulos: enlaces por URN (`ref`) entre los documentos aportados, referencias sin resolver y, con --from, qué alcanza un elemento')
-    .argument('<documentos...>', 'documentos como módulo=archivo, uno por módulo (p. ej. security=seguridad.json platform=plataforma.json)')
-    .option('--from <urn>', 'elemento de partida: urn:iark:<módulo>:<id> o <módulo>:<id>')
-    .option('--direction <sentido>', `con --from: ${DIRECTIONS.join(' | ')} (refs = de qué se apoya; referrers = quién se apoya en él)`, parseDirection, 'both')
-    .option('--depth <n>', 'con --from: saltos máximos', parseDepth)
-    .option('--format <formato>', `salida: ${FORMATS.join(' | ')}`, parseFormat, 'markdown')
+    .argument('<documentos...>', 'documentos como módulo=archivo, uno por módulo (p. ej. security=seguridad.json platform=plataforma.json)');
+  addTraceViewOptions(command)
     .option('--strict', 'termina con código 3 si hay referencias mal formadas o a elementos que no existen', false)
     .option('-o, --out <archivo>', 'archivo de salida (por defecto stdout)')
-    .action(async (specs: string[], opts: { from?: string; direction: TraceDirection; depth?: number; format: Format; strict: boolean; out?: string }) => {
+    .action(async (specs: string[], opts: TraceViewOptions & { strict: boolean; out?: string }) => {
       const inputs: TraceInput[] = specs.map((spec) => {
         const eq = spec.indexOf('=');
         if (eq <= 0) throw new CliError(`«${spec}» no tiene la forma módulo=archivo (módulos: ${registry.ids().join(', ')}).`, 2);
@@ -62,21 +96,7 @@ export function registerTrace(program: Command, registry: ModuleRegistry): void 
       } catch (error) {
         throw new CliError((error as Error).message, 2);
       }
-      let reached;
-      if (opts.from) {
-        try {
-          reached = traceReach(graph, toUrn(opts.from), { direction: opts.direction, depth: opts.depth });
-        } catch (error) {
-          if (error instanceof CliError) throw error;
-          throw new CliError((error as Error).message, 2);
-        }
-      }
-      let text: string;
-      if (opts.format === 'json') text = `${JSON.stringify({ graph, ...(reached ? { from: reached[0].node.urn, reached } : {}) }, null, 2)}\n`;
-      else if (opts.format === 'svg') text = await traceSvg(graph, { reached });
-      else if (opts.format === 'mermaid') text = `${traceMermaid(graph, reached ? new Set(reached.map((r) => r.node.urn)) : undefined)}\n`;
-      else text = `${reached ? traceReachReport(reached, opts.direction) : traceReport(graph)}\n`;
-      writeOutput(opts.out, text);
+      writeOutput(opts.out, await renderTrace(graph, opts));
       const broken = graph.problems.filter((p) => p.reason !== 'unresolved');
       if (opts.strict && broken.length > 0) {
         process.stderr.write(`${broken.length} referencia(s) sin resolver.\n`);
