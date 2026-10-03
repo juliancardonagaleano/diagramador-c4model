@@ -362,7 +362,9 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
         // Con efecto (o rechazado), la vista se recoloca: se sueltan las posiciones fijadas a mano.
         setMoved(new Map());
         writePositions(key, new Map());
-        if (commit(result)) setSelection(new Set([dragged.id]));
+        // Queda seleccionado el elemento que devuelve el módulo: el arrastrado o, si el efecto fue moverlo a otro sitio (una celda de la matriz), el destino.
+        const id = commit(result);
+        if (id) setSelection(new Set([id]));
         return;
       }
     }

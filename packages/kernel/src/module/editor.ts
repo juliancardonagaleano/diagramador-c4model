@@ -281,7 +281,8 @@ export interface EditorSpec<TDoc> {
    * Soltar el nodo `id` sobre `targetId` (el elemento más pequeño que contiene su centro; nunca él mismo ni un descendiente):
    * p. ej. arrastrar una amenaza a otra celda de la matriz de calor cambia su probabilidad e impacto. `undefined` si soltarlo
    * ahí no significa nada (el nodo se queda donde se dejó); un fallo se avisa y el nodo vuelve a su sitio. Si tiene efecto, el
-   * lienzo descarta las posiciones fijadas a mano para que la vista se recoloque.
+   * lienzo descarta las posiciones fijadas a mano para que la vista se recoloque y selecciona el `id` del resultado (el nodo
+   * arrastrado o, si lo que se arrastró pasa a otro sitio, como una celda de la matriz capacidad × aplicación, el destino).
    */
   drop?(document: TDoc, id: string, targetId: string, viewId?: string): EditResult<TDoc> | undefined;
   /** Operaciones sobre la selección (la barra del lienzo las muestra tras los botones de edición). */
