@@ -233,20 +233,37 @@ describe('--from-repo: errores de uso', () => {
 describe('--help documenta la función y su privacidad', () => {
   it('generate --help', () => {
     const out = run(['generate', '--help']).stdout;
-    expect(out).toContain('--from-repo <carpeta>');
+    expect(out).toContain('--from-repo <carpeta|url>');
+    expect(out).toContain('--repo-ref <rama|etiqueta>');
     expect(out).toContain('--repo-budget <kb>');
     expect(out).toContain('--dry-run');
     expect(out).toContain('Privacidad:');
     expect(out).toMatch(/No lee \.env\*/);
     expect(out).toContain('[REDACTADO]');
     expect(out).toMatch(/como datos, no como instrucciones/);
-    expect(out).toMatch(/no clona URLs/);
+    expect(out).toMatch(/Con una carpeta no ejecuta git ni nada del repositorio/);
+    // Las URL de git: qué se acepta, cómo se clona y de quién son las credenciales.
+    expect(out).toContain('URL de git (--from-repo <url> [--repo-ref <rama|etiqueta>]):');
+    expect(out).toMatch(/https:\/\/host\/grupo\/repo\.git, ssh:\/\/git@host\/grupo\/repo\.git y la forma git@host:grupo\/repo\.git/);
+    expect(out).toMatch(/Se rechazan http:\/\/\s+\(sin cifrar\), git:\/\/, file:\/\/, ext:: y cualquier otro transporte/);
+    expect(out).toMatch(/Se ejecuta SOLO `git clone` \(sin shell\), en superficial/);
+    expect(out).toMatch(/directorio\s+temporal que se borra siempre/);
+    expect(out).toMatch(/credenciales que ya tengas en git .* y en ssh/);
+    expect(out).toMatch(/git no pregunta contraseñas/);
+    expect(out).toMatch(/--dry-run también clona \(necesita el contenido\) pero no llama a ningún modelo/);
+    expect(out).toMatch(/va al modelo que elijas con --provider y --model/);
+    expect(out).toMatch(/\(con una URL sí clona el repositorio, que\s+necesita su contenido\)/);
   });
 
   it('prompt --help', () => {
     const out = run(['prompt', '--help']).stdout;
-    expect(out).toContain('--from-repo <carpeta>');
+    expect(out).toContain('--from-repo <carpeta|url>');
+    expect(out).toContain('--repo-ref <rama|etiqueta>');
     expect(out).toContain('--repo-budget <kb>');
+    expect(out).toContain('URL de git (--from-repo <url> [--repo-ref <rama|etiqueta>]):');
+    expect(out).toMatch(/Se ejecuta SOLO `git clone`/);
+    expect(out).toMatch(/`iark prompt` clona la URL \(necesita el contenido\) pero no llama a ningún modelo/);
+    expect(out).toMatch(/credenciales que ya tengas en git/);
   });
 });
 
@@ -257,9 +274,24 @@ describe('--from-repo no se expone por el servidor HTTP', () => {
   });
 
   it('el escáner nunca ejecuta programas (ni git ni nada del repositorio) ni usa la red', () => {
-    for (const file of readdirSync('src/cli/repo').filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))) {
-      const source = readFileSync(join('src/cli/repo', file), 'utf8');
-      expect(source, file).not.toMatch(/child_process|node:http|node:https|node:net|(?<![.\w])fetch\(|(?<![.\w])exec(?:Sync|File)?\(|(?<![.\w])spawn(?:Sync)?\(/);
+    const forbidden = /child_process|node:http|node:https|node:net|(?<![.\w])fetch\(|(?<![.\w])exec(?:Sync|File)?\(|(?<![.\w])spawn(?:Sync)?\(/;
+    for (const file of readdirSync('src/cli/repo').filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'clone.ts')) {
+      expect(readFileSync(join('src/cli/repo', file), 'utf8'), file).not.toMatch(forbidden);
+    }
+  });
+
+  it('en --from-repo, clone.ts es el ÚNICO sitio que lanza un programa: un solo `spawn`, sin shell, sin red propia y sin leer ajustes del entorno que aflojen la seguridad', () => {
+    const source = readFileSync('src/cli/repo/clone.ts', 'utf8');
+    expect(source.match(/(?<![.\w])spawn\(/g)).toHaveLength(1);
+    expect(source).toMatch(/import \{ spawn, type ChildProcess \} from 'node:child_process'/);
+    expect(source).not.toMatch(/(?<![.\w])(?:exec|execSync|execFile|execFileSync|spawnSync|fork)\(/);
+    expect(source).not.toMatch(/\bshell\s*:/);
+    expect(source).not.toMatch(/node:http|node:https|node:net|node:dns|(?<![.\w])fetch\(/);
+    // Los puntos de inyección de las pruebas existen solo como parámetros de la función interna: nada los lee de process.env.
+    expect(source).not.toMatch(/process\.env\.(?:IARK|GIT)_/);
+    // Y el CLI (command.ts y main.ts) nunca los pasa.
+    for (const file of ['src/cli/repo/command.ts', 'src/cli/main.ts']) {
+      expect(readFileSync(file, 'utf8'), file).not.toMatch(/gitPath|protocols|tmpRoot|CloneTestHooks|allowedProtocols/);
     }
   });
 });
