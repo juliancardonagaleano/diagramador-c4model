@@ -115,7 +115,7 @@ test.describe('datos: importar DDL de SQL y manifest de dbt', () => {
     await page.getByLabel('Texto a importar').fill(fixture('ddl/tienda-oracle.sql'));
     await page.getByRole('button', { name: 'Importar', exact: true }).click();
     await expect(page.getByRole('alert')).toHaveCount(0);
-    await expect(page.getByText('No se pudo importar tal cual:')).toBeVisible();
+    await expect(page.getByText(/avisos? de la importación:/)).toBeVisible();
     await expect(page.getByRole('listitem').filter({ hasText: 'Sin mapear (el modelo de datos no los recoge)' })).toBeVisible();
   });
 });

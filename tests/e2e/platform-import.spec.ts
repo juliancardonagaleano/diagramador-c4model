@@ -39,7 +39,7 @@ test.describe('plataforma: importar Terraform y Kubernetes', () => {
     const errors = await open(page);
     await importFile(page, 'tienda-aws.tf', `${TF}/aws-tienda/main.tf`);
     await expect(page.getByText(/Importado desde terraform con 5 avisos/)).toBeVisible();
-    const notes = page.getByText('No se pudo importar tal cual:').locator('..');
+    const notes = page.getByText(/avisos? de la importación:/).locator('..');
     await expect(notes).toContainText('aws_xray_group');
     await expect(notes).toContainText('1 red sin dato de exposición');
 
@@ -77,7 +77,7 @@ test.describe('plataforma: importar Terraform y Kubernetes', () => {
     const errors = await open(page);
     await importFile(page, 'tienda-k8s.yaml', `${K8S}/tienda/manifests.yaml`);
     await expect(page.getByText(/Importado desde kubernetes con 5 avisos/)).toBeVisible();
-    await expect(page.getByText('No se pudo importar tal cual:').locator('..')).toContainText('Certificate (cert-manager.io)');
+    await expect(page.getByText(/avisos? de la importación:/).locator('..')).toContainText('Certificate (cert-manager.io)');
 
     await page.getByRole('tab', { name: 'Lienzo' }).click();
     await canvasReady(page);
