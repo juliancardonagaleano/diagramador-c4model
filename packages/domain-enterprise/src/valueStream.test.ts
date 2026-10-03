@@ -6,7 +6,7 @@ import { enterpriseEditor } from './editor';
 import { fromMermaid } from './import/fromMermaid';
 import { toDrawio } from './export/drawio';
 import { toMermaid } from './export/mermaid';
-import { layoutValueStreams, toSvg, type RenderedEdge } from './export/render';
+import { layoutValueStreams, toSvg } from './export/render';
 import { refineOrder } from './export/valueStreamRoutes';
 import { dependencyGraph, reach, stageCapabilities, streamStages } from './graph';
 import { analyzeEnterprise } from './issues';

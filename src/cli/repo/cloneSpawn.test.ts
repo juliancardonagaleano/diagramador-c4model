@@ -101,7 +101,7 @@ describe('withClonedRepo: cómo lanza git', () => {
   it('git sale con error: se traduce, se limpia (sin credenciales ni ruta temporal) y se borra el directorio', async () => {
     const token = ['gh', 'p_', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'].join('');
     behaviour = (call) => ({ code: 128, stderr: `fatal: algo con https://u:${token}@host/x.git en ${call.args[call.args.length - 1]}\n` });
-    const error = await withClonedRepo({ url: 'https://example.test/a/b.git', display: 'https://example.test/a/b.git' }, () => undefined, { tmpRoot, env: {} }).catch((e) => e as Error);
+    const error = (await withClonedRepo({ url: 'https://example.test/a/b.git', display: 'https://example.test/a/b.git' }, () => undefined, { tmpRoot, env: {} }).catch((e) => e as Error))!;
     expect(error.name).toBe('CliError');
     expect(error.message).toMatch(/^git no pudo clonar «https:\/\/example.test\/a\/b.git» \(código 128\)/);
     expect(error.message).not.toContain(token);
@@ -113,7 +113,7 @@ describe('withClonedRepo: cómo lanza git', () => {
 
   it('git no está instalado (ENOENT): mensaje claro y nada en disco', async () => {
     behaviour = () => 'error-enoent';
-    const error = await withClonedRepo({ url: 'https://example.test/a/b.git' }, () => undefined, { tmpRoot, env: {} }).catch((e) => e as Error);
+    const error = (await withClonedRepo({ url: 'https://example.test/a/b.git' }, () => undefined, { tmpRoot, env: {} }).catch((e) => e as Error))!;
     expect(error.message).toMatch(/No se encontró git/);
     expect(existsSync(String(calls[0].options.cwd))).toBe(false);
   });

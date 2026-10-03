@@ -48,16 +48,21 @@ export function useEmbedBridge(): { save: (exit: boolean) => Promise<void>; exit
   const store = useDocumentStore;
 
   const save = async (exit: boolean) => {
-    const { doc, markSaved } = store.getState();
+    const { doc } = store.getState();
     let drawio: string | undefined;
     try {
       drawio = doc.views.length ? toDrawio(await autoLayoutDocument(doc)) : undefined;
     } catch {
       drawio = undefined;
     }
-    markSaved();
+    // Lo publicado es `doc`, el documento de ANTES de la espera de ELK. Si el usuario editó mientras tanto, el store ya
+    // tiene otro documento (inmutable: cada edición crea uno nuevo) y su marca «Cambios sin guardar» debe seguir
+    // encendida: apagarla ocultaría una edición que el anfitrión no ha recibido. Solo se marca como guardado si el
+    // documento del store sigue siendo el publicado.
+    const saved = store.getState().doc === doc;
+    if (saved) store.getState().markSaved();
     post({ event: 'save', document: doc, drawio, exit });
-    if (exit) post({ event: 'exit', modified: false });
+    if (exit) post({ event: 'exit', modified: !saved });
   };
 
   const exit = () => {

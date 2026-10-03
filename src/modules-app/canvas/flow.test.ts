@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { EditorSpec } from '@iark/kernel';
+import type { EdgeRoute, EditorSpec } from '@iark/kernel';
 import { FAKE_DOC, fakeEditor } from '../testing-editor';
 import { absolutePositions, buildFlow, dropTarget, edgeLabelText, followRoute, ghostNodes, layoutLabelText, movedByDrag, removedNodes, routeInPlace, structureKey } from './flow';
 
@@ -27,7 +27,7 @@ describe('buildFlow con aristas propias', () => {
 
 describe('aristas ancladas por la colocación de la vista', () => {
   const boxes = { nodes: [{ id: 'api', x: 40, y: 20, width: 160, height: 64 }, { id: 'cola', x: 240, y: 140, width: 160, height: 56 }], groups: [], width: 500, height: 300 };
-  const route = { id: 'api-cola', points: [{ x: 120, y: 84 }, { x: 120, y: 112 }, { x: 320, y: 112 }, { x: 320, y: 140 }], sides: { source: 'bottom', target: 'top' } } as const;
+  const route: EdgeRoute = { id: 'api-cola', points: [{ x: 120, y: 84 }, { x: 120, y: 112 }, { x: 320, y: 112 }, { x: 320, y: 140 }], sides: { source: 'bottom', target: 'top' } };
 
   it('sin lados fijados (el autolayout) las aristas usan las asas de siempre', () => {
     const { nodes, edges } = buildFlow(spec, graph, { ...boxes, edges: [{ id: 'api-cola', points: route.points.slice() }] });
@@ -48,7 +48,7 @@ describe('aristas ancladas por la colocación de la vista', () => {
   });
 
   it('las asas laterales de siempre no se duplican y una arista recta no lleva giro', () => {
-    const straight = { id: 'api-cola', points: [{ x: 120, y: 84 }, { x: 120, y: 140 }], sides: { source: 'right', target: 'top' } } as const;
+    const straight: EdgeRoute = { id: 'api-cola', points: [{ x: 120, y: 84 }, { x: 120, y: 140 }], sides: { source: 'right', target: 'top' } };
     const { nodes, edges } = buildFlow(spec, graph, { ...boxes, edges: [straight] });
     const edge = edges.find((e) => e.id === 'api-cola')!;
     expect(edge).not.toHaveProperty('sourceHandle');
@@ -61,7 +61,7 @@ describe('aristas ancladas por la colocación de la vista', () => {
 describe('rutas con varios codos fijadas por la colocación de la vista', () => {
   const boxes = { nodes: [{ id: 'api', x: 40, y: 20, width: 160, height: 64 }, { id: 'cola', x: 240, y: 140, width: 160, height: 56 }], groups: [], width: 500, height: 300 };
   // Sale por abajo de «api», baja un poco, gira hacia la derecha, vuelve a bajar, gira a la izquierda y llega por arriba a «cola».
-  const long = { id: 'api-cola', points: [{ x: 120, y: 84 }, { x: 120, y: 100 }, { x: 420, y: 100 }, { x: 420, y: 120 }, { x: 320, y: 120 }, { x: 320, y: 140 }], sides: { source: 'bottom', target: 'top' } } as const;
+  const long: EdgeRoute = { id: 'api-cola', points: [{ x: 120, y: 84 }, { x: 120, y: 100 }, { x: 420, y: 100 }, { x: 420, y: 120 }, { x: 320, y: 120 }, { x: 320, y: 140 }], sides: { source: 'bottom', target: 'top' } };
   const layout = { ...boxes, edges: [{ ...long, points: long.points.slice() }] };
 
   it('la arista lleva el recorrido entero (y no un solo giro) mientras los nodos de sus extremos siguen donde la colocación los dejó', () => {
@@ -88,7 +88,7 @@ describe('rutas con varios codos fijadas por la colocación de la vista', () => 
   });
 
   it('con un solo codo (cuatro puntos) la vista solo fija dónde gira, como antes', () => {
-    const one = { id: 'api-cola', points: [{ x: 120, y: 84 }, { x: 120, y: 112 }, { x: 320, y: 112 }, { x: 320, y: 140 }], sides: { source: 'bottom', target: 'top' } } as const;
+    const one: EdgeRoute = { id: 'api-cola', points: [{ x: 120, y: 84 }, { x: 120, y: 112 }, { x: 320, y: 112 }, { x: 320, y: 140 }], sides: { source: 'bottom', target: 'top' } };
     const edge = buildFlow(spec, graph, { ...boxes, edges: [one] }).edges.find((e) => e.id === 'api-cola')!;
     expect(edge.data.bend).toBe(112);
     expect(edge.data.route).toBeUndefined();

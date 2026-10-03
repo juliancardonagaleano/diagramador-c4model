@@ -222,15 +222,13 @@ describe('dbt: manifest de la tienda', () => {
     expect(toMermaid(doc, { viewId: 'lineage' })).toContain('dbt: fct_pedidos');
     expect(await toSvg(doc, 'erd')).toContain('<svg');
     expect(await toSvg(doc, 'lineage')).toContain('<svg');
-    expect(() => new XMLParser({ ignoreAttributes: false }).parse(toDrawio(doc))).not.toThrow();
+    const drawio = await toDrawio(doc);
+    expect(() => new XMLParser({ ignoreAttributes: false }).parse(drawio)).not.toThrow();
     expect(fromMermaid(erd).document.relations).toHaveLength(4);
   });
 });
 
 describe('dbt: pruebas y restricciones', () => {
-  const fct = 'model.p.fct';
-  const dim = 'model.p.dim';
-
   it('unique y not_null sobre dos columnas distintas no dan clave primaria (no se sabe cuál lo es): quedan como únicas', () => {
     const r = small({
       nodes: [model('t', { columns: cols('a', 'b') }), check('unique', 'model.p.t', 'a'), check('unique', 'model.p.t', 'b'), check('not_null', 'model.p.t', 'a'), check('not_null', 'model.p.t', 'b')],

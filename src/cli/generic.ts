@@ -1,5 +1,6 @@
 import { extname } from 'node:path';
 import { generateStructured, moduleStandalonePrompt, type DomainModule, type ModuleRegistry } from '@iark/kernel';
+import { DEFAULT_AI_MODEL } from '@core/ai/generate';
 import { CliError, extractJson, info, readInput, writeOutput } from './io';
 
 /**
@@ -72,7 +73,7 @@ export async function genericGenerate(
   const result = await generateStructured(module.ai, {
     instruction,
     base: opts.base,
-    defaultModel: 'claude-opus-5',
+    defaultModel: DEFAULT_AI_MODEL,
     provider: opts.provider as never,
     model: opts.model,
     effort: opts.effort as never,

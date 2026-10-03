@@ -153,7 +153,7 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
   const openFile = async (file: File) => {
     try {
       const result = await controller.openText(await readFile(file), file.name);
-      if (result) notify(`Importado desde ${result.importer}${result.warnings.length ? ` con ${result.warnings.length} avisos` : ''}`);
+      if (result) notify(`Importado desde ${result.importer}${result.warnings.length ? ` con ${result.warnings.length} avisos (se ven en la pestaña Importar)` : ''}`);
     } catch (error) {
       notify((error as Error).message);
     }
@@ -206,7 +206,8 @@ export function Workbench({ controller, embed = false, ui = 'full', dialog, onDi
     ['reports', 'Informes'],
     ['compare', compare?.state.diff ? `Comparar (${compare.state.diff.summary.total})` : 'Comparar'],
     ['export', 'Exportar'],
-    ['import', 'Importar'],
+    // Los avisos de la última importación (venga de donde venga) se ven en esta pestaña hasta que se edite el documento.
+    ['import', `Importar${state.lastImport?.warnings.length ? ` (${state.lastImport.warnings.length})` : ''}`],
   ];
 
   return (

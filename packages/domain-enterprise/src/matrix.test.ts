@@ -523,7 +523,7 @@ describe('editor: la matriz en el lienzo', () => {
 
   describe('arrastrar una celda con marca directa a otra mueve su relación', () => {
     const drop = (doc: EnterpriseDocument, from: string, to: string, viewId = 'matrix') => enterpriseEditor.drop!(doc, from, to, viewId);
-    const moved = (r: ReturnType<typeof enterpriseEditor.drop>): { document: EnterpriseDocument; id?: string } => {
+    const moved = (r: ReturnType<NonNullable<typeof enterpriseEditor.drop>>): { document: EnterpriseDocument; id?: string } => {
       if (!r || !r.ok) throw new Error(r ? r.reason : 'no significaba nada');
       expect(enterpriseModule.schema.safeParse(r.document).success).toBe(true);
       return { document: r.document as EnterpriseDocument, id: r.id };

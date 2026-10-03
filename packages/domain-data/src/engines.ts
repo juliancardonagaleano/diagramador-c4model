@@ -32,8 +32,9 @@ export interface EngineDef {
   lenient?: boolean;
   /**
    * Solo SQL: comillas de los identificadores, cláusula tras la clave primaria y cierre de la tabla; `unique: false` si no admite `UNIQUE`;
-   * `noKeyTypes`: tipos (sin parámetros) que el motor rechaza como clave primaria (en MySQL, `text`, `blob` y `json`, que piden una
-   * longitud de prefijo): el DDL no los cambia, pero se avisa.
+   * `noKeyTypes`: tipos que el motor rechaza como clave, primaria o única (en MySQL, `text`, `blob` y `json`, que piden una longitud de
+   * prefijo): el DDL no los cambia, pero se avisa. Un nombre sin parámetros (`text`) vale con cualquiera; con parámetros (`varchar(max)`
+   * en SQL Server) solo con esa forma, así que `varchar(255)` sigue sirviendo de clave.
    */
   sql?: { quote: readonly [string, string]; pkSuffix?: string; unique?: boolean; tableSuffix?: string; noKeyTypes?: readonly string[] };
 }
@@ -54,7 +55,8 @@ const ENGINES: EngineDef[] = [
       'smallint|integer|int|int2|int4|int8|bigint|smallserial|serial|serial2|serial4|serial8|bigserial|decimal|numeric|real|float|float4|float8|double precision|money|boolean|bool|char|character|bpchar|varchar|character varying|text|citext|name|bytea|date|time|time without time zone|time with time zone|timetz|timestamp|timestamp without time zone|timestamp with time zone|timestamptz|interval|uuid|json|jsonb|xml|inet|cidr|macaddr|macaddr8|bit|bit varying|varbit|tsvector|tsquery|point|line|lseg|box|path|polygon|circle|hstore|ltree|oid|int4range|int8range|numrange|daterange|tsrange|tstzrange',
     ),
     concepts: concepts('varchar(255)', 'text', 'smallint', 'integer', 'bigint', 'numeric(18,2)', 'real', 'double precision', 'boolean', 'date', 'time', 'timestamp', 'timestamptz', 'uuid', 'jsonb', 'bytea'),
-    sql: { quote: ['"', '"'] },
+    // Sin clase de operadores btree por defecto, que una clave necesita: `json` (`jsonb` sí la tiene), `xml` y los tipos geométricos.
+    sql: { quote: ['"', '"'], noKeyTypes: list('json|xml|point|line|lseg|box|path|polygon|circle') },
   },
   {
     id: 'mysql',
@@ -80,7 +82,8 @@ const ENGINES: EngineDef[] = [
     ),
     concepts: concepts('nvarchar(255)', 'nvarchar(max)', 'smallint', 'int', 'bigint', 'decimal(18,2)', 'real', 'float', 'bit', 'date', 'time', 'datetime2', 'datetimeoffset', 'uniqueidentifier', 'nvarchar(max)', 'varbinary(max)'),
     defaultParams: { varchar: '(255)', nvarchar: '(255)', varbinary: '(255)', decimal: '(18,2)', numeric: '(18,2)', dec: '(18,2)' },
-    sql: { quote: ['[', ']'] },
+    // Los tipos de objeto grande no entran en un índice: `text`, `ntext`, `image`, `xml` y los `(max)` (`varchar(255)` sí).
+    sql: { quote: ['[', ']'], noKeyTypes: list('text|ntext|image|xml|varchar(max)|nvarchar(max)|varbinary(max)') },
   },
   {
     id: 'oracle',
@@ -92,7 +95,8 @@ const ENGINES: EngineDef[] = [
     ),
     concepts: concepts('varchar2(255)', 'clob', 'number(5)', 'number(10)', 'number(19)', 'number(18,2)', 'binary_float', 'binary_double', 'number(1)', 'date', 'varchar2(15)', 'timestamp', 'timestamp with time zone', 'raw(16)', 'json', 'blob'),
     defaultParams: { varchar2: '(255)', nvarchar2: '(255)', raw: '(255)', decimal: '(18,2)', numeric: '(18,2)', dec: '(18,2)' },
-    sql: { quote: ['"', '"'] },
+    // ORA-02329: ni los LOB ni `long` y `long raw` pueden ser clave primaria o única.
+    sql: { quote: ['"', '"'], noKeyTypes: list('clob|nclob|blob|long|long raw') },
   },
   {
     id: 'sqlite',
@@ -383,12 +387,21 @@ export function typeFor(engine: EngineDef, type: string | undefined): { type: st
   return { type: engine.concepts[conceptOf(type)], replaced: true };
 }
 
-/** Tipo con que el motor escribiría `type` si el motor no lo admite como clave primaria (`text` en MySQL); `undefined` si sirve de clave o no se sabe. */
-export function unkeyableType(engine: EngineDef, type: string | undefined): string | undefined {
+/** El texto de un tipo en forma canónica, con sus parámetros (`VARCHAR( MAX )` → `varchar(max)`): para compararlo con un tipo declarado con ellos. */
+const withParams = (text: string): string => text.trim().toLowerCase().replace(/\s+/g, ' ').replace(/\s*\(\s*/g, '(').replace(/\s*,\s*/g, ',').replace(/\s*\)/g, ')');
+
+/**
+ * Tipo con que el motor escribiría `type` si el motor no lo admite como clave primaria (`text` en MySQL, `clob` en Oracle, `varchar(max)` en
+ * SQL Server); `undefined` si sirve de clave o no se sabe. Con `kind: 'uk'` se pregunta por una clave única, que el DDL solo escribe si el
+ * motor admite `UNIQUE`: lo que el motor no admite como clave primaria tampoco lo admite como única.
+ */
+export function unkeyableType(engine: EngineDef, type: string | undefined, kind: 'pk' | 'uk' = 'pk'): string | undefined {
   const banned = engine.sql?.noKeyTypes;
-  if (!banned || !type?.trim()) return undefined;
+  if (!banned || !type?.trim() || (kind === 'uk' && engine.sql?.unique === false)) return undefined;
   const written = typeFor(engine, type).type;
-  return banned.includes(parseType(written).base) ? written : undefined;
+  const base = parseType(written).base;
+  const full = withParams(written);
+  return banned.some((b) => [base, full].includes(withParams(b))) ? written : undefined;
 }
 
 /** Cómo arreglar una clave de un tipo que el motor no admite: un tipo de texto con longitud (`varchar(n)`, `varchar2(n)`) o una clave sustituta. */

@@ -172,6 +172,107 @@ describe('WorkbenchController', () => {
     });
   });
 
+  describe('avisos de la importación (lastImport)', () => {
+    const avisos = ['aviso uno', 'aviso dos'];
+    /** Plataforma con un importador `.fake` que devuelve el ejemplo con avisos (o sin ellos si el texto lo pide). */
+    const avisado = () =>
+      new WorkbenchController(
+        SOURCES.map((s) =>
+          s.id !== 'platform'
+            ? s
+            : {
+                ...s,
+                load: async () => ({
+                  ...platformModule,
+                  importers: [
+                    ...platformModule.importers,
+                    { id: 'falso', label: 'Falso', extensions: ['.fake'], detect: (t: string) => t.startsWith('FAKE'), import: (t: string) => ({ document: JSON.parse(example('plataforma-ejemplo.json')), warnings: t.includes('limpio') ? [] : avisos }) },
+                  ],
+                }),
+              },
+        ),
+        { renderDelay: 0 },
+      );
+
+    it('importFrom deja el importador, el archivo y los avisos en el estado', async () => {
+      const controller = avisado();
+      await controller.selectModule('platform');
+      expect(controller.getState().lastImport).toBeUndefined();
+      await controller.importFrom('FAKE', 'falso', { file: 'tienda.fake' });
+      expect(controller.getState().lastImport).toEqual({ importer: 'falso', file: 'tienda.fake', warnings: avisos });
+    });
+
+    it('«Abrir archivo…» (openText) los deja también, igual que la pestaña Importar', async () => {
+      const controller = avisado();
+      await controller.selectModule('platform');
+      const result = await controller.openText('FAKE', 'tienda.fake');
+      expect(result?.warnings).toEqual(avisos);
+      expect(controller.getState().lastImport).toEqual({ importer: 'falso', file: 'tienda.fake', warnings: avisos });
+    });
+
+    it('una importación sin avisos deja la lista vacía (y reemplaza los de la anterior)', async () => {
+      const controller = avisado();
+      await controller.selectModule('platform');
+      await controller.importFrom('FAKE', 'falso');
+      await controller.importFrom('FAKE limpio', 'falso', { file: 'otra.fake' });
+      expect(controller.getState().lastImport).toEqual({ importer: 'falso', file: 'otra.fake', warnings: [] });
+    });
+
+    it('se descartan al editar el documento, aunque sea un cambio mínimo; el mismo texto no cuenta como edición', async () => {
+      const controller = avisado();
+      await controller.selectModule('platform');
+      await controller.importFrom('FAKE', 'falso');
+      controller.setText(controller.getState().text);
+      expect(controller.getState().lastImport?.warnings).toEqual(avisos);
+      controller.setText(`${controller.getState().text}\n`);
+      expect(controller.getState().lastImport).toBeUndefined();
+    });
+
+    it('se descartan al cargar un documento, un ejemplo, un JSON con «Abrir archivo…» o al cambiar de módulo', async () => {
+      const controller = avisado();
+      await controller.selectModule('platform');
+      const importa = () => controller.importFrom('FAKE', 'falso', { file: 'x.fake' });
+
+      await importa();
+      await controller.loadDocument(example('plataforma-ejemplo.json'));
+      expect(controller.getState().lastImport).toBeUndefined();
+
+      await importa();
+      await controller.loadExample();
+      expect(controller.getState().lastImport).toBeUndefined();
+
+      await importa();
+      expect(await controller.openText(example('plataforma-ejemplo.json'), 'plataforma.json')).toBeUndefined();
+      expect(controller.getState().lastImport).toBeUndefined();
+
+      await importa();
+      controller.useDocumentText(example('plataforma-ejemplo.json'));
+      expect(controller.getState().lastImport).toBeUndefined();
+
+      await importa();
+      await controller.selectModule('security');
+      expect(controller.getState().lastImport).toBeUndefined();
+    });
+
+    it('un error de importación no toca ni el documento ni los avisos anteriores', async () => {
+      const controller = avisado();
+      await controller.selectModule('platform');
+      await controller.importFrom('FAKE', 'falso');
+      await expect(controller.importFrom('FAKE', 'no-existe')).rejects.toThrow(/no importa/);
+      expect(controller.getState().lastImport?.warnings).toEqual(avisos);
+    });
+
+    it('marcar como guardado, cambiar de vista o dibujar no los quita', async () => {
+      const controller = avisado();
+      await controller.selectModule('platform');
+      await controller.importFrom('FAKE', 'falso');
+      controller.markSaved();
+      controller.setStatus('hola');
+      await controller.render();
+      expect(controller.getState().lastImport?.warnings).toEqual(avisos);
+    });
+  });
+
   it('los informes leen el documento del editor', async () => {
     const controller = newController();
     await controller.selectModule('security');
