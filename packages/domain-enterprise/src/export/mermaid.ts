@@ -46,7 +46,8 @@ function classDefs(kinds: Set<ElementKind>): string[] {
  * La matriz capacidad × aplicación como diagrama de bloques de Mermaid (`block-beta`): una cuadrícula con las aplicaciones en
  * columnas, las capacidades en filas (las hijas con `›` por nivel), una marca en cada celda de soporte (del color de la criticidad
  * de la aplicación) y, al final de cada fila, el total y el aviso (hueco, solapamiento). Los estilos salen de la misma escena que
- * el SVG: se agrupan en clases por color y trazo. No es un `flowchart`: el importador de Mermaid del módulo no lo lee.
+ * el SVG: se agrupan en clases por color y trazo. No es un `flowchart`: `fromMermaid` lo lee aparte (`fromMatrixBlock`) y recupera los
+ * nombres, la jerarquía de las capacidades y el soporte directo; el resto (ids, criticidad, ciclo de vida, criterios, procesos) no viaja.
  */
 function matrixToMermaid(doc: EnterpriseDocument): string {
   const { matrix, nodes: styles } = matrixScene(doc);

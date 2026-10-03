@@ -7,17 +7,18 @@ import { toDrawio } from './export/drawio';
 import { toMermaid } from './export/mermaid';
 import { toSvg } from './export/render';
 import { fromArchimate, looksLikeArchimate } from './import/fromArchimate';
-import { fromMermaid } from './import/fromMermaid';
+import { fromMermaid, looksLikeMatrixBlock } from './import/fromMermaid';
 import { analyzeEnterprise } from './issues';
 import { enterpriseDocumentSchema, enterpriseJsonSchema } from './schema';
 import { ENTERPRISE_DOCUMENT_VERSION, type EnterpriseDocument } from './types';
 import { viewRefs } from './views';
 
+/** Mermaid: un `flowchart` o el `block-beta` de la matriz capacidad × aplicación (que `looksLikeMermaid`, común a la suite, no conoce). */
 const mermaidImporter: Importer<EnterpriseDocument> = {
   id: 'mermaid',
   label: 'Mermaid',
   extensions: ['.mmd', '.mermaid', '.md'],
-  detect: looksLikeMermaid,
+  detect: (text) => looksLikeMermaid(text) || looksLikeMatrixBlock(text),
   import: (text, ctx) => fromMermaid(text, { name: ctx.name, fallbackName: ctx.fallbackName }),
 };
 
