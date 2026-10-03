@@ -131,10 +131,19 @@ export type FieldSpec =
     }
   | { key: string; label: string; type: 'list'; hint?: string };
 
-/** Qué se está editando: un nodo o una relación de cierto tipo. */
+/**
+ * Qué se está editando: un nodo o una relación de cierto tipo. De una relación que existe en el documento el panel de propiedades
+ * añade su id y sus extremos, por si los campos dependen de a qué une (las columnas del activo al que apunta un enlace); un módulo que
+ * no los necesita no los lee, y quien pide los campos de un tipo sin tener una relación delante (`{ type, kind }`) sigue pudiendo.
+ */
 export interface EditorTarget {
   type: 'node' | 'edge';
   kind: string;
+  /** Solo en una relación: su id en el grafo. */
+  id?: string;
+  /** Solo en una relación: el elemento del que sale y al que llega. */
+  source?: string;
+  target?: string;
 }
 
 export type EditResult<TDoc> = { ok: true; document: TDoc; id?: string } | { ok: false; reason: string };

@@ -21,7 +21,7 @@ interface Harness {
   doc(): FakeDoc;
 }
 
-function mount(options: { doc?: FakeDoc | undefined; readOnly?: boolean } = {}): Harness {
+function mount(options: { doc?: FakeDoc | undefined; readOnly?: boolean; spec?: EditorSpec<unknown> } = {}): Harness {
   const history = new EditHistory();
   const notify = vi.fn();
   const onOpenAttachment = vi.fn();
@@ -32,7 +32,7 @@ function mount(options: { doc?: FakeDoc | undefined; readOnly?: boolean } = {}):
     return (
       <DiagramCanvas
         moduleId="fake"
-        spec={spec}
+        spec={options.spec ?? spec}
         document={'doc' in options && options.doc === undefined ? undefined : (JSON.parse(text) as unknown)}
         text={text}
         views={[]}
@@ -82,6 +82,31 @@ describe('aristas con insignias', () => {
     fireEvent.click(screen.getByTestId('edge-label-api-cola'));
     await waitFor(() => expect(screen.getByTestId('inspector')).toHaveTextContent('Asíncrona'));
     expect(screen.getByTestId('edge-label-api-cola')).toHaveAttribute('data-selected');
+  });
+});
+
+describe('el panel de propiedades da a los campos los extremos de la relación', () => {
+  const spied = (): { spec: EditorSpec<unknown>; targets: Array<Parameters<EditorSpec<unknown>['fields']>[0]> } => {
+    const targets: Array<Parameters<EditorSpec<unknown>['fields']>[0]> = [];
+    return { targets, spec: { ...spec, fields: (target, doc, values) => (targets.push(target), spec.fields(target, doc, values)) } };
+  };
+
+  it('una relación seleccionada llega a fields() con su id, su origen y su destino', async () => {
+    const { spec: watched, targets } = spied();
+    mount({ spec: watched });
+    await ready();
+    fireEvent.click(screen.getByTestId('edge-label-api-cola'));
+    await waitFor(() => expect(screen.getByTestId('inspector')).toHaveTextContent('Asíncrona'));
+    expect(targets.at(-1)).toEqual({ type: 'edge', kind: 'async', id: 'api-cola', source: 'api', target: 'cola' });
+  });
+
+  it('un nodo seleccionado llega como siempre: solo su tipo y su clase', async () => {
+    const { spec: watched, targets } = spied();
+    mount({ spec: watched });
+    await ready();
+    await pickNode('api');
+    expect(screen.getByLabelText('Nombre')).toHaveValue('API');
+    expect(targets.at(-1)).toEqual({ type: 'node', kind: 'service' });
   });
 });
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { formatUrn, type EditResult, type EditorSpec, type EntityRef, type FieldSpec } from '@iark/kernel';
+import { formatUrn, type EditResult, type EditorGraph, type EditorSpec, type EntityRef, type FieldSpec } from '@iark/kernel';
 import type { Backlink } from '../links';
 import { resolveRef } from '../links';
 import type { SelectionItem } from './selection';
@@ -20,6 +20,8 @@ interface Props {
   /** Con más de un elemento seleccionado, en lugar de propiedades se muestra este resumen. */
   selection?: SelectionItem[];
   readOnly: boolean;
+  /** Grafo de la vista abierta: de una relación seleccionada, el panel da a `EditorSpec.fields` sus extremos. */
+  graph?: EditorGraph;
   /** Módulo del documento que se edita (para los enlaces entrantes). */
   moduleId?: string;
   links?: LinkTools;
@@ -221,7 +223,7 @@ function bindAttachments(spec: EditorSpec<unknown>, document: unknown, id: strin
 }
 
 /** Panel de propiedades común: los campos de cada tipo los declara el módulo (`EditorSpec.fields`). */
-export function Inspector({ spec, document, id, selection, readOnly, moduleId, links, onPatch, onRemove, onRemoveSelection, onPick, onCommit, onOpenAttachment }: Props) {
+export function Inspector({ spec, document, id, selection, readOnly, graph, moduleId, links, onPatch, onRemove, onRemoveSelection, onPick, onCommit, onOpenAttachment }: Props) {
   if (selection && selection.length > 1) {
     return (
       <aside className="cv-inspector" aria-label="Propiedades" data-testid="inspector">
@@ -247,7 +249,8 @@ export function Inspector({ spec, document, id, selection, readOnly, moduleId, l
   const item = spec.read(document, id);
   if (!item) return <div className="cv-inspector cv-empty">Selecciona un elemento o una relación para ver sus propiedades.</div>;
   const notation = item.type === 'node' ? spec.nodeKinds.find((k) => k.kind === item.kind) : spec.edgeKinds.find((k) => k.kind === item.kind);
-  const fields = spec.fields({ type: item.type, kind: item.kind }, document, item.values);
+  const edge = item.type === 'edge' ? graph?.edges.find((e) => e.id === id) : undefined;
+  const fields = spec.fields({ type: item.type, kind: item.kind, ...(edge ? { id, source: edge.source, target: edge.target } : {}) }, document, item.values);
   const attachment = fields.some((f) => f.type === 'select' && f.opensAttachment) ? bindAttachments(spec, document, id, onCommit, onOpenAttachment) : undefined;
   return (
     <aside className="cv-inspector" aria-label="Propiedades" data-testid="inspector">

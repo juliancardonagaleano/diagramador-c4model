@@ -73,11 +73,43 @@ const TERM_FIELDS = (doc: DataDocument): FieldSpec[] => [
   { key: 'synonyms', label: 'Sinónimos', type: 'list' },
 ];
 
-const LINK_FIELDS: FieldSpec[] = [{ key: 'column', label: 'Columna enlazada', type: 'text', hint: 'Vacía: todo el activo. Ej.: email' }];
+const COLUMN_FIELD: FieldSpec = { key: 'column', label: 'Columna enlazada', type: 'text', hint: 'Vacía: todo el activo. Ej.: email' };
+
+/** El enlace de un término que se edita y el activo al que apunta: por el id de la relación o, sin él, por el extremo que es un activo. */
+function linkedAsset(doc: DataDocument, target: EditorTarget): { asset: DataAsset; column?: string } | undefined {
+  const at = target.id ? termLinkAt(doc, target.id) : undefined;
+  const link = at?.term.links?.[at.index];
+  const byId = link ? doc.assets.find((a) => a.id === link.assetId) : undefined;
+  if (byId) return { asset: byId, ...(link?.column ? { column: link.column } : {}) };
+  const asset = [target.target, target.source].map((id) => doc.assets.find((a) => a.id === id)).find((a) => a !== undefined);
+  return asset ? { asset } : undefined;
+}
+
+/**
+ * Campo de la columna de un enlace «define»: un desplegable con las columnas del activo enlazado y, primero, «todo el activo» (vacío). Una
+ * columna ya escrita que el activo no declara se conserva como opción (marcada) para no perderla al abrir el panel. Sin saber a qué activo
+ * apunta el enlace, o si ese activo no declara columnas (un informe, un modelo: acepta cualquier nombre), se escribe como texto.
+ */
+function columnField(doc: DataDocument, target: EditorTarget, values: Record<string, unknown> | undefined): FieldSpec {
+  const linked = linkedAsset(doc, target);
+  const columns = linked?.asset.columns ?? [];
+  if (!linked || columns.length === 0) return COLUMN_FIELD;
+  const written = linked.column ?? (typeof values?.column === 'string' ? values.column : '');
+  return {
+    key: 'column',
+    label: COLUMN_FIELD.label,
+    type: 'select',
+    options: [
+      { value: '', label: 'Todo el activo' },
+      ...columns.map((c) => ({ value: c.name, label: c.name })),
+      ...(written && !columns.some((c) => c.name === written) ? [{ value: written, label: `${written} (el activo no la declara)` }] : []),
+    ],
+  };
+}
 
 /** Campos de cada tipo del catálogo, tomados del formulario común de un activo (`base`) y ampliados con los suyos; `undefined` si no es del catálogo. */
-export function catalogFields(target: EditorTarget, doc: DataDocument, base: () => FieldSpec[]): FieldSpec[] | undefined {
-  if (target.type === 'edge') return target.kind === 'defines' ? LINK_FIELDS : isLinkKind(target.kind) ? [] : undefined;
+export function catalogFields(target: EditorTarget, doc: DataDocument, base: () => FieldSpec[], values?: Record<string, unknown>): FieldSpec[] | undefined {
+  if (target.type === 'edge') return target.kind === 'defines' ? [columnField(doc, target, values)] : isLinkKind(target.kind) ? [] : undefined;
   if (target.kind === TERM_KIND) return TERM_FIELDS(doc);
   if (!(CATALOG_KINDS as readonly string[]).includes(target.kind)) return undefined;
   const common = base();

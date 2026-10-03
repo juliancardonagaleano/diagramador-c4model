@@ -138,17 +138,25 @@ test.describe('datos: producto de datos, API de datos y glosario', () => {
     await connect(page, 'defines', 'termino-nuevo', 'erp-pedidos');
     // La relación recién creada queda seleccionada: su inspector pide la columna.
     await expect(page.getByTestId('edge-label-defines:termino-nuevo>erp-pedidos')).toHaveText('define');
+    // La columna se elige entre las del activo enlazado (no se escribe), con «Todo el activo» como valor vacío.
     const column = page.getByTestId('inspector').getByLabel('Columna enlazada');
-    await column.fill('importe');
-    await column.blur();
-    await expect(page.locator('.wb-toast')).toContainText('no tiene la columna «importe»');
-    await expect(page.locator('.wb-toast')).toHaveCount(0, { timeout: 8000 });
-    await column.fill('total');
-    await column.blur();
+    await expect(column).toHaveValue('');
+    await expect(column.locator('option')).toHaveText(['Todo el activo', 'id', 'cliente_id', 'fecha', 'total']);
+    await column.selectOption('total');
     await expect(page.getByTestId('edge-label-defines:termino-nuevo>erp-pedidos')).toHaveText('total');
     const term = (await readDoc(page)).terms?.find((t) => t.id === 'termino-nuevo');
     expect(term?.links).toEqual([{ assetId: 'erp-pedidos', column: 'total' }]);
     await shot(page, 'termino-enlazado-a-columna');
+
+    // El desplegable abierto (un `select` nativo no sale en una captura: se muestra como lista) y vuelta a «Todo el activo».
+    await page.getByTestId('edge-label-defines:termino-nuevo>erp-pedidos').dispatchEvent('click');
+    await expect(column).toHaveValue('total');
+    await column.evaluate((el) => el.setAttribute('size', '5'));
+    await shot(page, 'enlace-termino-columna-desplegable');
+    await column.evaluate((el) => el.removeAttribute('size'));
+    await column.selectOption('');
+    await expect(page.getByTestId('edge-label-defines:termino-nuevo>erp-pedidos')).toHaveText('define');
+    expect((await readDoc(page)).terms?.find((t) => t.id === 'termino-nuevo')?.links).toEqual([{ assetId: 'erp-pedidos' }]);
 
     // Estado del término desde su inspector.
     await page.getByTestId('node-fuga').click();
