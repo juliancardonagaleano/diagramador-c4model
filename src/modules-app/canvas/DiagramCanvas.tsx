@@ -200,10 +200,35 @@ function CanvasInner({ moduleId, spec, document, text, viewId, views, onView, re
     [built.edges, selection, pick, marks],
   );
 
-  // La cámara cuenta como asentada al acabar la animación o, si React Flow la interrumpe sin avisar, poco después.
+  // La cámara cuenta como asentada al acabar la animación o, si React Flow la interrumpe sin avisar, poco después. Ese plazo de
+  // reserva es un temporizador que sobrevive al lienzo: si éste se desmonta con un encuadre en curso, el plazo (o el final tardío
+  // de la animación) no debe tocar el estado de un componente que ya no existe —en pruebas, tras destruirse jsdom, lanzaba
+  // «window is not defined» sin captura—. Al desmontar se cancelan los plazos pendientes y se ignoran los finales tardíos.
+  const mounted = useRef(true);
+  const settleTimers = useRef(new Set<number>());
+  useEffect(() => {
+    mounted.current = true;
+    const timers = settleTimers.current;
+    return () => {
+      mounted.current = false;
+      timers.forEach((timer) => window.clearTimeout(timer));
+      timers.clear();
+    };
+  }, []);
   const settleCamera = useCallback((fit: Promise<unknown>, duration: number, forKey: string): void => {
-    const done = (): void => setFittedFor(forKey);
-    void Promise.race([fit, new Promise((resolve) => window.setTimeout(resolve, duration + 300))]).then(done, done);
+    const timers = settleTimers.current;
+    let timer = 0;
+    const deadline = new Promise((resolve) => {
+      timer = window.setTimeout(resolve, duration + 300);
+      timers.add(timer);
+    });
+    const done = (): void => {
+      if (!mounted.current) return; // el desmontaje ya canceló el plazo: no se toca `window` ni el estado
+      window.clearTimeout(timer);
+      timers.delete(timer);
+      setFittedFor(forKey);
+    };
+    void Promise.race([fit, deadline]).then(done, done);
   }, []);
 
   // Se encuadra cuando el autolayout aplicado es el de la estructura que se está viendo y la vista aún no se encuadró. Esa
