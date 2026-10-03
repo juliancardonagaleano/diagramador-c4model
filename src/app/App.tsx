@@ -1,5 +1,6 @@
+import { Toast } from '@douyinfe/semi-ui';
 import { ReactFlowProvider } from '@xyflow/react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Canvas } from './components/canvas/Canvas';
 import { Breadcrumb } from './components/header/Breadcrumb';
 import { ControlPanel } from './components/header/ControlPanel';
@@ -7,6 +8,9 @@ import { FloatingToolbar } from './components/header/FloatingToolbar';
 import { SidePanel } from './components/sidepanel/SidePanel';
 import { useEmbedBridge } from './embed/useEmbedBridge';
 import { useActions } from './hooks/useActions';
+import { useProjectBinding } from './projects/useProjectBinding';
+import { MODULE_SOURCES } from '../modules-app/modules';
+import { ProjectsDialog } from '../projects/ProjectsDialog';
 import { isEmbedMode, useDocumentStore } from './store/documentStore';
 
 const params = new URLSearchParams(window.location.search);
@@ -16,6 +20,8 @@ export default function App() {
   const setUi = useDocumentStore((s) => s.setUi);
   const embed = useEmbedBridge();
   const actions = useActions();
+  const projects = useProjectBinding();
+  const [showProjects, setShowProjects] = useState(false);
 
   // Tema (mecanismo nativo de Semi UI) + parámetros de URL.
   useEffect(() => {
@@ -75,7 +81,7 @@ export default function App() {
   return (
     <ReactFlowProvider>
       <div className="h-full flex flex-col overflow-hidden theme">
-        {ui.showHeader && <ControlPanel onEmbedSave={(exit) => void embed.save(exit)} onEmbedExit={embed.exit} />}
+        {ui.showHeader && <ControlPanel onEmbedSave={(exit) => void embed.save(exit)} onEmbedExit={embed.exit} projects={projects.session ? { binding: projects, onManage: () => setShowProjects(true) } : undefined} />}
         <div className="flex h-full min-h-0 overflow-hidden">
           {ui.showSidebar && <SidePanel />}
           <div className="relative flex-1 min-w-0 h-full overflow-hidden">
@@ -88,6 +94,20 @@ export default function App() {
             </div>
           </div>
         </div>
+        {showProjects && projects.session && (
+          <ProjectsDialog
+            session={projects.session}
+            modules={MODULE_SOURCES.map((s) => ({ id: s.id, label: s.label }))}
+            onOpen={projects.open}
+            current={projects.current}
+            template={async (id, kind) => {
+              const source = MODULE_SOURCES.find((s) => s.id === id);
+              return kind === 'blank' ? source?.blank?.() : source?.example?.();
+            }}
+            onClose={() => setShowProjects(false)}
+            notify={(message) => Toast.info(message)}
+          />
+        )}
       </div>
     </ReactFlowProvider>
   );
