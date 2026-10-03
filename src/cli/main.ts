@@ -15,11 +15,12 @@ import { generationJsonSchema } from '@core/ai/generationSchema';
 import { standalonePrompt } from '@core/ai/prompt';
 import { DEFAULT_AI_MODEL, generateDocument, GenerationError, type Effort } from '@core/ai/generate';
 import { analyzeDocument } from '@core/model/issues';
-import { buildManifest, ModuleError, type ModuleRegistry, UnknownModuleError } from '@iark/kernel';
+import { buildManifest, ModuleError, ProjectError, type ModuleRegistry, UnknownModuleError } from '@iark/kernel';
 import { createDefaultRegistry, DEFAULT_MODULE } from './registry';
 import { createSuiteServer } from './serve';
 import { registerTrace } from './trace';
 import { registerDiff } from './diff';
+import { registerProject } from './project';
 import { FolderProjectStore } from './workspace';
 import { genericExport, genericGenerate, genericPrompt, genericSchema, genericValidate, readModuleDocument } from './generic';
 import { CliError, dslIncludeOptions, extractJson, fallbackDocumentName, info, readDocument, readInput, writeOutput } from './io';
@@ -492,6 +493,7 @@ export function buildProgram(registry: ModuleRegistry = createDefaultRegistry())
 
   registerTrace(program, registry);
   registerDiff(program, registry, importSource);
+  registerProject(program, registry);
   registerModuleCommands(program, registry);
 
   return program;
@@ -542,6 +544,12 @@ export async function run(argv = process.argv): Promise<void> {
     if (error instanceof UnknownModuleError) {
       process.stderr.write(`${error.message}\n`);
       process.exitCode = 2;
+      return;
+    }
+    if (error instanceof ProjectError) {
+      // Uso incorrecto (no existe, ya existe, inválido): 2. Alguien cambió el diagrama en medio: 3. El disco no responde: 1.
+      process.stderr.write(`${error.message}\n`);
+      process.exitCode = error.code === 'unavailable' ? 1 : error.code === 'conflict' ? 3 : 2;
       return;
     }
     if (error instanceof DocumentValidationError) {
